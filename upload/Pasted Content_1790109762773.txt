@@ -1,0 +1,2589 @@
+You are now responsible for auditing, repairing, completing and professionally improving my entire Contoura Gym Management System.
+
+This is an existing application, not a new project.
+
+PROJECT:
+
+Contoura Gym Management System
+
+Developer:
+
+Contoura Labs
+
+PROJECT ROOT:
+
+D:\GYM
+
+FRONTEND:
+
+D:\GYM\Contoura_Labs_Gym
+
+BACKEND:
+
+D:\GYM\Backend-Software\GYM-software
+
+The project contains:
+
+React frontend
+Node/Express backend
+SQL Server database
+Authentication
+Authorization
+Branches
+Finance
+Chart of Accounts
+Vouchers
+Finance Reports
+Gym Management
+Members
+Memberships
+Attendance
+Fees
+Workout Plans
+Diet Plans
+Progress Tracking
+Equipment
+Inventory
+Staff
+Payroll
+Admin
+Users
+Roles
+Permissions
+Master Files
+
+Your task is to turn the existing application into a complete, reliable, professional, responsive ERP system.
+
+Do not treat this as a simple UI redesign.
+
+You must understand and repair the relationship between:
+
+Frontend
+Backend
+Database
+Stored Procedures
+Accounting Engine
+Authentication
+Permissions
+Branches
+
+before making major changes.
+
+============================================================
+
+1. MOST IMPORTANT RULE: AUDIT FIRST
+   ============================================================
+
+Do NOT immediately start changing code.
+
+First inspect the complete project.
+
+Inspect:
+
+Frontend structure
+Backend structure
+Database structure
+SQL scripts
+Migrations
+Stored procedures
+Triggers
+Views
+Functions
+Routes
+Controllers
+Services
+Repositories/models
+API services
+Authentication
+JWT handling
+User permissions
+Role permissions
+Branch permissions
+Navigation
+Finance
+Gym
+Payroll
+Admin
+Reports
+Master Files
+
+Create a complete internal understanding of the current architecture.
+
+Identify:
+
+Broken features
+Incomplete features
+Duplicate features
+Dead code
+Unused routes
+Unused database objects
+Frontend/backend mismatches
+Backend/database mismatches
+Incorrect business logic
+Broken permissions
+Broken branch filtering
+Broken authentication
+Broken accounting integrations
+Poor UI
+Non responsive pages
+AI generated looking components
+Unnecessary complexity
+
+Do not blindly rewrite working functionality.
+
+Reuse good existing architecture.
+
+============================================================
+2. CREATE PROJECT STATUS TRACKING
+=================================
+
+Create:
+
+IMPLEMENTATION_STATUS.md
+
+in the project root.
+
+Maintain it throughout the entire task.
+
+It must contain:
+
+CURRENT PHASE
+
+COMPLETED
+
+TESTED
+
+IN PROGRESS
+
+PENDING
+
+KNOWN BUGS
+
+DATABASE MIGRATIONS
+
+FRONTEND CHANGES
+
+BACKEND CHANGES
+
+NEXT EXACT TASK
+
+If your context or usage limit ends, the next session must read this file first.
+
+Never assume previous work was completed without checking the actual code.
+
+Update this file after every major phase.
+
+============================================================
+3. DATABASE SAFETY
+==================
+
+DO NOT:
+
+Reset GymDB.
+
+Drop the complete database.
+
+Delete all business data.
+
+Create a second Finance system.
+
+Create a second Chart of Accounts system.
+
+Create duplicate accounting tables unnecessarily.
+
+Create duplicate member systems.
+
+Create duplicate inventory systems.
+
+Create duplicate authentication systems.
+
+Do not delete tables without first checking all dependencies.
+
+Before removing any database object, search:
+
+Frontend references
+Backend references
+Stored procedures
+Triggers
+Views
+Foreign keys
+Indexes
+Migrations
+Seed scripts
+Reports
+
+If an object is shared by another module, refactor the dependency first.
+
+All database modifications must be done through proper migration scripts.
+
+============================================================
+4. RESPONSIVE SOFTWARE
+======================
+
+The entire application must be responsive.
+
+Not just newly created screens.
+
+Audit every existing page.
+
+The application must work properly on:
+
+Desktop
+Laptop
+Tablet
+Mobile
+
+Check:
+
+Navigation
+Hamburger menu
+Tables
+Forms
+Modals
+Dialogs
+Dropdowns
+Search
+Filters
+Buttons
+Cards
+Charts
+Reports
+Sidebars
+Pagination
+Action menus
+
+Tables must remain usable on small screens.
+
+Use:
+
+Horizontal scrolling
+Responsive columns
+Stacked layouts
+Mobile friendly controls
+
+where appropriate.
+
+Do not simply shrink desktop layouts.
+
+============================================================
+5. HUMAN DESIGNED UI
+====================
+
+The current application looks too AI generated in places.
+
+Improve the visual system throughout the application.
+
+Avoid excessive:
+
+Rounded cards
+Gradients
+Shadows
+Huge headings
+Whitespace
+Decorative text
+AI generated explanations
+Repeated helper sentences
+Generic dashboard widgets
+Unnecessary cards
+Pill buttons
+Icons everywhere
+Decorative statistics
+Unnecessary "Total:" blocks
+
+The software must look like a professional ERP used by real staff.
+
+It should prioritize:
+
+Clarity
+Speed
+Information density
+Readable tables
+Simple forms
+Clear actions
+Consistent navigation
+Practical workflows
+
+Do not make every section a card.
+
+Do not add decorative UI just to make the application look modern.
+
+Do not add unnecessary animations.
+
+Do not add random dashboards.
+
+============================================================
+6. AUTHENTICATION / SIGN IN
+===========================
+
+SIGN IN IS A CURRENT CRITICAL PROBLEM.
+
+Completely inspect and repair the authentication flow.
+
+Trace:
+
+Login page
+Frontend API
+Backend route
+Controller
+Service
+User lookup
+Password verification
+User status
+Role
+Branch
+JWT
+Token storage
+Auth context
+Protected routes
+Logout
+Session persistence
+
+Required test credentials:
+
+Username:
+
+admin
+
+Password:
+
+admin123
+
+The admin account must be properly created/restored if missing.
+
+Test:
+
+admin / admin123
+
+ADMIN / admin123
+
+Admin / admin123
+
+admin / wrongpassword
+
+Invalid username
+
+Inactive user
+
+The frontend must display proper errors.
+
+Backend must return correct status codes.
+
+JWT must be valid.
+
+Protected APIs must accept valid tokens.
+
+Protected APIs must reject invalid tokens.
+
+Logout must clear authentication.
+
+Refresh must preserve authentication if persistent authentication is intended.
+
+IMPORTANT:
+
+Do NOT store plaintext passwords.
+
+If the current password hashing implementation is broken, replace it with a reliable secure password hashing implementation.
+
+If existing users need password migration/reset, implement it properly.
+
+Do not put passwords in frontend code.
+
+Do not log passwords.
+
+============================================================
+7. GLOBAL BRANCH ARCHITECTURE
+=============================
+
+Branches must work consistently throughout the entire application.
+
+Accessible branches must be determined by user permissions.
+
+Where appropriate:
+
+Default selection:
+
+All accessible branches
+
+Users can remove branches from the selection if their permissions allow it.
+
+Users must never access unauthorized branches.
+
+Branch filtering must work in:
+
+Members
+Memberships
+Attendance
+Fees
+Workouts
+Diet
+Equipment
+Inventory
+Staff
+Payroll
+Finance
+Reports
+Masters
+
+Do not hardcode Branch IDs.
+
+============================================================
+8. FINANCE STRUCTURE
+====================
+
+Finance must be divided into:
+
+Finance Main
+
+Finance Reports
+
+Finance Master Files
+
+Finance Main:
+
+Chart of Accounts
+Vouchers
+Financial Years
+Accounting Periods
+Finance Defaults
+Bank Reconciliation where applicable
+
+Finance Reports:
+
+All financial reports
+
+Finance Master Files:
+
+Only appropriate finance masters
+
+REMOVE THESE FINANCE MASTER FILES:
+
+Customer
+Vendors
+Banks
+Cash Accounts
+
+Remove their:
+
+Frontend
+Routes
+Backend endpoints
+Controllers
+Services
+Stored procedures if exclusively used
+Tables if exclusively used
+Foreign keys if exclusively used
+Permissions
+Navigation
+Seed data
+
+Only remove database objects after dependency analysis.
+
+============================================================
+9. CHART OF ACCOUNTS
+====================
+
+Chart of Accounts must be professional and easy to use.
+
+Clicking:
+
+Add Account
+
+must open a proper modal/dialog.
+
+The dialog must contain:
+
+Account Name
+Parent Account
+Account Type
+Book Type
+Branch
+Control/Detail
+Status
+Code
+Contact information where appropriate
+Identification information
+Bank information where applicable
+Description/remarks
+
+Buttons:
+
+Save
+Cancel
+
+Cancel closes without saving.
+
+Save validates and creates the account.
+
+These dropdowns MUST WORK:
+
+Account Type
+Book Type
+Branch
+Parent Account
+
+No fake or non functional dropdowns.
+
+Account codes must be generated automatically.
+
+Users must not manually create invalid account codes.
+
+Maximum hierarchy:
+
+7 levels
+
+Maximum account code length:
+
+12 digits
+
+Top level heads:
+
+Assets
+Liabilities
+Capital / Equity
+Revenue
+Expense
+
+Support:
+
+Control Account
+Detail Account
+
+Example only:
+
+01
+24/7 Gym
+Control
+
+01001
+24/7 Karachi Branch
+Detail
+
+01002
+Lahore Branch
+Detail
+
+Do not hardcode these examples.
+
+The existing hierarchy must remain dynamic.
+
+COA should support:
+
+Search
+Global search
+Expand All
+Collapse All
+Add Account
+Edit
+Delete/deactivate where appropriate
+Refresh
+Branch filter
+Account type filter
+Book type filter
+Active/inactive filter
+
+The existing large:
+
+"Select an account to view its details"
+
+window/panel is disturbing.
+
+Redesign it into:
+
+Compact details panel
+
+or
+
+small integrated area
+
+or
+
+small modal
+
+Do not let it dominate the page.
+
+============================================================
+10. VOUCHERS
+============
+
+Required voucher types:
+
+CRV
+Cash Receipt Voucher
+
+CPV
+Cash Payment Voucher
+
+BRV
+Bank Receipt Voucher
+
+BPV
+Bank Payment Voucher
+
+Use one common voucher architecture.
+
+Do not duplicate business logic.
+
+Voucher entry should contain:
+
+Date
+Book Account
+Branch
+Description
+Account
+Line Description
+Amount
+Tax Account
+Tax %
+Tax Amount
+Cheque Number
+Status
+Title
+Reference
+
+Only valid Detail Accounts should be selectable in transaction lines.
+
+Accounting direction should be automatically determined from voucher type.
+
+Cash Receipt:
+
+Cash/Book Account is debited.
+
+Cash Payment:
+
+Cash/Book Account is credited.
+
+Bank Receipt:
+
+Bank/Book Account is debited.
+
+Bank Payment:
+
+Bank/Book Account is credited.
+
+The opposite side must be generated from detail lines.
+
+Remove unnecessary explanatory text such as:
+
+"Enter the book account, a description and detail lines with amounts — the debit and credit sides are generated automatically."
+
+The interface should explain itself through labels and layout.
+
+Remove unnecessary grid summaries such as:
+
+Total: 1,305,000
+
+unless the total is genuinely required for accounting validation.
+
+Do not display redundant totals throughout the software.
+
+Draft/Hold vouchers must not affect finalized reports.
+
+Posted vouchers must follow accounting rules.
+
+Posted accounting transactions must not be casually deleted.
+
+Use reversal/knock off where appropriate.
+
+============================================================
+11. UPDATE CHEQUE STATUS
+========================
+
+Create:
+
+Update Cheque Status
+
+Show relevant cheques.
+
+Filters:
+
+Account
+Bank
+Branch
+Cheque Number
+Date From
+Date To
+Current Status
+
+Statuses should include appropriate values such as:
+
+Hold
+Clear
+Bounced
+
+Support:
+
+Update one cheque
+
+Select multiple cheques
+
+Bulk update selected cheques
+
+Example:
+
+Select 5 cheques
+Choose Clear
+Click Update Status
+
+All selected cheques update.
+
+Permission checks are mandatory.
+
+Maintain history/audit information where appropriate.
+
+============================================================
+12. TAX HEADS
+=============
+
+Fix Tax Heads.
+
+Tax Type dropdown must work.
+
+Tax Code must automatically generate:
+
+001
+002
+003
+004
+
+Do not use:
+
+ST-18
+
+as the code.
+
+Instead:
+
+Tax Code:
+
+001
+
+Short Name:
+
+ST-18
+
+Tax Name:
+
+actual tax name
+
+Prevent duplicate codes.
+
+============================================================
+13. FINANCE REPORTS
+===================
+
+Create one central Finance Reports screen.
+
+Opening Finance Reports should show a list of reports.
+
+Examples:
+
+Trial Balance
+Income Statement
+Balance Sheet
+General Ledger
+Account Ledger
+Cash Book
+Bank Book
+Voucher Register
+Tax Reports
+Bank Reconciliation
+Other legitimate existing Finance reports
+
+Do not create fake reports.
+
+Select a report.
+
+Then show report filters.
+
+Possible filters:
+
+Date From
+Date To
+Account
+Branch
+Book Account
+Voucher Type
+Status
+Other report specific filters
+
+Button:
+
+Get Report
+
+Display the generated report.
+
+Actions:
+
+Print
+Export
+Customize Report
+
+============================================================
+14. CUSTOM REPORT FORMATS
+=========================
+
+Customize Report must allow the user to customize the generated report.
+
+At minimum:
+
+Show/hide columns
+
+Save customized format.
+
+Formats are user specific.
+
+Example:
+
+User A saves:
+
+General Ledger
+"My Format"
+
+User B must not automatically see it.
+
+When opening General Ledger:
+
+If no custom format:
+
+Default
+
+If formats exist:
+
+Default
+My Format
+Other saved formats
+
+Allow deleting user's own custom format.
+
+Do not allow unauthorized users to delete other users' formats.
+
+Reuse existing UserReportFormats infrastructure if suitable.
+
+============================================================
+15. GYM MODULE STRUCTURE
+========================
+
+Gym must be divided into:
+
+Gym Main
+
+Gym Reports
+
+Gym Master Files
+
+Gym Main:
+
+Members
+Membership Plans
+Attendance
+Fees & Invoices
+Workout Plans
+Diet Plans
+Progress Tracking
+Member Status
+Prospects / Inquiries
+Membership Freeze
+Member Follow Up
+POS
+
+Gym Reports:
+
+Gym reports
+
+Gym Master Files:
+
+Exercises
+Equipment/Inventory
+Other appropriate gym masters
+
+============================================================
+16. MEMBERS
+===========
+
+Keep Members screen simple.
+
+Reception should use this screen daily.
+
+Support:
+
+Add
+Edit
+View
+Search
+Filter
+Deactivate/delete according to business rules
+
+Add:
+
+Fee Relaxation Days
+
+Minimum:
+
+0
+
+Maximum:
+
+27
+
+Also add:
+
+Month Start / Billing Start Date
+
+Example:
+
+Joining Date:
+
+29 September
+
+Billing Start:
+
+1 October
+
+Store both values.
+
+Do not replace joining date with billing date.
+
+============================================================
+17. MEMBER STATUS
+=================
+
+Create/repair Member Status.
+
+Statuses may include:
+
+Active
+Inactive
+Cancelled
+Suspended
+
+Support:
+
+Single update
+
+Bulk update
+
+Permission controlled.
+
+============================================================
+18. MEMBERSHIP FREEZE
+=====================
+
+Add:
+
+Freeze Membership
+
+Allow:
+
+Freeze From
+Freeze To
+Number of Days
+Reason
+Approved By
+Status
+
+Example:
+
+Expiry:
+
+30 September
+
+Freeze:
+
+10 days
+
+New expiry:
+
+10 October
+
+Freeze must affect membership tracking and future billing according to business rules.
+
+Do not create fake accounting entries.
+
+Maintain freeze history.
+
+Support:
+
+Freeze
+Unfreeze
+View history
+
+Prevent overlapping or invalid freeze periods.
+
+============================================================
+19. PROSPECTS / INQUIRIES CRM
+=============================
+
+Create:
+
+Prospects / Inquiries
+
+Purpose:
+
+Track people who have not yet become members.
+
+Sources:
+
+Walk In
+Phone
+WhatsApp
+Website
+Referral
+Other
+
+Statuses:
+
+New
+Contacted
+Interested
+Trial Scheduled
+Trial Active
+Follow Up
+Converted
+Lost
+
+Fields:
+
+Prospect ID
+Name
+Phone
+WhatsApp
+Gender
+Age/DOB where appropriate
+Interested Membership
+Preferred Branch
+Source
+Inquiry Date
+Follow Up Date
+Assigned Receptionist
+Notes
+Status
+
+Create:
+
+Convert to Member
+
+When clicked:
+
+Open Add Member form
+
+Prepopulate available prospect information.
+
+After conversion:
+
+Prospect remains in history.
+
+Status becomes:
+
+Converted
+
+Store Member ID.
+
+============================================================
+20. ATTENDANCE
+==============
+
+Keep current manual attendance simple.
+
+Allow:
+
+Member ID
+Member search
+Date
+Check In
+Check Out
+Notes where necessary
+
+Future machine/card integration should remain possible.
+
+Do not implement unnecessary hardware integration now.
+
+============================================================
+21. FEES AND INVOICES
+=====================
+
+This is a critical system.
+
+Users must NOT manually create Cash Receipt Vouchers every time a member pays.
+
+Fees & Invoices must integrate with Finance automatically.
+
+When a fee is paid:
+
+Cash:
+
+Create correct accounting transaction.
+
+Bank:
+
+Create correct accounting transaction using selected bank account.
+
+Online:
+
+Create appropriate accounting transaction.
+
+The user should not create a second manual voucher.
+
+Use account mappings.
+
+Never hardcode Account IDs.
+
+Store:
+
+Member
+Billing period
+Amount
+Discount
+Paid amount
+Balance
+Due date
+Payment method
+Payment account
+Payment date
+Reference
+Status
+
+Statuses:
+
+Unpaid
+Paid
+Partial
+Late
+Overdue
+
+Use:
+
+Month Start / Billing Start Date
+
+and:
+
+Fee Relaxation Days
+
+Example:
+
+Due date reached.
+
+Relaxation:
+
+5 days.
+
+Do not mark Late during those 5 days.
+
+After 5 days:
+
+Late/Overdue according to rules.
+
+Integrate with:
+
+Membership Plans
+Membership Freeze
+Accounting
+Branches
+
+All accounting transactions must remain balanced.
+
+============================================================
+22. MEMBERSHIP DUE / GRACE ALERTS
+=================================
+
+Create a practical due/collection system.
+
+Statuses:
+
+Due Today
+Grace Day 1
+Grace Day 2
+Grace Day 3
+Overdue
+
+Do not hardcode 3 days.
+
+Use each member's configured Fee Relaxation Days.
+
+Show on dashboard/list:
+
+Member
+Phone
+Branch
+Due Date
+Grace Days
+Amount
+Status
+Last Contact
+Next Follow Up
+
+Make it easy for reception to follow up.
+
+============================================================
+23. MEMBER COMMUNICATION / FOLLOW UP HISTORY
+============================================
+
+Create simple follow up history.
+
+Example:
+
+29 Sep
+WhatsApp reminder
+
+30 Sep
+Phone call
+
+02 Oct
+Member promised payment
+
+03 Oct
+Payment received
+
+Store:
+
+Date
+Type
+User
+Notes
+Outcome
+
+Do not build an unnecessarily complex CRM.
+
+============================================================
+24. WORKOUT PLANS
+=================
+
+Create:
+
+Exercises
+
+General Workout Plans
+
+Assign Workout Plans
+
+Exercise codes:
+
+001
+002
+003
+
+Automatically generated.
+
+Exercise fields:
+
+Name
+Category
+Muscle Group
+Instructions
+Sets
+Reps
+Duration
+Rest
+Equipment
+Image
+Status
+Branch
+
+Workout Plans can contain multiple days.
+
+Example:
+
+Full Body Weekly Plan
+
+Monday
+Exercises
+
+Tuesday
+Exercises
+
+etc.
+
+Support:
+
+Sets
+Reps
+Duration
+Rest
+Notes
+Day
+
+============================================================
+25. MEMBER WORKOUT ASSIGNMENT
+=============================
+
+Allow:
+
+Assign General Workout Plan
+
+OR
+
+Custom Exercise Assignment
+
+Example:
+
+Member performs only:
+
+Bench Press
+Squat
+Lat Pulldown
+Shoulder Press
+Bicep Curl
+
+Allow:
+
+Days of week
+Frequency
+Sets
+Reps
+Notes
+
+Allow:
+
+Assign Trainer
+
+Only staff classified as Trainer should appear.
+
+============================================================
+26. DIET PLANS
+==============
+
+Create/repair:
+
+Diet Plans
+
+Support:
+
+Add
+Edit
+Delete
+Assign
+View
+
+Plans may contain:
+
+Meals
+Timing
+Foods
+Quantity
+Calories
+Protein
+Carbohydrates
+Fat
+Notes
+
+Allow assigning diet plans to members.
+
+============================================================
+27. PROGRESS TRACKING
+=====================
+
+Audit Progress Tracking.
+
+Support appropriate:
+
+Weight
+Body measurements
+Date
+Notes
+Progress photos where appropriate
+
+Keep it practical.
+
+============================================================
+28. EQUIPMENT + INVENTORY
+=========================
+
+Merge Equipment and Inventory into one coherent system.
+
+Support:
+
+Machines
+Dumbbells
+Bars
+Weights
+Gym equipment
+Consumable products
+
+Fields:
+
+Code
+Name
+Category
+Description
+Purchase Date
+Purchase Price
+Quantity
+Condition
+Status
+Branch
+Bill reference
+Image
+
+Allow optional bill image upload.
+
+Branch selection must work.
+
+Default:
+
+All accessible branches
+
+============================================================
+29. EQUIPMENT STATUS
+====================
+
+Create:
+
+Equipment Status
+
+Statuses:
+
+Working
+Broken
+Under Maintenance
+Retired
+
+Allow:
+
+Log Maintenance
+
+Maintenance:
+
+Date
+Description
+Type
+Cost
+Vendor/Technician
+Notes
+Attachment
+
+IMPORTANT:
+
+Recording maintenance cost alone must NOT automatically affect accounting.
+
+It remains a Gym maintenance record.
+
+Only explicit accounting/payment actions should affect Finance.
+
+============================================================
+30. QUICK POS
+=============
+
+Create:
+
+POS / Counter Sales
+
+This must be fast and touch friendly.
+
+Products come from the existing Inventory foundation.
+
+Example:
+
+Water
+Protein Shake
+Juice
+Energy Drink
+T Shirt
+Gloves
+Supplements
+Gym Accessories
+Other products
+
+Workflow:
+
+Select product
+Quantity
+Add to cart
+Payment method
+Complete Sale
+
+Payment methods:
+
+Cash
+Bank
+Online
+
+Completion must:
+
+Reduce inventory
+
+Record sale
+
+Record payment
+
+Create correct accounting transaction
+
+No manual voucher required.
+
+Use Finance mappings.
+
+Do not create a second inventory system.
+
+Do not create a second accounting engine.
+
+============================================================
+31. STAFF
+=========
+
+Make Add Staff professional.
+
+Fields:
+
+Employee ID
+Name
+Father/Guardian
+CNIC/NIC
+Photo
+Address
+Emergency Contact
+Emergency Contact Number
+Phone
+WhatsApp
+Telephone
+Fax where appropriate
+Email
+Joining Date
+Department
+Designation
+Branch
+Shift
+Basic Salary
+Allowances
+
+Allowances:
+
+Fuel
+Rent
+House
+Other configured allowances
+
+Statutory information where required:
+
+SESSI
+EOBI
+FBR/Tax Number
+
+Shift:
+
+General
+Morning
+Evening
+
+Leave types:
+
+Select allowed leave types.
+
+Overtime:
+
+Allowed / Not Allowed
+
+If allowed:
+
+Rate per hour
+
+Do not create one giant unreadable form.
+
+Use logical sections.
+
+============================================================
+32. PAYROLL STRUCTURE
+=====================
+
+Payroll divided into:
+
+HR / Payroll Main
+
+Payroll Reports
+
+Payroll Master Files
+
+Master Files:
+
+Shifts
+Calendar
+Leaves
+
+============================================================
+33. SHIFTS
+==========
+
+Shift:
+
+Name
+Time In
+Time Out
+Working Days
+Branch
+
+Examples:
+
+General
+Morning
+Evening
+
+Allow:
+
+Monday
+Tuesday
+Wednesday
+etc.
+
+============================================================
+34. CALENDAR
+============
+
+Generate annual calendar.
+
+Support:
+
+Working day
+Sunday
+Public holiday
+Gym closed
+Paid holiday
+
+Allow editing.
+
+Example:
+
+Rain closes gym for one day.
+
+Record appropriate closure.
+
+============================================================
+35. LEAVE MASTER
+================
+
+Examples:
+
+Casual
+Sick
+Paid
+Unpaid
+
+Allow:
+
+Number of allowed days
+
+============================================================
+36. OVERTIME
+============
+
+Create:
+
+Overtime
+
+Allow manual entry.
+
+Also calculate automatically where attendance + shift data are available.
+
+Example:
+
+Shift:
+
+9 AM to 5 PM
+
+Actual:
+
+8 PM
+
+Potential overtime:
+
+3 hours
+
+Require approval.
+
+Actions:
+
+Approve
+Reject
+Edit
+
+Only approved overtime enters payroll.
+
+Prevent duplicates.
+
+============================================================
+37. LEAVE APPROVAL
+==================
+
+HR/Admin can classify/approve leave:
+
+Sick
+Casual
+Paid
+Unpaid
+
+Unpaid leave should affect payroll correctly.
+
+Paid leave should not incorrectly reduce salary.
+
+============================================================
+38. ADMIN DEFAULTS
+==================
+
+Reorganize Admin.
+
+Company details should exist in one authoritative location.
+
+Company Name:
+
+Set initially.
+
+Do not casually allow editing after setup.
+
+Logo:
+
+Upload actual logo.
+
+Accounting Type:
+
+Keep:
+
+FIFO
+
+or
+
+Knock Off
+
+Remove:
+
+Outstanding Documents Mode
+
+Remove unnecessary voucher numbering settings.
+
+Voucher numbering should follow fixed system design.
+
+============================================================
+39. COMPANY ID
+==============
+
+Generate Company ID during initial setup.
+
+Format:
+
+AAA-00
+
+Example:
+
+ACP-01
+
+Example only.
+
+Company ID must:
+
+Be unique
+Be generated
+Remain fixed after initial setup
+Be used consistently where appropriate
+
+Do not hardcode ACP-01.
+
+============================================================
+40. ACCOUNT MAPPINGS
+====================
+
+Redesign Account Mappings professionally.
+
+Support mappings for:
+
+Membership fees
+Cash
+Bank
+Tax
+Discount
+POS sales
+Other integrated transactions
+
+Use actual Accounts.
+
+Validate Account Type.
+
+Never hardcode Account IDs.
+
+Branch awareness where required.
+
+============================================================
+41. BRANCHES
+============
+
+New Branch:
+
+Automatic branch code
+
+Fields:
+
+Branch Code
+Branch Name
+Address
+STRN
+NTN
+Phone
+Email
+Logo
+
+Remove:
+
+Manager field
+
+If branch logo is not uploaded:
+
+Use company default logo.
+
+Branch accounting relationships must be generated through the existing COA engine.
+
+============================================================
+42. USER ROLES AND GRANULAR PERMISSIONS
+=======================================
+
+Create extremely granular permissions.
+
+Permissions should support actions such as:
+
+View
+Add
+Edit
+Delete
+Post
+Approve
+Reject
+Print
+Export
+Import
+Change Status
+Bulk Update
+Customize
+Reverse
+Reconcile
+Configure
+
+Example:
+
+Reception:
+
+Members:
+View
+Add
+Edit
+Delete
+
+Attendance:
+View
+Add
+
+Finance:
+
+No access
+
+The permission system must enforce permissions in:
+
+Frontend
+
+AND
+
+Backend
+
+Hiding buttons alone is NOT security.
+
+Navigation must respect permissions.
+
+Buttons must respect permissions.
+
+APIs must enforce permissions.
+
+Branch permissions must also apply.
+
+============================================================
+43. REPORTING
+=============
+
+Reports must use real database data.
+
+No fake statistics.
+
+Respect:
+
+Branch
+Date
+User
+Permission
+Financial period
+Voucher status
+
+Finance reports should exclude unposted transactions where appropriate.
+
+============================================================
+44. ACCOUNTING INTEGRITY
+========================
+
+This is critical.
+
+Every accounting transaction:
+
+Debit = Credit
+
+Fee payment must not create duplicate transactions.
+
+POS payment must not create duplicate transactions.
+
+Voucher posting must be atomic.
+
+If one part fails, the accounting transaction must roll back.
+
+Use SQL transactions.
+
+Do not calculate accounting balances only in frontend.
+
+============================================================
+45. DATABASE CLEANUP
+====================
+
+After the new architecture works:
+
+Remove obsolete code and database objects.
+
+Especially removed Finance Masters:
+
+Customer
+Vendors
+Banks
+Cash Accounts
+
+Remove only when proven unused.
+
+Remove:
+
+Dead routes
+Dead controllers
+Dead procedures
+Dead tables
+Dead permissions
+Dead navigation
+Dead imports
+
+Do not leave duplicate implementations.
+
+============================================================
+46. PERFORMANCE
+===============
+
+Avoid:
+
+Unnecessary API calls
+N+1 queries
+Loading thousands of records unnecessarily
+Repeated master data requests
+Huge frontend bundles where avoidable
+
+Use:
+
+Pagination
+Filtering
+Indexes
+Caching where appropriate
+
+============================================================
+47. VALIDATION
+==============
+
+All important forms require:
+
+Frontend validation
+
+Backend validation
+
+Database validation where appropriate
+
+Validate:
+
+Required fields
+Numeric values
+Date ranges
+Duplicates
+Branches
+Permissions
+Accounting rules
+Financial periods
+Voucher status
+Member data
+Staff data
+Payroll data
+
+============================================================
+48. ERROR HANDLING
+==================
+
+Do not show raw SQL errors to ordinary users.
+
+Use useful messages.
+
+Example:
+
+"Unable to save account. Please check the required fields."
+
+not:
+
+"Cannot insert NULL into column..."
+
+Keep technical details in logs.
+
+============================================================
+49. TESTING
+===========
+
+Do not consider a feature complete because:
+
+The frontend builds.
+
+The API returns 200.
+
+The code looks correct.
+
+Actually test the feature.
+
+Test:
+
+Authentication
+Logout
+JWT
+Protected routes
+Permissions
+Branches
+COA
+Add account
+Edit account
+Account hierarchy
+Account type
+Book type
+Branch selection
+Tax Heads
+Tax code generation
+CRV
+CPV
+BRV
+BPV
+Draft vouchers
+Posted vouchers
+Cheque status
+Bulk cheque updates
+Finance reports
+Report filters
+Report export
+Report customization
+Save report format
+Delete report format
+Members
+Member status
+Membership plans
+Membership freeze
+Attendance
+Fees
+Cash fee payment
+Bank fee payment
+Online fee payment
+Accounting integration
+Due alerts
+Prospects
+Prospect conversion
+Follow up history
+Exercises
+Workout plans
+Workout assignment
+Diet plans
+Diet assignment
+Trainer assignment
+Equipment
+Inventory
+Equipment status
+Maintenance
+POS
+POS inventory deduction
+POS accounting
+Staff
+Shifts
+Calendar
+Leaves
+Leave approval
+Overtime
+Payroll
+Branches
+Users
+Roles
+Permissions
+Admin Defaults
+
+Test desktop.
+
+Test tablet.
+
+Test mobile.
+
+============================================================
+50. ACCOUNTING REGRESSION TEST
+==============================
+
+After implementing:
+
+Fees
+POS
+Vouchers
+
+verify:
+
+Trial Balance balances.
+
+Debit = Credit.
+
+Cash balances correctly.
+
+Bank balances correctly.
+
+Revenue is correct.
+
+Tax is correct.
+
+Member fee payments are not duplicated.
+
+POS sales are not duplicated.
+
+Inventory quantities are correct.
+
+Posted vouchers affect reports.
+
+Draft vouchers do not incorrectly affect finalized reports.
+
+============================================================
+51. DATA INTEGRITY TEST
+=======================
+
+Verify:
+
+No orphan records.
+
+No duplicate accounts.
+
+No duplicate Company IDs.
+
+No invalid branches.
+
+No invalid user references.
+
+No invalid account references.
+
+No broken foreign keys.
+
+No broken stored procedures.
+
+No broken API routes.
+
+No duplicate Finance systems.
+
+No duplicate COA systems.
+
+No duplicate Inventory systems.
+
+No duplicate accounting transactions.
+
+============================================================
+52. UI ACCEPTANCE
+=================
+
+The finished software should look like a serious commercial ERP.
+
+Not a portfolio project.
+
+Not a template.
+
+Not an AI generated dashboard.
+
+Not a page full of cards.
+
+Not a page full of explanations.
+
+Use practical ERP design.
+
+Prioritize:
+
+Clear tables
+Logical forms
+Fast workflows
+Consistent controls
+Useful filters
+Readable information
+Simple navigation
+Responsive layout
+
+============================================================
+53. DO NOT OVERENGINEER
+=======================
+
+Where requirements are clearly defined, implement them properly.
+
+Where exact implementation is not defined:
+
+Use the simplest reliable architecture.
+
+Do not add random features.
+
+Do not add decorative features.
+
+Do not add unnecessary dependencies.
+
+Do not add unnecessary animations.
+
+Do not add fake AI functionality.
+
+Do not create unnecessary dashboards.
+
+============================================================
+54. IMPLEMENTATION ORDER
+========================
+
+Follow this order.
+
+PHASE 1
+
+Complete system audit.
+
+PHASE 2
+
+Authentication / Sign In.
+
+PHASE 3
+
+Responsive UI foundation.
+
+PHASE 4
+
+Finance architecture cleanup.
+
+PHASE 5
+
+Chart of Accounts.
+
+PHASE 6
+
+Vouchers.
+
+PHASE 7
+
+Cheque Status.
+
+PHASE 8
+
+Tax Heads.
+
+PHASE 9
+
+Finance Reports.
+
+PHASE 10
+
+Report Customization.
+
+PHASE 11
+
+Gym architecture.
+
+PHASE 12
+
+Members.
+
+PHASE 13
+
+Membership Status.
+
+PHASE 14
+
+Membership Freeze.
+
+PHASE 15
+
+Prospects / Inquiry CRM.
+
+PHASE 16
+
+Attendance.
+
+PHASE 17
+
+Fees & Invoices.
+
+PHASE 18
+
+Automatic Fee Accounting.
+
+PHASE 19
+
+Due / Grace Alerts.
+
+PHASE 20
+
+Member Follow Up.
+
+PHASE 21
+
+Exercises.
+
+PHASE 22
+
+Workout Plans.
+
+PHASE 23
+
+Workout Assignment.
+
+PHASE 24
+
+Diet Plans.
+
+PHASE 25
+
+Diet Assignment.
+
+PHASE 26
+
+Equipment + Inventory.
+
+PHASE 27
+
+Equipment Status + Maintenance.
+
+PHASE 28
+
+POS.
+
+PHASE 29
+
+Staff.
+
+PHASE 30
+
+Payroll Master Files.
+
+PHASE 31
+
+Overtime.
+
+PHASE 32
+
+Leave Approval.
+
+PHASE 33
+
+Payroll.
+
+PHASE 34
+
+Admin Defaults.
+
+PHASE 35
+
+Branches.
+
+PHASE 36
+
+Users / Roles / Granular Permissions.
+
+PHASE 37
+
+Finance Master cleanup.
+
+PHASE 38
+
+Database cleanup.
+
+PHASE 39
+
+Performance optimization.
+
+PHASE 40
+
+Complete regression testing.
+
+============================================================
+55. IMPORTANT IMPLEMENTATION RULE
+=================================
+
+Do not attempt to implement every phase blindly in one giant uncontrolled operation.
+
+Work phase by phase.
+
+After each major phase:
+
+Run tests.
+
+Fix issues.
+
+Update:
+
+IMPLEMENTATION_STATUS.md
+
+Then continue.
+
+If a later feature depends on an earlier feature, finish and verify the earlier feature first.
+
+============================================================
+56. FINAL REPORT
+================
+
+At completion provide:
+
+Complete audit findings
+
+Authentication root cause
+
+Authentication changes
+
+Database changes
+
+Frontend changes
+
+Backend changes
+
+Finance changes
+
+COA changes
+
+Voucher changes
+
+Cheque changes
+
+Tax changes
+
+Report changes
+
+Gym changes
+
+Membership changes
+
+Freeze logic
+
+CRM changes
+
+Fees accounting
+
+Due alerts
+
+Workout changes
+
+Diet changes
+
+Equipment changes
+
+POS changes
+
+Payroll changes
+
+Admin changes
+
+Branch changes
+
+Permission changes
+
+Removed modules
+
+Removed database objects
+
+Retained shared objects
+
+Migrations created
+
+Tests performed
+
+Test results
+
+Known remaining issues
+
+Known limitations
+
+Next recommended improvements
+
+Clearly distinguish:
+
+IMPLEMENTED
+
+TESTED
+
+NOT TESTED
+
+BLOCKED
+
+KNOWN ISSUE
+
+Never claim something is verified unless it was actually tested.
+
+============================================================
+57. FINAL QUALITY STANDARD
+==========================
+
+The final Contoura Gym Management System must be:
+
+Reliable
+
+Responsive
+
+Professional
+
+Fast
+
+Simple
+
+Human designed
+
+Accounting safe
+
+Branch aware
+
+Permission controlled
+
+Maintainable
+
+Scalable
+
+Easy for reception
+
+Easy for managers
+
+Easy for accountants
+
+Easy for HR
+
+Easy for payroll
+
+Easy for administrators
+
+The application should feel like a real commercial Gym ERP.
+
+The objective is not to maximize the number of screens.
+
+The objective is to create a coherent system where:
+
+Members
+
+Memberships
+
+Fees
+
+Accounting
+
+Branches
+
+Inventory
+
+POS
+
+Workouts
+
+Diet
+
+Attendance
+
+Staff
+
+Payroll
+
+Reports
+
+Permissions
+
+and Administration
+
+all work together correctly.
+
+START WITH PHASE 1.
+
+Do not modify major business logic until you have completed the audit and documented the current architecture and problems in IMPLEMENTATION_STATUS.md.

@@ -1,0 +1,2667 @@
+You are working on an existing software project called:
+
+CONTOURA GYM MANAGEMENT SYSTEM
+
+Developer:
+
+Contoura Labs
+
+This is a real Gym ERP system.
+
+It is NOT a generic dashboard.
+
+It is NOT a portfolio project.
+
+It is NOT a collection of unrelated CRUD pages.
+
+The system must behave like a proper commercial ERP where Gym Operations, Finance, HR, Payroll, Administration, Branches, Users, Permissions and Reports are connected through one coherent architecture.
+
+Your previous changes damaged the structure of the application.
+
+Before doing anything else, stop making assumptions and inspect the existing project carefully.
+
+The goal now is to restore a clean, logical ERP architecture without destroying working functionality.
+
+============================================================
+
+1. PROJECT
+   ============================================================
+
+Project root:
+
+D:\GYM
+
+Frontend:
+
+D:\GYM\Contoura_Labs_Gym
+
+Backend:
+
+D:\GYM\Backend-Software\GYM-software
+
+Frontend technology:
+
+React
+Vite
+Tailwind
+React Router
+
+Backend:
+
+Node
+Express
+SQL Server
+
+Database:
+
+GymDB
+
+There may also be GymDB_Test and migration/test databases.
+
+Inspect the actual project before changing anything.
+
+============================================================
+2. CRITICAL RULE
+================
+
+DO NOT randomly redesign the application.
+
+DO NOT invent new modules.
+
+DO NOT create duplicate screens.
+
+DO NOT create duplicate Master Files systems.
+
+DO NOT create duplicate Finance systems.
+
+DO NOT create duplicate accounting systems.
+
+DO NOT create duplicate inventory systems.
+
+DO NOT move features between modules simply because they seem convenient.
+
+Every feature must have a logical ERP location.
+
+If a feature already exists and works, reuse it.
+
+If the existing architecture is unclear, inspect the code and database before changing it.
+
+============================================================
+3. FIRST TASK: COMPLETE AUDIT
+=============================
+
+Before implementation, inspect:
+
+Frontend
+
+Backend
+
+Database
+
+Routes
+
+Controllers
+
+Services
+
+Models
+
+Stored Procedures
+
+Tables
+
+Foreign Keys
+
+Triggers
+
+Migrations
+
+Navigation
+
+Permissions
+
+Authentication
+
+Finance
+
+Gym
+
+Payroll
+
+Admin
+
+Reports
+
+Master Files
+
+Do not assume that a feature does not exist.
+
+Search the entire project.
+
+Create:
+
+IMPLEMENTATION_STATUS.md
+
+and:
+
+ERP_STRUCTURE.md
+
+in the project root.
+
+ERP_STRUCTURE.md must document:
+
+Module
+
+Section
+
+Screen
+
+Route
+
+Backend API
+
+Database objects
+
+Permissions
+
+Dependencies
+
+============================================================
+4. ERP NAVIGATION ARCHITECTURE
+==============================
+
+Every major ERP module must be divided into three logical sections:
+
+MAIN
+
+REPORTS
+
+MASTER FILES
+
+However, this does NOT mean that every section must contain an unnecessary second level of screens.
+
+The hierarchy should reflect the actual business function.
+
+The sidebar must support:
+
+Module
+
+↓
+
+Section
+
+↓
+
+Screen
+
+Example:
+
+Finance
+
+↓
+
+Vouchers
+
+↓
+
+Cash Payment Voucher
+
+The user should never see a huge flat list of 30 unrelated pages.
+
+============================================================
+5. FINANCE MODULE
+=================
+
+Finance must have exactly these three top level sections:
+
+Finance
+
+├── Vouchers
+
+├── Reports
+
+└── Master Files
+
+============================================================
+6. FINANCE → VOUCHERS
+=====================
+
+When the user clicks:
+
+Finance
+
+then:
+
+Vouchers
+
+must open a nested menu containing exactly:
+
+Bank Payment Voucher
+
+Bank Receipt Voucher
+
+Cash Payment Voucher
+
+Cash Receipt Voucher
+
+Journal Voucher
+
+Opening Trial Balance
+
+Structure:
+
+Finance
+
+```
+Vouchers
+
+    Bank Payment Voucher
+
+    Bank Receipt Voucher
+
+    Cash Payment Voucher
+
+    Cash Receipt Voucher
+
+    Journal Voucher
+
+    Opening Trial Balance
+```
+
+These are separate screens/workflows but they should reuse common voucher architecture wherever possible.
+
+Do not create six completely unrelated voucher systems.
+
+============================================================
+7. FINANCE → REPORTS
+====================
+
+Finance
+
+```
+Reports
+
+    Aging Reports
+
+    Finance Reports
+```
+
+Finance Reports should be the central finance reporting area.
+
+It should contain appropriate reports such as:
+
+Trial Balance
+
+Balance Sheet
+
+Income Statement
+
+General Ledger
+
+Account Ledger
+
+Cash Book
+
+Bank Book
+
+Voucher Register
+
+Tax Reports
+
+Other legitimate finance reports already supported by the system.
+
+Do not create fake reports.
+
+Do not display fake statistics.
+
+Reports must use real database data.
+
+============================================================
+8. FINANCE → MASTER FILES
+=========================
+
+Finance
+
+```
+Master Files
+
+    Chart of Accounts
+
+    Tax Accounts / Tax Heads
+```
+
+That is the Finance Master Files structure.
+
+REMOVE:
+
+Account Mapping
+
+from the Finance module.
+
+REMOVE:
+
+Finance Defaults
+
+from the Finance module.
+
+They must NOT appear under Finance.
+
+============================================================
+9. FINANCE DEFAULTS
+===================
+
+Finance Defaults must be moved to:
+
+Admin
+
+→ Defaults
+
+Do not duplicate Finance Defaults.
+
+There must be one authoritative location.
+
+============================================================
+10. ACCOUNT MAPPING
+===================
+
+Account Mapping must also be moved out of Finance.
+
+It belongs under:
+
+Admin
+
+→ Defaults
+
+Account mappings should be configured centrally because they are system configuration used by multiple modules.
+
+Examples may include mappings for:
+
+Membership Revenue
+
+Cash
+
+Bank
+
+Tax
+
+Discount
+
+POS if such a module exists later
+
+Other automatic accounting integrations
+
+Do not hardcode Account IDs in application code.
+
+============================================================
+11. CHART OF ACCOUNTS
+=====================
+
+Chart of Accounts is inside:
+
+Finance
+
+→ Master Files
+
+→ Chart of Accounts
+
+The Actions column MUST be on the LEFT.
+
+Correct:
+
+Actions | Code | Account Name | Type | Branch | Status
+
+Incorrect:
+
+Code | Account Name | Type | Branch | Status | Actions
+
+Actions should include appropriate:
+
+Add
+
+Edit
+
+Delete/Deactivate
+
+View
+
+The exact available actions must respect permissions.
+
+============================================================
+12. CHART OF ACCOUNTS FUNCTIONAL REQUIREMENTS
+=============================================
+
+COA must support:
+
+Account Code
+
+Account Name
+
+Parent Account
+
+Account Type
+
+Control Account
+
+Detail Account
+
+Book Type
+
+Branch
+
+Status
+
+Description
+
+Contact details where applicable
+
+Identification details where applicable
+
+Bank details where applicable
+
+Account photo where applicable
+
+Maximum hierarchy:
+
+7 levels
+
+Maximum code length:
+
+12 digits
+
+Top level accounting heads:
+
+Assets
+
+Liabilities
+
+Capital / Equity
+
+Revenue
+
+Expense
+
+Account codes must be generated according to the configured COA structure.
+
+Do not hardcode account IDs.
+
+Do not create a second COA.
+
+============================================================
+13. CHART OF ACCOUNTS UI
+========================
+
+The COA screen must support:
+
+Search
+
+Global search
+
+Expand All
+
+Collapse All
+
+Add Account
+
+Edit
+
+Delete/Deactivate
+
+Refresh
+
+Branch filter
+
+Account Type filter
+
+Book Type filter
+
+Status filter
+
+Search should search across the actual account hierarchy.
+
+If the user searches:
+
+Meezan
+
+the relevant account should be found even if it is deeply nested.
+
+The account hierarchy should remain understandable.
+
+============================================================
+14. COA ADD ACCOUNT
+===================
+
+Add Account must open a proper form/modal.
+
+Fields should include:
+
+Account Name
+
+Parent Account
+
+Account Type
+
+Control / Detail
+
+Book Type
+
+Branch
+
+Status
+
+Code
+
+Description
+
+Relevant contact information
+
+Relevant bank information
+
+Do not create fake dropdowns.
+
+These dropdowns must actually load data:
+
+Parent Account
+
+Account Type
+
+Book Type
+
+Branch
+
+Every selection must be validated by backend.
+
+============================================================
+15. COA DETAILS
+===============
+
+Do NOT use the huge existing:
+
+"Select an account to view its details"
+
+area.
+
+It consumes too much space.
+
+Use either:
+
+Compact right side panel
+
+OR
+
+Compact modal
+
+OR
+
+Small expandable details section
+
+The account grid must remain the primary focus.
+
+============================================================
+16. FINANCE VOUCHER ACCOUNTING
+==============================
+
+Existing voucher architecture must be audited before changing it.
+
+Required voucher types:
+
+Bank Payment Voucher
+
+Bank Receipt Voucher
+
+Cash Payment Voucher
+
+Cash Receipt Voucher
+
+Journal Voucher
+
+Opening Trial Balance
+
+Voucher posting must remain accounting safe.
+
+Every posted accounting transaction must balance.
+
+Debit = Credit.
+
+Draft/Hold transactions must not incorrectly affect finalized reports.
+
+Posted transactions must not be casually deleted.
+
+Use reversal/knockoff where appropriate.
+
+Do not create accounting entries directly from the frontend.
+
+Use backend/database accounting logic.
+
+============================================================
+17. ADMIN MODULE
+================
+
+Admin must also follow a logical ERP structure.
+
+Admin
+
+├── Defaults
+
+├── Reports
+
+└── Master Files
+
+Do not create unnecessary Admin screens.
+
+============================================================
+18. ADMIN → DEFAULTS
+====================
+
+Admin
+
+→ Defaults
+
+This is the central configuration area.
+
+Move:
+
+Finance Defaults
+
+Account Mapping
+
+into this area.
+
+Other appropriate system defaults can also exist here.
+
+Examples:
+
+Company Information
+
+Company Logo
+
+Company ID
+
+Accounting Type
+
+COA Configuration
+
+Finance Defaults
+
+Account Mapping
+
+Branch Defaults
+
+Voucher Defaults where appropriate
+
+System Defaults
+
+Do not duplicate settings elsewhere.
+
+============================================================
+19. ADMIN → COMPANY
+===================
+
+Company configuration should include:
+
+Company Name
+
+Company Logo
+
+Company ID
+
+Address
+
+Phone
+
+Email
+
+Other legitimate company information
+
+Company ID must be generated automatically.
+
+Format:
+
+AAA-00
+
+Example:
+
+ACP-01
+
+Example only.
+
+Do not hardcode ACP-01.
+
+Once generated, Company ID should remain stable.
+
+============================================================
+20. ADMIN → ACCOUNTING DEFAULTS
+===============================
+
+Accounting Type:
+
+FIFO
+
+OR
+
+Knock Off
+
+Remove:
+
+Outstanding Documents Mode
+
+Remove unnecessary voucher numbering configuration.
+
+Do not create unnecessary configuration screens.
+
+============================================================
+21. ADMIN → MASTER FILES
+========================
+
+Admin Master Files should contain actual administrative masters such as:
+
+Branches
+
+Users
+
+Roles
+
+Permissions
+
+Other appropriate admin masters.
+
+Do not duplicate the universal Master Files screen described later.
+
+============================================================
+22. BRANCHES
+============
+
+Branch management must support:
+
+Branch Code
+
+Branch Name
+
+Address
+
+Phone
+
+Email
+
+STRN
+
+NTN
+
+Logo
+
+Status
+
+Branch code should be automatically generated.
+
+Do NOT use a Manager field.
+
+If no branch logo is uploaded:
+
+Use company default logo where appropriate.
+
+Branch permissions must be enforced.
+
+============================================================
+23. GYM MODULE
+==============
+
+The Gym module is the core operational module.
+
+It must NOT contain Finance functionality.
+
+It must NOT contain POS simply because POS was discussed as a possible future feature.
+
+Do not put POS inside Gym unless a separate explicit business decision is made later.
+
+The Gym module should be:
+
+Gym
+
+├── Main
+
+├── Reports
+
+└── Master Files
+
+============================================================
+24. GYM → MAIN
+==============
+
+Gym Main should contain the actual day to day gym operations.
+
+Members
+
+Membership Plans
+
+Attendance
+
+Fees & Invoices
+
+Member Status
+
+Membership Freeze
+
+Prospects / Inquiries
+
+Workout Assignment
+
+Diet Assignment
+
+Progress Tracking
+
+Only include screens that are genuinely part of Gym operations.
+
+Do not add unrelated Finance, Admin or Payroll screens here.
+
+============================================================
+25. MEMBERS
+===========
+
+Members is one of the primary operational screens.
+
+It must support:
+
+Add
+
+Edit
+
+View
+
+Search
+
+Filter
+
+Status
+
+Branch
+
+Membership information
+
+Joining Date
+
+Billing Start / Month Start Date
+
+Fee Relaxation Days
+
+Fee Relaxation Days:
+
+Minimum:
+
+0
+
+Maximum:
+
+27
+
+Joining Date and Billing Start Date are separate concepts.
+
+Example:
+
+Joining Date:
+
+29 September
+
+Billing Start:
+
+1 October
+
+Do not overwrite joining date with billing start date.
+
+============================================================
+26. MEMBERSHIP PLANS
+====================
+
+Membership Plans should support:
+
+Plan Name
+
+Duration
+
+Price
+
+Discount
+
+Joining Fee
+
+Branch
+
+Status
+
+Other legitimate plan configuration.
+
+Price and Joining Fee should support whole numbers.
+
+Discount may support decimal values.
+
+Membership duration logic must work correctly.
+
+============================================================
+27. MEMBER STATUS
+=================
+
+Support appropriate statuses such as:
+
+Active
+
+Inactive
+
+Suspended
+
+Cancelled
+
+Status changes must follow permission rules.
+
+============================================================
+28. MEMBERSHIP FREEZE
+=====================
+
+Members should support membership freezing.
+
+Freeze record:
+
+Member
+
+Freeze From
+
+Freeze To
+
+Number of Days
+
+Reason
+
+Approved By
+
+Status
+
+Example:
+
+Membership expiry:
+
+30 September
+
+Freeze:
+
+10 days
+
+New expiry:
+
+10 October
+
+Freeze must accurately affect membership duration and future billing according to the actual business rules.
+
+Maintain freeze history.
+
+Prevent invalid overlapping freezes.
+
+============================================================
+29. ATTENDANCE
+==============
+
+Attendance is currently manual.
+
+Do not build unnecessary hardware/card integration.
+
+Support:
+
+Member ID
+
+Member Name
+
+Date
+
+Check In
+
+Check Out
+
+Branch
+
+Search
+
+Filters
+
+Keep the workflow fast for reception.
+
+============================================================
+30. FEES & INVOICES
+===================
+
+Fees & Invoices is a critical Gym module.
+
+The user should be able to see:
+
+Member
+
+Billing Period
+
+Invoice
+
+Amount
+
+Discount
+
+Paid
+
+Balance
+
+Due Date
+
+Payment Date
+
+Payment Method
+
+Payment Account
+
+Reference
+
+Status
+
+Statuses:
+
+Unpaid
+
+Partial
+
+Paid
+
+Late
+
+Overdue
+
+Fee Relaxation Days must be respected.
+
+============================================================
+31. AUTOMATIC FEE ACCOUNTING
+============================
+
+A member payment should NOT require reception/account staff to manually create a separate Cash Receipt Voucher.
+
+When a fee is paid:
+
+Cash
+
+Bank
+
+Online
+
+the appropriate accounting transaction should be created automatically through the existing accounting engine and account mappings.
+
+Never hardcode account IDs.
+
+Do not create duplicate accounting transactions.
+
+The accounting transaction must be balanced.
+
+============================================================
+32. DUE AND GRACE PERIOD
+========================
+
+Membership due tracking should use the member's configured:
+
+Fee Relaxation Days
+
+Do not hardcode a universal grace period.
+
+Show useful statuses:
+
+Due Today
+
+Grace Period
+
+Late
+
+Overdue
+
+The actual number of grace days must come from member/business configuration.
+
+============================================================
+33. PROSPECTS / INQUIRIES
+=========================
+
+Create/maintain a simple CRM for potential members.
+
+Statuses:
+
+New
+
+Contacted
+
+Interested
+
+Trial Scheduled
+
+Trial Active
+
+Follow Up
+
+Converted
+
+Lost
+
+Fields:
+
+Name
+
+Phone
+
+WhatsApp
+
+Inquiry Date
+
+Source
+
+Interested Membership
+
+Preferred Branch
+
+Follow Up Date
+
+Assigned User
+
+Notes
+
+Status
+
+When converted:
+
+Convert to Member
+
+Existing information should populate the Add Member form.
+
+The prospect record should remain in history.
+
+============================================================
+34. MEMBER FOLLOW UP
+====================
+
+Maintain simple follow up history.
+
+Examples:
+
+Phone
+
+WhatsApp
+
+Visit
+
+Reminder
+
+Other
+
+Store:
+
+Date
+
+User
+
+Type
+
+Notes
+
+Outcome
+
+Do not create a massive CRM.
+
+============================================================
+35. WORKOUTS
+============
+
+Workout functionality belongs to Gym.
+
+Workout architecture:
+
+Exercises
+
+General Workout Plans
+
+Workout Assignment
+
+Exercises should have automatically generated codes:
+
+001
+
+002
+
+003
+
+etc.
+
+Exercise fields may include:
+
+Name
+
+Category
+
+Muscle Group
+
+Instructions
+
+Sets
+
+Reps
+
+Duration
+
+Rest
+
+Equipment
+
+Status
+
+Branch
+
+============================================================
+36. WORKOUT PLAN
+================
+
+General Workout Plans can contain:
+
+Plan Name
+
+Code
+
+Branch
+
+Days
+
+Exercises
+
+Sets
+
+Reps
+
+Duration
+
+Rest
+
+Notes
+
+============================================================
+37. WORKOUT ASSIGNMENT
+======================
+
+Assign workouts to members.
+
+Support:
+
+General Workout Plan
+
+Custom Workout
+
+Trainer
+
+Start Date
+
+End Date
+
+Days
+
+Notes
+
+Trainer must come from staff whose role/designation allows trainer assignment.
+
+============================================================
+38. DIET PLANS
+==============
+
+Diet plans belong to Gym.
+
+Support:
+
+Diet Plan
+
+Meals
+
+Timing
+
+Food
+
+Quantity
+
+Calories
+
+Protein
+
+Carbohydrates
+
+Fat
+
+Notes
+
+Assign Diet Plan to Member.
+
+Keep it practical.
+
+============================================================
+39. PROGRESS TRACKING
+=====================
+
+Progress Tracking belongs to Gym Main.
+
+Support:
+
+Date
+
+Weight
+
+Measurements
+
+Notes
+
+Progress Photos where appropriate
+
+Member history
+
+Keep it simple and useful.
+
+============================================================
+40. GYM → REPORTS
+=================
+
+Gym Reports should contain actual Gym reports.
+
+Examples:
+
+Member Reports
+
+Membership Reports
+
+Attendance Reports
+
+Fee Reports
+
+Membership Freeze Reports
+
+Prospect Reports
+
+Workout Reports
+
+Diet Reports
+
+Progress Reports
+
+Equipment/Inventory Reports if those records are managed by Gym.
+
+Do not put Finance reports here.
+
+============================================================
+41. GYM → MASTER FILES
+======================
+
+Gym Master Files should contain Gym specific master data.
+
+Examples:
+
+Exercises
+
+Workout Plans
+
+Diet Plans
+
+Equipment / Inventory
+
+Other genuine Gym masters.
+
+Do not create separate unnecessary screens if the existing universal Master Files system already handles the master.
+
+============================================================
+42. IMPORTANT: EXISTING UNIVERSAL MASTER FILES SCREEN
+=====================================================
+
+There is ALREADY a Master Files screen in this project.
+
+DO NOT REPLACE IT.
+
+DO NOT CREATE A SECOND MASTER FILE SYSTEM.
+
+DO NOT CREATE separate screens for:
+
+Department
+
+Designation
+
+Education
+
+Currency
+
+etc.
+
+The existing Master Files architecture was specifically designed as ONE reusable screen.
+
+It works conceptually like:
+
+Master Files
+
+Dropdown:
+
+Select Master
+
+Department
+
+Designation
+
+Education
+
+Currency
+
+etc.
+
+After selecting a master:
+
+The same screen displays the corresponding records in a grid.
+
+Example:
+
+Master:
+
+Education
+
+Grid:
+
+Code | Name | Status | Actions
+
+Click:
+
+Add
+
+Enter:
+
+Name
+
+Save
+
+The new record appears in the same grid.
+
+If the dropdown changes to:
+
+Designation
+
+the same screen loads Designation records.
+
+This existing architecture MUST be preserved and improved rather than duplicated.
+
+============================================================
+43. PAYROLL MODULE
+==================
+
+Payroll must be separated from Gym.
+
+DO NOT put Payroll screens inside Gym.
+
+Payroll should be:
+
+Payroll
+
+├── Main
+
+├── Reports
+
+└── Master Files
+
+============================================================
+44. PAYROLL → MAIN
+==================
+
+Payroll Main should contain:
+
+Staff
+
+Attendance
+
+Leaves
+
+Leave Approval
+
+Overtime
+
+Payroll Processing
+
+Salary
+
+Other genuine HR/Payroll transactions.
+
+============================================================
+45. PAYROLL → REPORTS
+=====================
+
+Payroll Reports:
+
+Payroll Reports
+
+Attendance Reports
+
+Leave Reports
+
+Overtime Reports
+
+Salary Reports
+
+Other legitimate payroll reports.
+
+============================================================
+46. PAYROLL → MASTER FILES
+==========================
+
+This is where the existing UNIVERSAL MASTER FILES SCREEN must be used.
+
+Do NOT create:
+
+Departments screen
+
+Designations screen
+
+Education screen
+
+Currency screen
+
+as separate pages.
+
+Instead:
+
+Payroll
+
+→ Master Files
+
+→ Master Files
+
+opens the EXISTING reusable Master Files screen.
+
+The dropdown on that screen determines what master is being managed.
+
+Examples:
+
+Department
+
+Designation
+
+Education
+
+Currency
+
+Shift
+
+Leave Type
+
+Other existing configured masters
+
+Only add a new master to this universal screen if it genuinely belongs there.
+
+Do not duplicate existing masters.
+
+============================================================
+47. STAFF
+=========
+
+Staff should support appropriate information including:
+
+Employee ID
+
+Name
+
+Father/Guardian
+
+CNIC
+
+Photo
+
+Address
+
+Emergency Contact
+
+Emergency Contact Number
+
+Phone
+
+WhatsApp
+
+Telephone
+
+Fax where appropriate
+
+Email
+
+Joining Date
+
+Department
+
+Designation
+
+Education
+
+Branch
+
+Shift
+
+Basic Salary
+
+Allowances
+
+SESSI
+
+EOBI
+
+FBR/Tax information where applicable
+
+Overtime Allowed
+
+Overtime Rate
+
+Do not create an unnecessarily complicated form.
+
+Use logical sections.
+
+============================================================
+48. SHIFTS
+==========
+
+Shift configuration should be handled through the appropriate existing Master Files architecture where possible.
+
+Support:
+
+Shift Name
+
+Time In
+
+Time Out
+
+Working Days
+
+Branch
+
+============================================================
+49. LEAVE
+=========
+
+Leave functionality should support:
+
+Leave Type
+
+Date From
+
+Date To
+
+Reason
+
+Approval Status
+
+Approved By
+
+Paid / Unpaid
+
+Unpaid leave must correctly affect payroll.
+
+============================================================
+50. OVERTIME
+============
+
+Support:
+
+Manual overtime
+
+Attendance based overtime where data supports it
+
+Approval
+
+Rejection
+
+Rate
+
+Hours
+
+Amount
+
+Only approved overtime should enter payroll.
+
+============================================================
+51. PAYROLL PROCESSING
+======================
+
+Payroll must correctly consider:
+
+Basic Salary
+
+Allowances
+
+Approved Overtime
+
+Paid Leave
+
+Unpaid Leave
+
+Other legitimate deductions
+
+Do not create fake salary calculations.
+
+Do not hardcode values.
+
+============================================================
+52. POS
+=======
+
+IMPORTANT:
+
+POS IS NOT PART OF THE GYM MODULE BY DEFAULT.
+
+Do NOT place POS inside:
+
+Gym Main
+
+Gym Reports
+
+Gym Master Files
+
+Do NOT add POS to the sidebar simply because it was discussed previously.
+
+If POS already exists in the project:
+
+Audit where it currently exists.
+
+Do not randomly move it.
+
+If POS does not have a finalized module location:
+
+Leave it out of the new navigation until its placement is explicitly defined.
+
+Do not invent a POS module.
+
+============================================================
+53. FINANCE ACCOUNTING VS GYM OPERATIONS
+========================================
+
+Maintain a clear separation.
+
+Gym handles:
+
+Members
+
+Memberships
+
+Attendance
+
+Workouts
+
+Diet
+
+Progress
+
+Gym operational records
+
+Finance handles:
+
+Accounts
+
+Vouchers
+
+Accounting
+
+Tax
+
+Financial reports
+
+Payroll handles:
+
+Staff
+
+Salary
+
+Attendance for payroll
+
+Leave
+
+Overtime
+
+Payroll
+
+Admin handles:
+
+Configuration
+
+Company
+
+Defaults
+
+Branches
+
+Users
+
+Roles
+
+Permissions
+
+System settings
+
+Do not mix these responsibilities.
+
+============================================================
+54. THEME
+=========
+
+The application must have:
+
+Light Theme
+
+Dark Theme
+
+Add a clear theme toggle button in the main application header.
+
+The theme must apply to the entire application:
+
+Sidebar
+
+Header
+
+Tables
+
+Forms
+
+Dropdowns
+
+Modals
+
+Buttons
+
+Reports
+
+Charts
+
+Cards
+
+Inputs
+
+Menus
+
+The theme must not break readability.
+
+Persist the user's selected theme.
+
+Do not use excessive gradients.
+
+============================================================
+55. UI DESIGN
+=============
+
+The UI should look like a serious ERP.
+
+Avoid:
+
+Huge headings
+
+Excessive rounded cards
+
+Excessive gradients
+
+Huge empty spaces
+
+Decorative text
+
+AI generated explanations
+
+Random dashboard widgets
+
+Unnecessary animations
+
+Unnecessary cards
+
+Pill shaped everything
+
+The priority is:
+
+Tables
+
+Forms
+
+Filters
+
+Actions
+
+Data density
+
+Fast workflows
+
+Clear navigation
+
+Professional spacing
+
+Consistent typography
+
+============================================================
+56. SIDEBAR
+===========
+
+Sidebar must support nested navigation.
+
+Example:
+
+Finance
+
+Vouchers
+
+```
+Bank Payment Voucher
+
+Bank Receipt Voucher
+
+Cash Payment Voucher
+
+Cash Receipt Voucher
+
+Journal Voucher
+
+Opening Trial Balance
+```
+
+Reports
+
+```
+Aging Reports
+
+Finance Reports
+```
+
+Master Files
+
+```
+Chart of Accounts
+
+Tax Heads
+```
+
+When Finance is clicked:
+
+Its children should become visible.
+
+When Vouchers is clicked:
+
+Its voucher children should become visible.
+
+Do NOT show every screen permanently.
+
+============================================================
+57. MOBILE NAVIGATION
+=====================
+
+On mobile:
+
+Sidebar becomes a proper mobile menu.
+
+Nested sections become accordion/dropdown sections.
+
+Finance:
+
+Vouchers
+
+Reports
+
+Master Files
+
+Vouchers can then expand.
+
+Everything must remain usable.
+
+============================================================
+58. PERMISSIONS
+===============
+
+The navigation must respect permissions.
+
+If the user does not have permission to Finance:
+
+Finance should not appear.
+
+If the user can access Finance but not Vouchers:
+
+Vouchers should not appear.
+
+If the user can access Vouchers but only Cash Receipt Voucher:
+
+Only that screen should be accessible.
+
+Permissions must be enforced:
+
+Frontend
+
+AND
+
+Backend
+
+Never rely only on hiding buttons.
+
+============================================================
+59. DO NOT DESTROY DATABASE
+===========================
+
+DO NOT:
+
+Reset database
+
+Drop GymDB
+
+Delete business data
+
+Delete working tables without dependency analysis
+
+Delete stored procedures blindly
+
+Create duplicate finance tables
+
+Create duplicate master tables
+
+Create duplicate accounting systems
+
+Before removing anything:
+
+Search all frontend references.
+
+Search all backend references.
+
+Search SQL references.
+
+Search stored procedures.
+
+Search foreign keys.
+
+Search triggers.
+
+Search reports.
+
+Then decide.
+
+============================================================
+60. DO NOT BREAK EXISTING FUNCTIONALITY
+=======================================
+
+Before modifying an existing screen:
+
+Determine:
+
+What it currently does.
+
+What API it uses.
+
+What database objects it uses.
+
+What permissions it uses.
+
+What other screens depend on it.
+
+Then modify it.
+
+Do not replace working functionality with mock data.
+
+Do not hardcode database records.
+
+Do not hardcode IDs.
+
+============================================================
+61. RESPONSIVE DESIGN
+=====================
+
+Everything must work on:
+
+Desktop
+
+Laptop
+
+Tablet
+
+Mobile
+
+Check:
+
+Sidebar
+
+Navigation
+
+Tables
+
+Forms
+
+Modals
+
+Dropdowns
+
+Search
+
+Filters
+
+Buttons
+
+Reports
+
+Charts
+
+Pagination
+
+No page should overflow horizontally unnecessarily.
+
+Tables can use horizontal scrolling when required.
+
+============================================================
+62. AUTHENTICATION
+==================
+
+Do not redesign authentication during this navigation phase.
+
+But ensure navigation respects the existing authenticated user.
+
+The existing authentication system must remain intact.
+
+Do not remove password hashing.
+
+Do not store plaintext passwords.
+
+Do not create a new login system.
+
+============================================================
+63. IMPLEMENTATION ORDER
+========================
+
+Follow this exact order.
+
+PHASE 1
+
+Audit entire project.
+
+PHASE 2
+
+Document current architecture.
+
+PHASE 3
+
+Create ERP_STRUCTURE.md.
+
+PHASE 4
+
+Fix sidebar and navigation architecture.
+
+PHASE 5
+
+Fix Finance structure.
+
+PHASE 6
+
+Fix Admin structure.
+
+PHASE 7
+
+Fix Gym structure.
+
+PHASE 8
+
+Fix Payroll structure.
+
+PHASE 9
+
+Restore and reuse universal Master Files architecture.
+
+PHASE 10
+
+Fix theme system.
+
+PHASE 11
+
+Fix responsive navigation.
+
+PHASE 12
+
+Verify permissions.
+
+PHASE 13
+
+Only after navigation is correct, inspect individual screens for broken functionality.
+
+Do NOT start changing every module's business logic at the same time.
+
+============================================================
+64. TESTING
+===========
+
+After navigation implementation test:
+
+Finance
+
+Vouchers
+
+Bank Payment Voucher
+
+Bank Receipt Voucher
+
+Cash Payment Voucher
+
+Cash Receipt Voucher
+
+Journal Voucher
+
+Opening Trial Balance
+
+Finance Reports
+
+Aging Reports
+
+Chart of Accounts
+
+Tax Heads
+
+Admin Defaults
+
+Admin Master Files
+
+Gym Main
+
+Gym Reports
+
+Gym Master Files
+
+Payroll Main
+
+Payroll Reports
+
+Payroll Master Files
+
+Universal Master Files
+
+Department
+
+Designation
+
+Education
+
+Currency
+
+Theme
+
+Light mode
+
+Dark mode
+
+Mobile menu
+
+Desktop menu
+
+Permissions
+
+Nested dropdowns
+
+Every route must open the correct screen.
+
+No dead links.
+
+No duplicate routes.
+
+No blank pages.
+
+No console errors.
+
+============================================================
+65. FINAL NAVIGATION MUST LOOK LIKE THIS
+========================================
+
+Finance
+
+Vouchers
+
+```
+Bank Payment Voucher
+
+Bank Receipt Voucher
+
+Cash Payment Voucher
+
+Cash Receipt Voucher
+
+Journal Voucher
+
+Opening Trial Balance
+```
+
+Reports
+
+```
+Aging Reports
+
+Finance Reports
+```
+
+Master Files
+
+```
+Chart of Accounts
+
+Tax Heads
+```
+
+Gym
+
+Main
+
+```
+Members
+
+Membership Plans
+
+Attendance
+
+Fees & Invoices
+
+Member Status
+
+Membership Freeze
+
+Prospects / Inquiries
+
+Workout Assignment
+
+Diet Assignment
+
+Progress Tracking
+```
+
+Reports
+
+```
+Member Reports
+
+Membership Reports
+
+Attendance Reports
+
+Fee Reports
+
+Membership Freeze Reports
+
+Prospect Reports
+
+Workout Reports
+
+Diet Reports
+
+Progress Reports
+```
+
+Master Files
+
+```
+Master Files
+```
+
+Payroll
+
+Main
+
+```
+Staff
+
+Attendance
+
+Leave
+
+Leave Approval
+
+Overtime
+
+Payroll
+```
+
+Reports
+
+```
+Payroll Reports
+
+Attendance Reports
+
+Leave Reports
+
+Overtime Reports
+
+Salary Reports
+```
+
+Master Files
+
+```
+Master Files
+```
+
+Admin
+
+Defaults
+
+```
+Company Information
+
+Finance Defaults
+
+Account Mapping
+
+COA Configuration
+
+Accounting Defaults
+
+Other legitimate system defaults
+```
+
+Reports
+
+```
+Administrative Reports
+```
+
+Master Files
+
+```
+Branches
+
+Users
+
+Roles
+
+Permissions
+```
+
+IMPORTANT:
+
+The exact existing project architecture must be respected.
+
+If a screen already exists, reuse it.
+
+If the universal Master Files screen already exists, reuse it.
+
+Do not create duplicate screens simply to satisfy the navigation tree.
+
+============================================================
+66. MASTER FILES RULE — ABSOLUTE
+================================
+
+This rule is especially important.
+
+There is already a reusable Master Files screen.
+
+It was designed so that:
+
+One screen
+
+One dropdown
+
+One grid
+
+can manage multiple master types.
+
+For example:
+
+Select:
+
+Department
+
+Grid shows Departments.
+
+Select:
+
+Designation
+
+Grid shows Designations.
+
+Select:
+
+Education
+
+Grid shows Education.
+
+Select:
+
+Currency
+
+Grid shows Currency.
+
+Add/Edit/Delete operates on the selected master.
+
+PRESERVE THIS DESIGN.
+
+Do not create:
+
+DepartmentPage.jsx
+
+DesignationPage.jsx
+
+EducationPage.jsx
+
+CurrencyPage.jsx
+
+unless the existing architecture absolutely requires a separate page.
+
+The default approach is:
+
+ONE UNIVERSAL MASTER FILES SCREEN.
+
+============================================================
+67. WHAT YOU MUST NOT DO
+========================
+
+DO NOT:
+
+Put POS inside Gym.
+
+Put Finance inside Gym.
+
+Put Payroll inside Gym.
+
+Create separate Department screen.
+
+Create separate Designation screen.
+
+Create separate Education screen.
+
+Create separate Currency screen.
+
+Put Finance Defaults inside Finance.
+
+Put Account Mapping inside Finance.
+
+Create a second COA.
+
+Create a second Master Files system.
+
+Create fake data.
+
+Create fake reports.
+
+Hardcode IDs.
+
+Hardcode branches.
+
+Hardcode account IDs.
+
+Reset the database.
+
+Delete working business data.
+
+Rewrite authentication.
+
+Create duplicate APIs.
+
+Create duplicate accounting engines.
+
+============================================================
+68. FINAL OBJECTIVE
+===================
+
+The objective is to create a coherent commercial Gym ERP.
+
+The user should immediately understand:
+
+Where Gym operations are.
+
+Where Finance is.
+
+Where Payroll is.
+
+Where Administration is.
+
+Where Reports are.
+
+Where Master Files are.
+
+Every module should have a logical structure.
+
+Every screen should belong to exactly one logical area.
+
+The application must be easy for:
+
+Reception
+
+Accountant
+
+HR
+
+Payroll staff
+
+Manager
+
+Owner
+
+Administrator
+
+The system should feel like a proper ERP, not a collection of pages generated by an AI.
+
+============================================================
+69. FINAL INSTRUCTION TO GLM
+============================
+
+START WITH AUDIT ONLY.
+
+Do not immediately rewrite the project.
+
+First inspect the current implementation.
+
+Then tell me:
+
+1. Current module structure
+
+2. Current navigation structure
+
+3. Existing Master Files implementation
+
+4. Existing Finance implementation
+
+5. Existing Gym implementation
+
+6. Existing Payroll implementation
+
+7. Existing Admin implementation
+
+8. Which screens are duplicated
+
+9. Which screens are misplaced
+
+10. Which routes are broken
+
+11. Which components can be reused
+
+12. Which components must be modified
+
+13. Which database objects must remain untouched
+
+14. Your exact implementation plan
+
+Then begin implementation phase by phase.
+
+Do not proceed with destructive changes without checking dependencies.
+
+The final result must follow the ERP structure defined in this prompt.

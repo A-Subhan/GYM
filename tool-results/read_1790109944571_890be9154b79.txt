@@ -1,0 +1,2002 @@
+     1→You are now responsible for auditing, repairing, completing and professionally improving my entire Contoura Gym Management System.
+     2→
+     3→This is an existing application, not a new project.
+     4→
+     5→PROJECT:
+     6→
+     7→Contoura Gym Management System
+     8→
+     9→Developer:
+    10→
+    11→Contoura Labs
+    12→
+    13→PROJECT ROOT:
+    14→
+    15→D:\GYM
+    16→
+    17→FRONTEND:
+    18→
+    19→D:\GYM\Contoura_Labs_Gym
+    20→
+    21→BACKEND:
+    22→
+    23→D:\GYM\Backend-Software\GYM-software
+    24→
+    25→The project contains:
+    26→
+    27→React frontend
+    28→Node/Express backend
+    29→SQL Server database
+    30→Authentication
+    31→Authorization
+    32→Branches
+    33→Finance
+    34→Chart of Accounts
+    35→Vouchers
+    36→Finance Reports
+    37→Gym Management
+    38→Members
+    39→Memberships
+    40→Attendance
+    41→Fees
+    42→Workout Plans
+    43→Diet Plans
+    44→Progress Tracking
+    45→Equipment
+    46→Inventory
+    47→Staff
+    48→Payroll
+    49→Admin
+    50→Users
+    51→Roles
+    52→Permissions
+    53→Master Files
+    54→
+    55→Your task is to turn the existing application into a complete, reliable, professional, responsive ERP system.
+    56→
+    57→Do not treat this as a simple UI redesign.
+    58→
+    59→You must understand and repair the relationship between:
+    60→
+    61→Frontend
+    62→Backend
+    63→Database
+    64→Stored Procedures
+    65→Accounting Engine
+    66→Authentication
+    67→Permissions
+    68→Branches
+    69→
+    70→before making major changes.
+    71→
+    72→============================================================
+    73→
+    74→1. MOST IMPORTANT RULE: AUDIT FIRST
+    75→   ============================================================
+    76→
+    77→Do NOT immediately start changing code.
+    78→
+    79→First inspect the complete project.
+    80→
+    81→Inspect:
+    82→
+    83→Frontend structure
+    84→Backend structure
+    85→Database structure
+    86→SQL scripts
+    87→Migrations
+    88→Stored procedures
+    89→Triggers
+    90→Views
+    91→Functions
+    92→Routes
+    93→Controllers
+    94→Services
+    95→Repositories/models
+    96→API services
+    97→Authentication
+    98→JWT handling
+    99→User permissions
+   100→Role permissions
+   101→Branch permissions
+   102→Navigation
+   103→Finance
+   104→Gym
+   105→Payroll
+   106→Admin
+   107→Reports
+   108→Master Files
+   109→
+   110→Create a complete internal understanding of the current architecture.
+   111→
+   112→Identify:
+   113→
+   114→Broken features
+   115→Incomplete features
+   116→Duplicate features
+   117→Dead code
+   118→Unused routes
+   119→Unused database objects
+   120→Frontend/backend mismatches
+   121→Backend/database mismatches
+   122→Incorrect business logic
+   123→Broken permissions
+   124→Broken branch filtering
+   125→Broken authentication
+   126→Broken accounting integrations
+   127→Poor UI
+   128→Non responsive pages
+   129→AI generated looking components
+   130→Unnecessary complexity
+   131→
+   132→Do not blindly rewrite working functionality.
+   133→
+   134→Reuse good existing architecture.
+   135→
+   136→============================================================
+   137→2. CREATE PROJECT STATUS TRACKING
+   138→=================================
+   139→
+   140→Create:
+   141→
+   142→IMPLEMENTATION_STATUS.md
+   143→
+   144→in the project root.
+   145→
+   146→Maintain it throughout the entire task.
+   147→
+   148→It must contain:
+   149→
+   150→CURRENT PHASE
+   151→
+   152→COMPLETED
+   153→
+   154→TESTED
+   155→
+   156→IN PROGRESS
+   157→
+   158→PENDING
+   159→
+   160→KNOWN BUGS
+   161→
+   162→DATABASE MIGRATIONS
+   163→
+   164→FRONTEND CHANGES
+   165→
+   166→BACKEND CHANGES
+   167→
+   168→NEXT EXACT TASK
+   169→
+   170→If your context or usage limit ends, the next session must read this file first.
+   171→
+   172→Never assume previous work was completed without checking the actual code.
+   173→
+   174→Update this file after every major phase.
+   175→
+   176→============================================================
+   177→3. DATABASE SAFETY
+   178→==================
+   179→
+   180→DO NOT:
+   181→
+   182→Reset GymDB.
+   183→
+   184→Drop the complete database.
+   185→
+   186→Delete all business data.
+   187→
+   188→Create a second Finance system.
+   189→
+   190→Create a second Chart of Accounts system.
+   191→
+   192→Create duplicate accounting tables unnecessarily.
+   193→
+   194→Create duplicate member systems.
+   195→
+   196→Create duplicate inventory systems.
+   197→
+   198→Create duplicate authentication systems.
+   199→
+   200→Do not delete tables without first checking all dependencies.
+   201→
+   202→Before removing any database object, search:
+   203→
+   204→Frontend references
+   205→Backend references
+   206→Stored procedures
+   207→Triggers
+   208→Views
+   209→Foreign keys
+   210→Indexes
+   211→Migrations
+   212→Seed scripts
+   213→Reports
+   214→
+   215→If an object is shared by another module, refactor the dependency first.
+   216→
+   217→All database modifications must be done through proper migration scripts.
+   218→
+   219→============================================================
+   220→4. RESPONSIVE SOFTWARE
+   221→======================
+   222→
+   223→The entire application must be responsive.
+   224→
+   225→Not just newly created screens.
+   226→
+   227→Audit every existing page.
+   228→
+   229→The application must work properly on:
+   230→
+   231→Desktop
+   232→Laptop
+   233→Tablet
+   234→Mobile
+   235→
+   236→Check:
+   237→
+   238→Navigation
+   239→Hamburger menu
+   240→Tables
+   241→Forms
+   242→Modals
+   243→Dialogs
+   244→Dropdowns
+   245→Search
+   246→Filters
+   247→Buttons
+   248→Cards
+   249→Charts
+   250→Reports
+   251→Sidebars
+   252→Pagination
+   253→Action menus
+   254→
+   255→Tables must remain usable on small screens.
+   256→
+   257→Use:
+   258→
+   259→Horizontal scrolling
+   260→Responsive columns
+   261→Stacked layouts
+   262→Mobile friendly controls
+   263→
+   264→where appropriate.
+   265→
+   266→Do not simply shrink desktop layouts.
+   267→
+   268→============================================================
+   269→5. HUMAN DESIGNED UI
+   270→====================
+   271→
+   272→The current application looks too AI generated in places.
+   273→
+   274→Improve the visual system throughout the application.
+   275→
+   276→Avoid excessive:
+   277→
+   278→Rounded cards
+   279→Gradients
+   280→Shadows
+   281→Huge headings
+   282→Whitespace
+   283→Decorative text
+   284→AI generated explanations
+   285→Repeated helper sentences
+   286→Generic dashboard widgets
+   287→Unnecessary cards
+   288→Pill buttons
+   289→Icons everywhere
+   290→Decorative statistics
+   291→Unnecessary "Total:" blocks
+   292→
+   293→The software must look like a professional ERP used by real staff.
+   294→
+   295→It should prioritize:
+   296→
+   297→Clarity
+   298→Speed
+   299→Information density
+   300→Readable tables
+   301→Simple forms
+   302→Clear actions
+   303→Consistent navigation
+   304→Practical workflows
+   305→
+   306→Do not make every section a card.
+   307→
+   308→Do not add decorative UI just to make the application look modern.
+   309→
+   310→Do not add unnecessary animations.
+   311→
+   312→Do not add random dashboards.
+   313→
+   314→============================================================
+   315→6. AUTHENTICATION / SIGN IN
+   316→===========================
+   317→
+   318→SIGN IN IS A CURRENT CRITICAL PROBLEM.
+   319→
+   320→Completely inspect and repair the authentication flow.
+   321→
+   322→Trace:
+   323→
+   324→Login page
+   325→Frontend API
+   326→Backend route
+   327→Controller
+   328→Service
+   329→User lookup
+   330→Password verification
+   331→User status
+   332→Role
+   333→Branch
+   334→JWT
+   335→Token storage
+   336→Auth context
+   337→Protected routes
+   338→Logout
+   339→Session persistence
+   340→
+   341→Required test credentials:
+   342→
+   343→Username:
+   344→
+   345→admin
+   346→
+   347→Password:
+   348→
+   349→admin123
+   350→
+   351→The admin account must be properly created/restored if missing.
+   352→
+   353→Test:
+   354→
+   355→admin / admin123
+   356→
+   357→ADMIN / admin123
+   358→
+   359→Admin / admin123
+   360→
+   361→admin / wrongpassword
+   362→
+   363→Invalid username
+   364→
+   365→Inactive user
+   366→
+   367→The frontend must display proper errors.
+   368→
+   369→Backend must return correct status codes.
+   370→
+   371→JWT must be valid.
+   372→
+   373→Protected APIs must accept valid tokens.
+   374→
+   375→Protected APIs must reject invalid tokens.
+   376→
+   377→Logout must clear authentication.
+   378→
+   379→Refresh must preserve authentication if persistent authentication is intended.
+   380→
+   381→IMPORTANT:
+   382→
+   383→Do NOT store plaintext passwords.
+   384→
+   385→If the current password hashing implementation is broken, replace it with a reliable secure password hashing implementation.
+   386→
+   387→If existing users need password migration/reset, implement it properly.
+   388→
+   389→Do not put passwords in frontend code.
+   390→
+   391→Do not log passwords.
+   392→
+   393→============================================================
+   394→7. GLOBAL BRANCH ARCHITECTURE
+   395→=============================
+   396→
+   397→Branches must work consistently throughout the entire application.
+   398→
+   399→Accessible branches must be determined by user permissions.
+   400→
+   401→Where appropriate:
+   402→
+   403→Default selection:
+   404→
+   405→All accessible branches
+   406→
+   407→Users can remove branches from the selection if their permissions allow it.
+   408→
+   409→Users must never access unauthorized branches.
+   410→
+   411→Branch filtering must work in:
+   412→
+   413→Members
+   414→Memberships
+   415→Attendance
+   416→Fees
+   417→Workouts
+   418→Diet
+   419→Equipment
+   420→Inventory
+   421→Staff
+   422→Payroll
+   423→Finance
+   424→Reports
+   425→Masters
+   426→
+   427→Do not hardcode Branch IDs.
+   428→
+   429→============================================================
+   430→8. FINANCE STRUCTURE
+   431→====================
+   432→
+   433→Finance must be divided into:
+   434→
+   435→Finance Main
+   436→
+   437→Finance Reports
+   438→
+   439→Finance Master Files
+   440→
+   441→Finance Main:
+   442→
+   443→Chart of Accounts
+   444→Vouchers
+   445→Financial Years
+   446→Accounting Periods
+   447→Finance Defaults
+   448→Bank Reconciliation where applicable
+   449→
+   450→Finance Reports:
+   451→
+   452→All financial reports
+   453→
+   454→Finance Master Files:
+   455→
+   456→Only appropriate finance masters
+   457→
+   458→REMOVE THESE FINANCE MASTER FILES:
+   459→
+   460→Customer
+   461→Vendors
+   462→Banks
+   463→Cash Accounts
+   464→
+   465→Remove their:
+   466→
+   467→Frontend
+   468→Routes
+   469→Backend endpoints
+   470→Controllers
+   471→Services
+   472→Stored procedures if exclusively used
+   473→Tables if exclusively used
+   474→Foreign keys if exclusively used
+   475→Permissions
+   476→Navigation
+   477→Seed data
+   478→
+   479→Only remove database objects after dependency analysis.
+   480→
+   481→============================================================
+   482→9. CHART OF ACCOUNTS
+   483→====================
+   484→
+   485→Chart of Accounts must be professional and easy to use.
+   486→
+   487→Clicking:
+   488→
+   489→Add Account
+   490→
+   491→must open a proper modal/dialog.
+   492→
+   493→The dialog must contain:
+   494→
+   495→Account Name
+   496→Parent Account
+   497→Account Type
+   498→Book Type
+   499→Branch
+   500→Control/Detail
+   501→Status
+   502→Code
+   503→Contact information where appropriate
+   504→Identification information
+   505→Bank information where applicable
+   506→Description/remarks
+   507→
+   508→Buttons:
+   509→
+   510→Save
+   511→Cancel
+   512→
+   513→Cancel closes without saving.
+   514→
+   515→Save validates and creates the account.
+   516→
+   517→These dropdowns MUST WORK:
+   518→
+   519→Account Type
+   520→Book Type
+   521→Branch
+   522→Parent Account
+   523→
+   524→No fake or non functional dropdowns.
+   525→
+   526→Account codes must be generated automatically.
+   527→
+   528→Users must not manually create invalid account codes.
+   529→
+   530→Maximum hierarchy:
+   531→
+   532→7 levels
+   533→
+   534→Maximum account code length:
+   535→
+   536→12 digits
+   537→
+   538→Top level heads:
+   539→
+   540→Assets
+   541→Liabilities
+   542→Capital / Equity
+   543→Revenue
+   544→Expense
+   545→
+   546→Support:
+   547→
+   548→Control Account
+   549→Detail Account
+   550→
+   551→Example only:
+   552→
+   553→01
+   554→24/7 Gym
+   555→Control
+   556→
+   557→01001
+   558→24/7 Karachi Branch
+   559→Detail
+   560→
+   561→01002
+   562→Lahore Branch
+   563→Detail
+   564→
+   565→Do not hardcode these examples.
+   566→
+   567→The existing hierarchy must remain dynamic.
+   568→
+   569→COA should support:
+   570→
+   571→Search
+   572→Global search
+   573→Expand All
+   574→Collapse All
+   575→Add Account
+   576→Edit
+   577→Delete/deactivate where appropriate
+   578→Refresh
+   579→Branch filter
+   580→Account type filter
+   581→Book type filter
+   582→Active/inactive filter
+   583→
+   584→The existing large:
+   585→
+   586→"Select an account to view its details"
+   587→
+   588→window/panel is disturbing.
+   589→
+   590→Redesign it into:
+   591→
+   592→Compact details panel
+   593→
+   594→or
+   595→
+   596→small integrated area
+   597→
+   598→or
+   599→
+   600→small modal
+   601→
+   602→Do not let it dominate the page.
+   603→
+   604→============================================================
+   605→10. VOUCHERS
+   606→============
+   607→
+   608→Required voucher types:
+   609→
+   610→CRV
+   611→Cash Receipt Voucher
+   612→
+   613→CPV
+   614→Cash Payment Voucher
+   615→
+   616→BRV
+   617→Bank Receipt Voucher
+   618→
+   619→BPV
+   620→Bank Payment Voucher
+   621→
+   622→Use one common voucher architecture.
+   623→
+   624→Do not duplicate business logic.
+   625→
+   626→Voucher entry should contain:
+   627→
+   628→Date
+   629→Book Account
+   630→Branch
+   631→Description
+   632→Account
+   633→Line Description
+   634→Amount
+   635→Tax Account
+   636→Tax %
+   637→Tax Amount
+   638→Cheque Number
+   639→Status
+   640→Title
+   641→Reference
+   642→
+   643→Only valid Detail Accounts should be selectable in transaction lines.
+   644→
+   645→Accounting direction should be automatically determined from voucher type.
+   646→
+   647→Cash Receipt:
+   648→
+   649→Cash/Book Account is debited.
+   650→
+   651→Cash Payment:
+   652→
+   653→Cash/Book Account is credited.
+   654→
+   655→Bank Receipt:
+   656→
+   657→Bank/Book Account is debited.
+   658→
+   659→Bank Payment:
+   660→
+   661→Bank/Book Account is credited.
+   662→
+   663→The opposite side must be generated from detail lines.
+   664→
+   665→Remove unnecessary explanatory text such as:
+   666→
+   667→"Enter the book account, a description and detail lines with amounts — the debit and credit sides are generated automatically."
+   668→
+   669→The interface should explain itself through labels and layout.
+   670→
+   671→Remove unnecessary grid summaries such as:
+   672→
+   673→Total: 1,305,000
+   674→
+   675→unless the total is genuinely required for accounting validation.
+   676→
+   677→Do not display redundant totals throughout the software.
+   678→
+   679→Draft/Hold vouchers must not affect finalized reports.
+   680→
+   681→Posted vouchers must follow accounting rules.
+   682→
+   683→Posted accounting transactions must not be casually deleted.
+   684→
+   685→Use reversal/knock off where appropriate.
+   686→
+   687→============================================================
+   688→11. UPDATE CHEQUE STATUS
+   689→========================
+   690→
+   691→Create:
+   692→
+   693→Update Cheque Status
+   694→
+   695→Show relevant cheques.
+   696→
+   697→Filters:
+   698→
+   699→Account
+   700→Bank
+   701→Branch
+   702→Cheque Number
+   703→Date From
+   704→Date To
+   705→Current Status
+   706→
+   707→Statuses should include appropriate values such as:
+   708→
+   709→Hold
+   710→Clear
+   711→Bounced
+   712→
+   713→Support:
+   714→
+   715→Update one cheque
+   716→
+   717→Select multiple cheques
+   718→
+   719→Bulk update selected cheques
+   720→
+   721→Example:
+   722→
+   723→Select 5 cheques
+   724→Choose Clear
+   725→Click Update Status
+   726→
+   727→All selected cheques update.
+   728→
+   729→Permission checks are mandatory.
+   730→
+   731→Maintain history/audit information where appropriate.
+   732→
+   733→============================================================
+   734→12. TAX HEADS
+   735→=============
+   736→
+   737→Fix Tax Heads.
+   738→
+   739→Tax Type dropdown must work.
+   740→
+   741→Tax Code must automatically generate:
+   742→
+   743→001
+   744→002
+   745→003
+   746→004
+   747→
+   748→Do not use:
+   749→
+   750→ST-18
+   751→
+   752→as the code.
+   753→
+   754→Instead:
+   755→
+   756→Tax Code:
+   757→
+   758→001
+   759→
+   760→Short Name:
+   761→
+   762→ST-18
+   763→
+   764→Tax Name:
+   765→
+   766→actual tax name
+   767→
+   768→Prevent duplicate codes.
+   769→
+   770→============================================================
+   771→13. FINANCE REPORTS
+   772→===================
+   773→
+   774→Create one central Finance Reports screen.
+   775→
+   776→Opening Finance Reports should show a list of reports.
+   777→
+   778→Examples:
+   779→
+   780→Trial Balance
+   781→Income Statement
+   782→Balance Sheet
+   783→General Ledger
+   784→Account Ledger
+   785→Cash Book
+   786→Bank Book
+   787→Voucher Register
+   788→Tax Reports
+   789→Bank Reconciliation
+   790→Other legitimate existing Finance reports
+   791→
+   792→Do not create fake reports.
+   793→
+   794→Select a report.
+   795→
+   796→Then show report filters.
+   797→
+   798→Possible filters:
+   799→
+   800→Date From
+   801→Date To
+   802→Account
+   803→Branch
+   804→Book Account
+   805→Voucher Type
+   806→Status
+   807→Other report specific filters
+   808→
+   809→Button:
+   810→
+   811→Get Report
+   812→
+   813→Display the generated report.
+   814→
+   815→Actions:
+   816→
+   817→Print
+   818→Export
+   819→Customize Report
+   820→
+   821→============================================================
+   822→14. CUSTOM REPORT FORMATS
+   823→=========================
+   824→
+   825→Customize Report must allow the user to customize the generated report.
+   826→
+   827→At minimum:
+   828→
+   829→Show/hide columns
+   830→
+   831→Save customized format.
+   832→
+   833→Formats are user specific.
+   834→
+   835→Example:
+   836→
+   837→User A saves:
+   838→
+   839→General Ledger
+   840→"My Format"
+   841→
+   842→User B must not automatically see it.
+   843→
+   844→When opening General Ledger:
+   845→
+   846→If no custom format:
+   847→
+   848→Default
+   849→
+   850→If formats exist:
+   851→
+   852→Default
+   853→My Format
+   854→Other saved formats
+   855→
+   856→Allow deleting user's own custom format.
+   857→
+   858→Do not allow unauthorized users to delete other users' formats.
+   859→
+   860→Reuse existing UserReportFormats infrastructure if suitable.
+   861→
+   862→============================================================
+   863→15. GYM MODULE STRUCTURE
+   864→========================
+   865→
+   866→Gym must be divided into:
+   867→
+   868→Gym Main
+   869→
+   870→Gym Reports
+   871→
+   872→Gym Master Files
+   873→
+   874→Gym Main:
+   875→
+   876→Members
+   877→Membership Plans
+   878→Attendance
+   879→Fees & Invoices
+   880→Workout Plans
+   881→Diet Plans
+   882→Progress Tracking
+   883→Member Status
+   884→Prospects / Inquiries
+   885→Membership Freeze
+   886→Member Follow Up
+   887→POS
+   888→
+   889→Gym Reports:
+   890→
+   891→Gym reports
+   892→
+   893→Gym Master Files:
+   894→
+   895→Exercises
+   896→Equipment/Inventory
+   897→Other appropriate gym masters
+   898→
+   899→============================================================
+   900→16. MEMBERS
+   901→===========
+   902→
+   903→Keep Members screen simple.
+   904→
+   905→Reception should use this screen daily.
+   906→
+   907→Support:
+   908→
+   909→Add
+   910→Edit
+   911→View
+   912→Search
+   913→Filter
+   914→Deactivate/delete according to business rules
+   915→
+   916→Add:
+   917→
+   918→Fee Relaxation Days
+   919→
+   920→Minimum:
+   921→
+   922→0
+   923→
+   924→Maximum:
+   925→
+   926→27
+   927→
+   928→Also add:
+   929→
+   930→Month Start / Billing Start Date
+   931→
+   932→Example:
+   933→
+   934→Joining Date:
+   935→
+   936→29 September
+   937→
+   938→Billing Start:
+   939→
+   940→1 October
+   941→
+   942→Store both values.
+   943→
+   944→Do not replace joining date with billing date.
+   945→
+   946→============================================================
+   947→17. MEMBER STATUS
+   948→=================
+   949→
+   950→Create/repair Member Status.
+   951→
+   952→Statuses may include:
+   953→
+   954→Active
+   955→Inactive
+   956→Cancelled
+   957→Suspended
+   958→
+   959→Support:
+   960→
+   961→Single update
+   962→
+   963→Bulk update
+   964→
+   965→Permission controlled.
+   966→
+   967→============================================================
+   968→18. MEMBERSHIP FREEZE
+   969→=====================
+   970→
+   971→Add:
+   972→
+   973→Freeze Membership
+   974→
+   975→Allow:
+   976→
+   977→Freeze From
+   978→Freeze To
+   979→Number of Days
+   980→Reason
+   981→Approved By
+   982→Status
+   983→
+   984→Example:
+   985→
+   986→Expiry:
+   987→
+   988→30 September
+   989→
+   990→Freeze:
+   991→
+   992→10 days
+   993→
+   994→New expiry:
+   995→
+   996→10 October
+   997→
+   998→Freeze must affect membership tracking and future billing according to business rules.
+   999→
+  1000→Do not create fake accounting entries.
+  1001→
+  1002→Maintain freeze history.
+  1003→
+  1004→Support:
+  1005→
+  1006→Freeze
+  1007→Unfreeze
+  1008→View history
+  1009→
+  1010→Prevent overlapping or invalid freeze periods.
+  1011→
+  1012→============================================================
+  1013→19. PROSPECTS / INQUIRIES CRM
+  1014→=============================
+  1015→
+  1016→Create:
+  1017→
+  1018→Prospects / Inquiries
+  1019→
+  1020→Purpose:
+  1021→
+  1022→Track people who have not yet become members.
+  1023→
+  1024→Sources:
+  1025→
+  1026→Walk In
+  1027→Phone
+  1028→WhatsApp
+  1029→Website
+  1030→Referral
+  1031→Other
+  1032→
+  1033→Statuses:
+  1034→
+  1035→New
+  1036→Contacted
+  1037→Interested
+  1038→Trial Scheduled
+  1039→Trial Active
+  1040→Follow Up
+  1041→Converted
+  1042→Lost
+  1043→
+  1044→Fields:
+  1045→
+  1046→Prospect ID
+  1047→Name
+  1048→Phone
+  1049→WhatsApp
+  1050→Gender
+  1051→Age/DOB where appropriate
+  1052→Interested Membership
+  1053→Preferred Branch
+  1054→Source
+  1055→Inquiry Date
+  1056→Follow Up Date
+  1057→Assigned Receptionist
+  1058→Notes
+  1059→Status
+  1060→
+  1061→Create:
+  1062→
+  1063→Convert to Member
+  1064→
+  1065→When clicked:
+  1066→
+  1067→Open Add Member form
+  1068→
+  1069→Prepopulate available prospect information.
+  1070→
+  1071→After conversion:
+  1072→
+  1073→Prospect remains in history.
+  1074→
+  1075→Status becomes:
+  1076→
+  1077→Converted
+  1078→
+  1079→Store Member ID.
+  1080→
+  1081→============================================================
+  1082→20. ATTENDANCE
+  1083→==============
+  1084→
+  1085→Keep current manual attendance simple.
+  1086→
+  1087→Allow:
+  1088→
+  1089→Member ID
+  1090→Member search
+  1091→Date
+  1092→Check In
+  1093→Check Out
+  1094→Notes where necessary
+  1095→
+  1096→Future machine/card integration should remain possible.
+  1097→
+  1098→Do not implement unnecessary hardware integration now.
+  1099→
+  1100→============================================================
+  1101→21. FEES AND INVOICES
+  1102→=====================
+  1103→
+  1104→This is a critical system.
+  1105→
+  1106→Users must NOT manually create Cash Receipt Vouchers every time a member pays.
+  1107→
+  1108→Fees & Invoices must integrate with Finance automatically.
+  1109→
+  1110→When a fee is paid:
+  1111→
+  1112→Cash:
+  1113→
+  1114→Create correct accounting transaction.
+  1115→
+  1116→Bank:
+  1117→
+  1118→Create correct accounting transaction using selected bank account.
+  1119→
+  1120→Online:
+  1121→
+  1122→Create appropriate accounting transaction.
+  1123→
+  1124→The user should not create a second manual voucher.
+  1125→
+  1126→Use account mappings.
+  1127→
+  1128→Never hardcode Account IDs.
+  1129→
+  1130→Store:
+  1131→
+  1132→Member
+  1133→Billing period
+  1134→Amount
+  1135→Discount
+  1136→Paid amount
+  1137→Balance
+  1138→Due date
+  1139→Payment method
+  1140→Payment account
+  1141→Payment date
+  1142→Reference
+  1143→Status
+  1144→
+  1145→Statuses:
+  1146→
+  1147→Unpaid
+  1148→Paid
+  1149→Partial
+  1150→Late
+  1151→Overdue
+  1152→
+  1153→Use:
+  1154→
+  1155→Month Start / Billing Start Date
+  1156→
+  1157→and:
+  1158→
+  1159→Fee Relaxation Days
+  1160→
+  1161→Example:
+  1162→
+  1163→Due date reached.
+  1164→
+  1165→Relaxation:
+  1166→
+  1167→5 days.
+  1168→
+  1169→Do not mark Late during those 5 days.
+  1170→
+  1171→After 5 days:
+  1172→
+  1173→Late/Overdue according to rules.
+  1174→
+  1175→Integrate with:
+  1176→
+  1177→Membership Plans
+  1178→Membership Freeze
+  1179→Accounting
+  1180→Branches
+  1181→
+  1182→All accounting transactions must remain balanced.
+  1183→
+  1184→============================================================
+  1185→22. MEMBERSHIP DUE / GRACE ALERTS
+  1186→=================================
+  1187→
+  1188→Create a practical due/collection system.
+  1189→
+  1190→Statuses:
+  1191→
+  1192→Due Today
+  1193→Grace Day 1
+  1194→Grace Day 2
+  1195→Grace Day 3
+  1196→Overdue
+  1197→
+  1198→Do not hardcode 3 days.
+  1199→
+  1200→Use each member's configured Fee Relaxation Days.
+  1201→
+  1202→Show on dashboard/list:
+  1203→
+  1204→Member
+  1205→Phone
+  1206→Branch
+  1207→Due Date
+  1208→Grace Days
+  1209→Amount
+  1210→Status
+  1211→Last Contact
+  1212→Next Follow Up
+  1213→
+  1214→Make it easy for reception to follow up.
+  1215→
+  1216→============================================================
+  1217→23. MEMBER COMMUNICATION / FOLLOW UP HISTORY
+  1218→============================================
+  1219→
+  1220→Create simple follow up history.
+  1221→
+  1222→Example:
+  1223→
+  1224→29 Sep
+  1225→WhatsApp reminder
+  1226→
+  1227→30 Sep
+  1228→Phone call
+  1229→
+  1230→02 Oct
+  1231→Member promised payment
+  1232→
+  1233→03 Oct
+  1234→Payment received
+  1235→
+  1236→Store:
+  1237→
+  1238→Date
+  1239→Type
+  1240→User
+  1241→Notes
+  1242→Outcome
+  1243→
+  1244→Do not build an unnecessarily complex CRM.
+  1245→
+  1246→============================================================
+  1247→24. WORKOUT PLANS
+  1248→=================
+  1249→
+  1250→Create:
+  1251→
+  1252→Exercises
+  1253→
+  1254→General Workout Plans
+  1255→
+  1256→Assign Workout Plans
+  1257→
+  1258→Exercise codes:
+  1259→
+  1260→001
+  1261→002
+  1262→003
+  1263→
+  1264→Automatically generated.
+  1265→
+  1266→Exercise fields:
+  1267→
+  1268→Name
+  1269→Category
+  1270→Muscle Group
+  1271→Instructions
+  1272→Sets
+  1273→Reps
+  1274→Duration
+  1275→Rest
+  1276→Equipment
+  1277→Image
+  1278→Status
+  1279→Branch
+  1280→
+  1281→Workout Plans can contain multiple days.
+  1282→
+  1283→Example:
+  1284→
+  1285→Full Body Weekly Plan
+  1286→
+  1287→Monday
+  1288→Exercises
+  1289→
+  1290→Tuesday
+  1291→Exercises
+  1292→
+  1293→etc.
+  1294→
+  1295→Support:
+  1296→
+  1297→Sets
+  1298→Reps
+  1299→Duration
+  1300→Rest
+  1301→Notes
+  1302→Day
+  1303→
+  1304→============================================================
+  1305→25. MEMBER WORKOUT ASSIGNMENT
+  1306→=============================
+  1307→
+  1308→Allow:
+  1309→
+  1310→Assign General Workout Plan
+  1311→
+  1312→OR
+  1313→
+  1314→Custom Exercise Assignment
+  1315→
+  1316→Example:
+  1317→
+  1318→Member performs only:
+  1319→
+  1320→Bench Press
+  1321→Squat
+  1322→Lat Pulldown
+  1323→Shoulder Press
+  1324→Bicep Curl
+  1325→
+  1326→Allow:
+  1327→
+  1328→Days of week
+  1329→Frequency
+  1330→Sets
+  1331→Reps
+  1332→Notes
+  1333→
+  1334→Allow:
+  1335→
+  1336→Assign Trainer
+  1337→
+  1338→Only staff classified as Trainer should appear.
+  1339→
+  1340→============================================================
+  1341→26. DIET PLANS
+  1342→==============
+  1343→
+  1344→Create/repair:
+  1345→
+  1346→Diet Plans
+  1347→
+  1348→Support:
+  1349→
+  1350→Add
+  1351→Edit
+  1352→Delete
+  1353→Assign
+  1354→View
+  1355→
+  1356→Plans may contain:
+  1357→
+  1358→Meals
+  1359→Timing
+  1360→Foods
+  1361→Quantity
+  1362→Calories
+  1363→Protein
+  1364→Carbohydrates
+  1365→Fat
+  1366→Notes
+  1367→
+  1368→Allow assigning diet plans to members.
+  1369→
+  1370→============================================================
+  1371→27. PROGRESS TRACKING
+  1372→=====================
+  1373→
+  1374→Audit Progress Tracking.
+  1375→
+  1376→Support appropriate:
+  1377→
+  1378→Weight
+  1379→Body measurements
+  1380→Date
+  1381→Notes
+  1382→Progress photos where appropriate
+  1383→
+  1384→Keep it practical.
+  1385→
+  1386→============================================================
+  1387→28. EQUIPMENT + INVENTORY
+  1388→=========================
+  1389→
+  1390→Merge Equipment and Inventory into one coherent system.
+  1391→
+  1392→Support:
+  1393→
+  1394→Machines
+  1395→Dumbbells
+  1396→Bars
+  1397→Weights
+  1398→Gym equipment
+  1399→Consumable products
+  1400→
+  1401→Fields:
+  1402→
+  1403→Code
+  1404→Name
+  1405→Category
+  1406→Description
+  1407→Purchase Date
+  1408→Purchase Price
+  1409→Quantity
+  1410→Condition
+  1411→Status
+  1412→Branch
+  1413→Bill reference
+  1414→Image
+  1415→
+  1416→Allow optional bill image upload.
+  1417→
+  1418→Branch selection must work.
+  1419→
+  1420→Default:
+  1421→
+  1422→All accessible branches
+  1423→
+  1424→============================================================
+  1425→29. EQUIPMENT STATUS
+  1426→====================
+  1427→
+  1428→Create:
+  1429→
+  1430→Equipment Status
+  1431→
+  1432→Statuses:
+  1433→
+  1434→Working
+  1435→Broken
+  1436→Under Maintenance
+  1437→Retired
+  1438→
+  1439→Allow:
+  1440→
+  1441→Log Maintenance
+  1442→
+  1443→Maintenance:
+  1444→
+  1445→Date
+  1446→Description
+  1447→Type
+  1448→Cost
+  1449→Vendor/Technician
+  1450→Notes
+  1451→Attachment
+  1452→
+  1453→IMPORTANT:
+  1454→
+  1455→Recording maintenance cost alone must NOT automatically affect accounting.
+  1456→
+  1457→It remains a Gym maintenance record.
+  1458→
+  1459→Only explicit accounting/payment actions should affect Finance.
+  1460→
+  1461→============================================================
+  1462→30. QUICK POS
+  1463→=============
+  1464→
+  1465→Create:
+  1466→
+  1467→POS / Counter Sales
+  1468→
+  1469→This must be fast and touch friendly.
+  1470→
+  1471→Products come from the existing Inventory foundation.
+  1472→
+  1473→Example:
+  1474→
+  1475→Water
+  1476→Protein Shake
+  1477→Juice
+  1478→Energy Drink
+  1479→T Shirt
+  1480→Gloves
+  1481→Supplements
+  1482→Gym Accessories
+  1483→Other products
+  1484→
+  1485→Workflow:
+  1486→
+  1487→Select product
+  1488→Quantity
+  1489→Add to cart
+  1490→Payment method
+  1491→Complete Sale
+  1492→
+  1493→Payment methods:
+  1494→
+  1495→Cash
+  1496→Bank
+  1497→Online
+  1498→
+  1499→Completion must:
+  1500→
+  1501→Reduce inventory
+  1502→
+  1503→Record sale
+  1504→
+  1505→Record payment
+  1506→
+  1507→Create correct accounting transaction
+  1508→
+  1509→No manual voucher required.
+  1510→
+  1511→Use Finance mappings.
+  1512→
+  1513→Do not create a second inventory system.
+  1514→
+  1515→Do not create a second accounting engine.
+  1516→
+  1517→============================================================
+  1518→31. STAFF
+  1519→=========
+  1520→
+  1521→Make Add Staff professional.
+  1522→
+  1523→Fields:
+  1524→
+  1525→Employee ID
+  1526→Name
+  1527→Father/Guardian
+  1528→CNIC/NIC
+  1529→Photo
+  1530→Address
+  1531→Emergency Contact
+  1532→Emergency Contact Number
+  1533→Phone
+  1534→WhatsApp
+  1535→Telephone
+  1536→Fax where appropriate
+  1537→Email
+  1538→Joining Date
+  1539→Department
+  1540→Designation
+  1541→Branch
+  1542→Shift
+  1543→Basic Salary
+  1544→Allowances
+  1545→
+  1546→Allowances:
+  1547→
+  1548→Fuel
+  1549→Rent
+  1550→House
+  1551→Other configured allowances
+  1552→
+  1553→Statutory information where required:
+  1554→
+  1555→SESSI
+  1556→EOBI
+  1557→FBR/Tax Number
+  1558→
+  1559→Shift:
+  1560→
+  1561→General
+  1562→Morning
+  1563→Evening
+  1564→
+  1565→Leave types:
+  1566→
+  1567→Select allowed leave types.
+  1568→
+  1569→Overtime:
+  1570→
+  1571→Allowed / Not Allowed
+  1572→
+  1573→If allowed:
+  1574→
+  1575→Rate per hour
+  1576→
+  1577→Do not create one giant unreadable form.
+  1578→
+  1579→Use logical sections.
+  1580→
+  1581→============================================================
+  1582→32. PAYROLL STRUCTURE
+  1583→=====================
+  1584→
+  1585→Payroll divided into:
+  1586→
+  1587→HR / Payroll Main
+  1588→
+  1589→Payroll Reports
+  1590→
+  1591→Payroll Master Files
+  1592→
+  1593→Master Files:
+  1594→
+  1595→Shifts
+  1596→Calendar
+  1597→Leaves
+  1598→
+  1599→============================================================
+  1600→33. SHIFTS
+  1601→==========
+  1602→
+  1603→Shift:
+  1604→
+  1605→Name
+  1606→Time In
+  1607→Time Out
+  1608→Working Days
+  1609→Branch
+  1610→
+  1611→Examples:
+  1612→
+  1613→General
+  1614→Morning
+  1615→Evening
+  1616→
+  1617→Allow:
+  1618→
+  1619→Monday
+  1620→Tuesday
+  1621→Wednesday
+  1622→etc.
+  1623→
+  1624→============================================================
+  1625→34. CALENDAR
+  1626→============
+  1627→
+  1628→Generate annual calendar.
+  1629→
+  1630→Support:
+  1631→
+  1632→Working day
+  1633→Sunday
+  1634→Public holiday
+  1635→Gym closed
+  1636→Paid holiday
+  1637→
+  1638→Allow editing.
+  1639→
+  1640→Example:
+  1641→
+  1642→Rain closes gym for one day.
+  1643→
+  1644→Record appropriate closure.
+  1645→
+  1646→============================================================
+  1647→35. LEAVE MASTER
+  1648→================
+  1649→
+  1650→Examples:
+  1651→
+  1652→Casual
+  1653→Sick
+  1654→Paid
+  1655→Unpaid
+  1656→
+  1657→Allow:
+  1658→
+  1659→Number of allowed days
+  1660→
+  1661→============================================================
+  1662→36. OVERTIME
+  1663→============
+  1664→
+  1665→Create:
+  1666→
+  1667→Overtime
+  1668→
+  1669→Allow manual entry.
+  1670→
+  1671→Also calculate automatically where attendance + shift data are available.
+  1672→
+  1673→Example:
+  1674→
+  1675→Shift:
+  1676→
+  1677→9 AM to 5 PM
+  1678→
+  1679→Actual:
+  1680→
+  1681→8 PM
+  1682→
+  1683→Potential overtime:
+  1684→
+  1685→3 hours
+  1686→
+  1687→Require approval.
+  1688→
+  1689→Actions:
+  1690→
+  1691→Approve
+  1692→Reject
+  1693→Edit
+  1694→
+  1695→Only approved overtime enters payroll.
+  1696→
+  1697→Prevent duplicates.
+  1698→
+  1699→============================================================
+  1700→37. LEAVE APPROVAL
+  1701→==================
+  1702→
+  1703→HR/Admin can classify/approve leave:
+  1704→
+  1705→Sick
+  1706→Casual
+  1707→Paid
+  1708→Unpaid
+  1709→
+  1710→Unpaid leave should affect payroll correctly.
+  1711→
+  1712→Paid leave should not incorrectly reduce salary.
+  1713→
+  1714→============================================================
+  1715→38. ADMIN DEFAULTS
+  1716→==================
+  1717→
+  1718→Reorganize Admin.
+  1719→
+  1720→Company details should exist in one authoritative location.
+  1721→
+  1722→Company Name:
+  1723→
+  1724→Set initially.
+  1725→
+  1726→Do not casually allow editing after setup.
+  1727→
+  1728→Logo:
+  1729→
+  1730→Upload actual logo.
+  1731→
+  1732→Accounting Type:
+  1733→
+  1734→Keep:
+  1735→
+  1736→FIFO
+  1737→
+  1738→or
+  1739→
+  1740→Knock Off
+  1741→
+  1742→Remove:
+  1743→
+  1744→Outstanding Documents Mode
+  1745→
+  1746→Remove unnecessary voucher numbering settings.
+  1747→
+  1748→Voucher numbering should follow fixed system design.
+  1749→
+  1750→============================================================
+  1751→39. COMPANY ID
+  1752→==============
+  1753→
+  1754→Generate Company ID during initial setup.
+  1755→
+  1756→Format:
+  1757→
+  1758→AAA-00
+  1759→
+  1760→Example:
+  1761→
+  1762→ACP-01
+  1763→
+  1764→Example only.
+  1765→
+  1766→Company ID must:
+  1767→
+  1768→Be unique
+  1769→Be generated
+  1770→Remain fixed after initial setup
+  1771→Be used consistently where appropriate
+  1772→
+  1773→Do not hardcode ACP-01.
+  1774→
+  1775→============================================================
+  1776→40. ACCOUNT MAPPINGS
+  1777→====================
+  1778→
+  1779→Redesign Account Mappings professionally.
+  1780→
+  1781→Support mappings for:
+  1782→
+  1783→Membership fees
+  1784→Cash
+  1785→Bank
+  1786→Tax
+  1787→Discount
+  1788→POS sales
+  1789→Other integrated transactions
+  1790→
+  1791→Use actual Accounts.
+  1792→
+  1793→Validate Account Type.
+  1794→
+  1795→Never hardcode Account IDs.
+  1796→
+  1797→Branch awareness where required.
+  1798→
+  1799→============================================================
+  1800→41. BRANCHES
+  1801→============
+  1802→
+  1803→New Branch:
+  1804→
+  1805→Automatic branch code
+  1806→
+  1807→Fields:
+  1808→
+  1809→Branch Code
+  1810→Branch Name
+  1811→Address
+  1812→STRN
+  1813→NTN
+  1814→Phone
+  1815→Email
+  1816→Logo
+  1817→
+  1818→Remove:
+  1819→
+  1820→Manager field
+  1821→
+  1822→If branch logo is not uploaded:
+  1823→
+  1824→Use company default logo.
+  1825→
+  1826→Branch accounting relationships must be generated through the existing COA engine.
+  1827→
+  1828→============================================================
+  1829→42. USER ROLES AND GRANULAR PERMISSIONS
+  1830→=======================================
+  1831→
+  1832→Create extremely granular permissions.
+  1833→
+  1834→Permissions should support actions such as:
+  1835→
+  1836→View
+  1837→Add
+  1838→Edit
+  1839→Delete
+  1840→Post
+  1841→Approve
+  1842→Reject
+  1843→Print
+  1844→Export
+  1845→Import
+  1846→Change Status
+  1847→Bulk Update
+  1848→Customize
+  1849→Reverse
+  1850→Reconcile
+  1851→Configure
+  1852→
+  1853→Example:
+  1854→
+  1855→Reception:
+  1856→
+  1857→Members:
+  1858→View
+  1859→Add
+  1860→Edit
+  1861→Delete
+  1862→
+  1863→Attendance:
+  1864→View
+  1865→Add
+  1866→
+  1867→Finance:
+  1868→
+  1869→No access
+  1870→
+  1871→The permission system must enforce permissions in:
+  1872→
+  1873→Frontend
+  1874→
+  1875→AND
+  1876→
+  1877→Backend
+  1878→
+  1879→Hiding buttons alone is NOT security.
+  1880→
+  1881→Navigation must respect permissions.
+  1882→
+  1883→Buttons must respect permissions.
+  1884→
+  1885→APIs must enforce permissions.
+  1886→
+  1887→Branch permissions must also apply.
+  1888→
+  1889→============================================================
+  1890→43. REPORTING
+  1891→=============
+  1892→
+  1893→Reports must use real database data.
+  1894→
+  1895→No fake statistics.
+  1896→
+  1897→Respect:
+  1898→
+  1899→Branch
+  1900→Date
+  1901→User
+  1902→Permission
+  1903→Financial period
+  1904→Voucher status
+  1905→
+  1906→Finance reports should exclude unposted transactions where appropriate.
+  1907→
+  1908→============================================================
+  1909→44. ACCOUNTING INTEGRITY
+  1910→========================
+  1911→
+  1912→This is critical.
+  1913→
+  1914→Every accounting transaction:
+  1915→
+  1916→Debit = Credit
+  1917→
+  1918→Fee payment must not create duplicate transactions.
+  1919→
+  1920→POS payment must not create duplicate transactions.
+  1921→
+  1922→Voucher posting must be atomic.
+  1923→
+  1924→If one part fails, the accounting transaction must roll back.
+  1925→
+  1926→Use SQL transactions.
+  1927→
+  1928→Do not calculate accounting balances only in frontend.
+  1929→
+  1930→============================================================
+  1931→45. DATABASE CLEANUP
+  1932→====================
+  1933→
+  1934→After the new architecture works:
+  1935→
+  1936→Remove obsolete code and database objects.
+  1937→
+  1938→Especially removed Finance Masters:
+  1939→
+  1940→Customer
+  1941→Vendors
+  1942→Banks
+  1943→Cash Accounts
+  1944→
+  1945→Remove only when proven unused.
+  1946→
+  1947→Remove:
+  1948→
+  1949→Dead routes
+  1950→Dead controllers
+  1951→Dead procedures
+  1952→Dead tables
+  1953→Dead permissions
+  1954→Dead navigation
+  1955→Dead imports
+  1956→
+  1957→Do not leave duplicate implementations.
+  1958→
+  1959→============================================================
+  1960→46. PERFORMANCE
+  1961→===============
+  1962→
+  1963→Avoid:
+  1964→
+  1965→Unnecessary API calls
+  1966→N+1 queries
+  1967→Loading thousands of records unnecessarily
+  1968→Repeated master data requests
+  1969→Huge frontend bundles where avoidable
+  1970→
+  1971→Use:
+  1972→
+  1973→Pagination
+  1974→Filtering
+  1975→Indexes
+  1976→Caching where appropriate
+  1977→
+  1978→============================================================
+  1979→47. VALIDATION
+  1980→==============
+  1981→
+  1982→All important forms require:
+  1983→
+  1984→Frontend validation
+  1985→
+  1986→Backend validation
+  1987→
+  1988→Database validation where appropriate
+  1989→
+  1990→Validate:
+  1991→
+  1992→Required fields
+  1993→Numeric values
+  1994→Date ranges
+  1995→Duplicates
+  1996→Branches
+  1997→Permissions
+  1998→Accounting rules
+  1999→Financial periods
+  2000→Voucher status
+
+[showing lines 1-2000 of 2590; use offset=2001 with limit to continue reading]
