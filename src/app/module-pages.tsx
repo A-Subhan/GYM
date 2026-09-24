@@ -17,7 +17,7 @@ import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { Plus, Search, Edit, Trash2, Eye, X, Save, ChevronDown, ChevronRight, Download, Printer, Banknote, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Eye, X, Save, ChevronDown, ChevronRight, Download, Printer, Banknote, AlertCircle, CheckCircle2, Copy } from 'lucide-react'
 import {
   useApp, useFetch, apiPost, apiPatch, apiDelete,
   fmtMoney, fmtDateStr, fmtDateTime, PageHeader, SearchInput, EmptyState,
@@ -1054,17 +1054,34 @@ function MemberViewModal({ open, member, onClose, onEdit }: any) {
 export function MembershipsModule() {
   const { has } = useApp()
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const [form, setForm] = useState<any>({})
   const { data, reload } = useFetch<any>('/api/memberships')
   const plans = data?.plans || []
+
+  const openAdd = () => { setEditing(null); setForm({ durationDays: 30, amount: 0, isActive: true }); setOpen(true) }
+  const openEdit = (p: any) => { setEditing(p); setForm({ ...p }); setOpen(true) }
+  const doDelete = async () => {
+    if (!deleteTarget) return
+    try { await apiDelete(`/api/memberships/${deleteTarget.id}`); toast.success('Plan deleted'); setDeleteTarget(null); reload() }
+    catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  }
+
   return (
     <div>
       <PageHeader title="Membership Plans"
-        action={has('memberships.add') ? () => { setForm({}); setOpen(true) } : undefined}
+        action={has('memberships.add') ? openAdd : undefined}
         actionLabel="Add Plan" />
       <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
       <DataTable
         columns={[
+          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
+            <div className="flex gap-0.5">
+              {has('memberships.edit') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(r) }} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>}
+              {has('memberships.delete') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r) }} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+            </div>
+          ) },
           { key: 'code', label: 'Code', mono: true },
           { key: 'name', label: 'Name' },
           { key: 'durationDays', label: 'Duration', align: 'right', render: (r: any) => `${r.durationDays} days` },
@@ -1074,12 +1091,15 @@ export function MembershipsModule() {
         ]}
         rows={plans}
       />
-      <Modal open={open} onClose={() => setOpen(false)} title="Add Plan"
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Edit Plan' : 'Add Plan'}
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={async () => {
-            try { await apiPost('/api/memberships', form); toast.success('Plan created'); setOpen(false); reload() }
-            catch (e: any) { toast.error(e.message) }
+            try {
+              if (editing) { await apiPatch(`/api/memberships/${editing.id}`, form); toast.success('Plan updated') }
+              else { await apiPost('/api/memberships', form); toast.success('Plan created') }
+              setOpen(false); reload()
+            } catch (e: any) { toast.error(e.message) }
           }}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
         <div className="grid grid-cols-2 gap-3">
@@ -1090,6 +1110,7 @@ export function MembershipsModule() {
           <div className="col-span-2"><FormRow label="Description"><Textarea rows={2} value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow></div>
         </div>
       </Modal>
+      <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={doDelete} title="Delete Plan" message={deleteTarget ? `Delete plan "${deleteTarget.name}"?` : ''} />
     </div>
   )
 }
@@ -1107,6 +1128,28 @@ export function AttendanceModule() {
   const { data: membersData } = useFetch<any>('/api/members' + (branchesParam ? `?${branchesParam.slice(1)}` : ''))
   const records = data?.records || []
 
+  // Date validation: only current day allowed
+  const validateDate = (d: string): string | null => {
+    const inputDate = new Date(d)
+    inputDate.setHours(0, 0, 0, 0)
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    if (inputDate < firstDayOfMonth) return 'Cannot enter attendance for last month'
+    if (inputDate > lastDayOfMonth) return 'Cannot enter attendance for next month'
+    if (inputDate > today) return 'Cannot enter attendance for next day'
+    return null
+  }
+
+  const doCheckOut = async (r: any) => {
+    try {
+      await apiPatch('/api/attendance', { id: r.id, checkOut: new Date().toISOString() })
+      toast.success('Checked out')
+      reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
   return (
     <div>
       <PageHeader title="Attendance"
@@ -1118,6 +1161,11 @@ export function AttendanceModule() {
       </Toolbar>
       <DataTable
         columns={[
+          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
+            has('attendance.edit') && !r.checkOut ? (
+              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); doCheckOut(r) }}>Check Out</Button>
+            ) : null
+          ) },
           { key: 'member', label: 'Member', render: (r: any) => `${r.member?.firstName} ${r.member?.lastName || ''}` },
           { key: 'member', label: 'Member ID', render: (r: any) => r.member?.memberId, mono: true },
           { key: 'date', label: 'Date', render: (r: any) => fmtDateStr(r.date) },
@@ -1131,6 +1179,8 @@ export function AttendanceModule() {
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={async () => {
+            const err = validateDate(form.checkIn.slice(0, 10))
+            if (err) { toast.error(err); return }
             try { await apiPost('/api/attendance', { memberId: form.memberId, checkIn: form.checkIn }); toast.success('Checked in'); setOpen(false); reload() }
             catch (e: any) { toast.error(e.message) }
           }}><Save className="h-4 w-4 mr-1" />Check In</Button>
@@ -1894,6 +1944,10 @@ export function StaffModule() {
   const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
   const { data, reload } = useFetch<any>(`/api/staff${branchesParam ? `?${branchesParam.slice(1)}` : ''}`)
   const { data: shiftsData } = useFetch<any>('/api/shifts')
+  const { data: payrollMastersData } = useFetch<any>('/api/payroll-master-files')
+  const payrollMasters = payrollMastersData?.records || []
+  const departments = payrollMasters.filter((r: any) => r.masterType === 'Department' && r.isActive)
+  const designations = payrollMasters.filter((r: any) => r.masterType === 'Designation' && r.isActive)
   const staff = (data?.staff || []).filter((s: any) => !search || s.employeeId?.toLowerCase().includes(search.toLowerCase()) || s.firstName?.toLowerCase().includes(search.toLowerCase()))
 
   return (
@@ -1927,69 +1981,102 @@ export function StaffModule() {
             catch (e: any) { toast.error(e.message) }
           }}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <Tabs defaultValue="basic">
-          <TabsList className="grid grid-cols-4 mb-3">
-            <TabsTrigger value="basic">Basic</TabsTrigger>
-            <TabsTrigger value="contact">Contact</TabsTrigger>
-            <TabsTrigger value="job">Job</TabsTrigger>
-            <TabsTrigger value="salary">Salary</TabsTrigger>
-          </TabsList>
-          <TabsContent value="basic" className="grid grid-cols-2 gap-3">
-            <FormRow label="First Name" required><Input value={form.firstName || ''} onChange={e => setForm({ ...form, firstName: e.target.value })} /></FormRow>
-            <FormRow label="Last Name"><Input value={form.lastName || ''} onChange={e => setForm({ ...form, lastName: e.target.value })} /></FormRow>
-            <FormRow label="Father/Guardian"><Input value={form.fatherGuardian || ''} onChange={e => setForm({ ...form, fatherGuardian: e.target.value })} /></FormRow>
-            <FormRow label="CNIC"><Input value={form.cnic || ''} onChange={e => setForm({ ...form, cnic: e.target.value })} /></FormRow>
-            <FormRow label="Email"><Input value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
-            <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
-          </TabsContent>
-          <TabsContent value="contact" className="grid grid-cols-2 gap-3">
-            <FormRow label="WhatsApp">
-            <div className="flex gap-2 items-center">
-              <Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} />
-              <label className="flex items-center gap-1 text-xs whitespace-nowrap cursor-pointer">
-                <input type="checkbox" checked={form.sameAsPhone || false} onChange={e => {
-                  if (e.target.checked) setForm({ ...form, sameAsPhone: true, whatsapp: form.phone || '' })
-                  else setForm({ ...form, sameAsPhone: false })
-                }} />
-                Same as Phone
-              </label>
+        {/* Single long scrollable form - no tabs */}
+        <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-1">
+          {/* Basic Information */}
+          <div>
+            <div className="text-xs font-semibold uppercase text-muted-foreground mb-2 pb-1 border-b">Basic Information</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <FormRow label="First Name" required><Input value={form.firstName || ''} onChange={e => setForm({ ...form, firstName: e.target.value })} /></FormRow>
+              <FormRow label="Last Name"><Input value={form.lastName || ''} onChange={e => setForm({ ...form, lastName: e.target.value })} /></FormRow>
+              <FormRow label="Father/Guardian"><Input value={form.fatherGuardian || ''} onChange={e => setForm({ ...form, fatherGuardian: e.target.value })} /></FormRow>
+              <FormRow label="CNIC"><Input value={form.cnic || ''} onChange={e => setForm({ ...form, cnic: e.target.value })} /></FormRow>
             </div>
-          </FormRow>
-            <FormRow label="Telephone"><Input value={form.telephone || ''} onChange={e => setForm({ ...form, telephone: e.target.value })} /></FormRow>
-            <FormRow label="Emergency Contact"><Input value={form.emergencyContact || ''} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} /></FormRow>
-            <FormRow label="Emergency #"><Input value={form.emergencyContactNo || ''} onChange={e => setForm({ ...form, emergencyContactNo: e.target.value })} /></FormRow>
-            <div className="col-span-2"><FormRow label="Address"><Textarea rows={2} value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></FormRow></div>
-          </TabsContent>
-          <TabsContent value="job" className="grid grid-cols-2 gap-3">
-            <FormRow label="Joining Date"><Input type="date" value={form.joiningDate || ''} onChange={e => setForm({ ...form, joiningDate: e.target.value })} /></FormRow>
-            <FormRow label="Branch" required>
-              <Select value={form.branchId || ''} onValueChange={v => setForm({ ...form, branchId: v })}>
-                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </FormRow>
-            <FormRow label="Department"><Input value={form.department || ''} onChange={e => setForm({ ...form, department: e.target.value })} /></FormRow>
-            <FormRow label="Designation"><Input value={form.designation || ''} onChange={e => setForm({ ...form, designation: e.target.value })} /></FormRow>
-            <FormRow label="Shift">
-              <Select value={form.shiftId || ''} onValueChange={v => setForm({ ...form, shiftId: v })}>
-                <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>{(shiftsData?.shifts || []).map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </FormRow>
-            <FormRow label="Trainer"><Switch checked={form.isTrainer || false} onCheckedChange={v => setForm({ ...form, isTrainer: v })} /></FormRow>
-          </TabsContent>
-          <TabsContent value="salary" className="grid grid-cols-2 gap-3">
-            <FormRow label="Basic Salary"><Input type="number" value={form.basicSalary || 0} onChange={e => setForm({ ...form, basicSalary: Number(e.target.value) })} /></FormRow>
-            <FormRow label="Fuel Allowance"><Input type="number" value={form.fuelAllowance || 0} onChange={e => setForm({ ...form, fuelAllowance: Number(e.target.value) })} /></FormRow>
-            <FormRow label="Rent Allowance"><Input type="number" value={form.rentAllowance || 0} onChange={e => setForm({ ...form, rentAllowance: Number(e.target.value) })} /></FormRow>
-            <FormRow label="House Allowance"><Input type="number" value={form.houseAllowance || 0} onChange={e => setForm({ ...form, houseAllowance: Number(e.target.value) })} /></FormRow>
-            <FormRow label="SESSI"><Input type="number" value={form.sessi || 0} onChange={e => setForm({ ...form, sessi: Number(e.target.value) })} /></FormRow>
-            <FormRow label="EOBI"><Input type="number" value={form.eobi || 0} onChange={e => setForm({ ...form, eobi: Number(e.target.value) })} /></FormRow>
-            <FormRow label="FBR/Tax #"><Input value={form.fbrTaxNumber || ''} onChange={e => setForm({ ...form, fbrTaxNumber: e.target.value })} /></FormRow>
-            <FormRow label="Overtime Allowed"><Switch checked={form.overtimeAllowed || false} onCheckedChange={v => setForm({ ...form, overtimeAllowed: v })} /></FormRow>
-            <FormRow label="Overtime Rate/Hr"><Input type="number" value={form.overtimeRate || 0} onChange={e => setForm({ ...form, overtimeRate: Number(e.target.value) })} /></FormRow>
-          </TabsContent>
-        </Tabs>
+          </div>
+          {/* Contact Information */}
+          <div>
+            <div className="text-xs font-semibold uppercase text-muted-foreground mb-2 pb-1 border-b">Contact Information</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
+              <FormRow label="WhatsApp">
+                <div className="flex gap-2 items-center">
+                  <Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} />
+                  <label className="flex items-center gap-1 text-xs whitespace-nowrap cursor-pointer">
+                    <input type="checkbox" checked={form.sameAsPhone || false} onChange={e => {
+                      if (e.target.checked) setForm({ ...form, sameAsPhone: true, whatsapp: form.phone || '' })
+                      else setForm({ ...form, sameAsPhone: false })
+                    }} />
+                    Same as Phone
+                  </label>
+                </div>
+              </FormRow>
+              <FormRow label="Email"><Input value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
+              <FormRow label="Telephone"><Input value={form.telephone || ''} onChange={e => setForm({ ...form, telephone: e.target.value })} /></FormRow>
+              <FormRow label="Emergency Contact"><Input value={form.emergencyContact || ''} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} /></FormRow>
+              <FormRow label="Emergency #"><Input value={form.emergencyContactNo || ''} onChange={e => setForm({ ...form, emergencyContactNo: e.target.value })} /></FormRow>
+              <div className="col-span-2"><FormRow label="Address"><Textarea rows={2} value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></FormRow></div>
+            </div>
+          </div>
+          {/* Job Information */}
+          <div>
+            <div className="text-xs font-semibold uppercase text-muted-foreground mb-2 pb-1 border-b">Job Information</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <FormRow label="Joining Date"><Input type="date" value={form.joiningDate || ''} onChange={e => setForm({ ...form, joiningDate: e.target.value })} /></FormRow>
+              <FormRow label="Branch" required>
+                <Select value={form.branchId || '__none__'} onValueChange={v => setForm({ ...form, branchId: v === '__none__' ? '' : v })}>
+                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">—</SelectItem>
+                    {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </FormRow>
+              <FormRow label="Department (from Payroll Master)">
+                <Select value={form.department || '__none__'} onValueChange={v => setForm({ ...form, department: v === '__none__' ? '' : v })}>
+                  <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">—</SelectItem>
+                    {departments.map((d: any) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </FormRow>
+              <FormRow label="Designation (from Payroll Master)">
+                <Select value={form.designation || '__none__'} onValueChange={v => setForm({ ...form, designation: v === '__none__' ? '' : v })}>
+                  <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">—</SelectItem>
+                    {designations.map((d: any) => <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </FormRow>
+              <FormRow label="Shift">
+                <Select value={form.shiftId || '__none__'} onValueChange={v => setForm({ ...form, shiftId: v === '__none__' ? '' : v })}>
+                  <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">—</SelectItem>
+                    {(shiftsData?.shifts || []).map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </FormRow>
+              <FormRow label="Trainer"><Switch checked={form.isTrainer || false} onCheckedChange={v => setForm({ ...form, isTrainer: v })} /></FormRow>
+            </div>
+          </div>
+          {/* Salary Information */}
+          <div>
+            <div className="text-xs font-semibold uppercase text-muted-foreground mb-2 pb-1 border-b">Salary Information</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <FormRow label="Basic Salary"><Input type="number" value={form.basicSalary || 0} onChange={e => setForm({ ...form, basicSalary: Number(e.target.value) })} /></FormRow>
+              <FormRow label="Fuel Allowance"><Input type="number" value={form.fuelAllowance || 0} onChange={e => setForm({ ...form, fuelAllowance: Number(e.target.value) })} /></FormRow>
+              <FormRow label="Rent Allowance"><Input type="number" value={form.rentAllowance || 0} onChange={e => setForm({ ...form, rentAllowance: Number(e.target.value) })} /></FormRow>
+              <FormRow label="House Allowance"><Input type="number" value={form.houseAllowance || 0} onChange={e => setForm({ ...form, houseAllowance: Number(e.target.value) })} /></FormRow>
+              <FormRow label="SESSI"><Input type="number" value={form.sessi || 0} onChange={e => setForm({ ...form, sessi: Number(e.target.value) })} /></FormRow>
+              <FormRow label="EOBI"><Input type="number" value={form.eobi || 0} onChange={e => setForm({ ...form, eobi: Number(e.target.value) })} /></FormRow>
+              <FormRow label="FBR/Tax #"><Input value={form.fbrTaxNumber || ''} onChange={e => setForm({ ...form, fbrTaxNumber: e.target.value })} /></FormRow>
+              <FormRow label="Overtime Allowed"><Switch checked={form.overtimeAllowed || false} onCheckedChange={v => setForm({ ...form, overtimeAllowed: v })} /></FormRow>
+              <FormRow label="Overtime Rate/Hr"><Input type="number" value={form.overtimeRate || 0} onChange={e => setForm({ ...form, overtimeRate: Number(e.target.value) })} /></FormRow>
+            </div>
+          </div>
+        </div>
       </Modal>
     </div>
   )
@@ -2001,17 +2088,32 @@ export function StaffModule() {
 export function ShiftsModule() {
   const { has, branches } = useApp()
   const [open, setOpen] = useState(false)
-  const [form, setForm] = useState<any>({})
+  const [editing, setEditing] = useState<any>(null)
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const [form, setForm] = useState<any>({ workingDays: 'Mon,Tue,Wed,Thu,Fri' })
   const { data, reload } = useFetch<any>('/api/shifts')
   const shifts = data?.shifts || []
+
+  const openAdd = () => { setEditing(null); setForm({ workingDays: 'Mon,Tue,Wed,Thu,Fri' }); setOpen(true) }
+  const openEdit = (s: any) => { setEditing(s); setForm({ ...s }); setOpen(true) }
+  const doDelete = async () => {
+    if (!deleteTarget) return
+    try { await apiDelete(`/api/shifts?id=${deleteTarget.id}`); toast.success('Shift deleted'); setDeleteTarget(null); reload() }
+    catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  }
+
   return (
     <div>
-      <PageHeader title="Shifts"
-        action={has('shifts.add') ? () => { setForm({ workingDays: 'Mon,Tue,Wed,Thu,Fri' }); setOpen(true) } : undefined}
-        actionLabel="Add Shift" />
+      <PageHeader title="Shifts" action={has('shifts.add') ? openAdd : undefined} actionLabel="Add Shift" />
       <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
       <DataTable
         columns={[
+          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
+            <div className="flex gap-0.5">
+              {has('shifts.edit') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(r) }} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>}
+              {has('shifts.delete') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r) }} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+            </div>
+          ) },
           { key: 'name', label: 'Name' },
           { key: 'timeIn', label: 'Time In' },
           { key: 'timeOut', label: 'Time Out' },
@@ -2021,20 +2123,26 @@ export function ShiftsModule() {
         ]}
         rows={shifts}
       />
-      <Modal open={open} onClose={() => setOpen(false)} title="Add Shift"
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Edit Shift' : 'Add Shift'}
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={async () => {
-            try { await apiPost('/api/shifts', form); toast.success('Shift added'); setOpen(false); reload() }
-            catch (e: any) { toast.error(e.message) }
+            try {
+              if (editing) { await apiPatch(`/api/shifts/${editing.id}`, form); toast.success('Shift updated') }
+              else { await apiPost('/api/shifts', form); toast.success('Shift added') }
+              setOpen(false); reload()
+            } catch (e: any) { toast.error(e.message) }
           }}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
         <div className="grid grid-cols-2 gap-3">
           <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
           <FormRow label="Branch">
-            <Select value={form.branchId || ''} onValueChange={v => setForm({ ...form, branchId: v })}>
+            <Select value={form.branchId || '__none__'} onValueChange={v => setForm({ ...form, branchId: v === '__none__' ? null : v })}>
               <SelectTrigger><SelectValue placeholder="Any" /></SelectTrigger>
-              <SelectContent>{branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
+              <SelectContent>
+                <SelectItem value="__none__">Any</SelectItem>
+                {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+              </SelectContent>
             </Select>
           </FormRow>
           <FormRow label="Time In" required><Input type="time" value={form.timeIn || ''} onChange={e => setForm({ ...form, timeIn: e.target.value })} /></FormRow>
@@ -2042,6 +2150,7 @@ export function ShiftsModule() {
           <div className="col-span-2"><FormRow label="Working Days (CSV)"><Input value={form.workingDays || ''} onChange={e => setForm({ ...form, workingDays: e.target.value })} placeholder="Mon,Tue,Wed,Thu,Fri" /></FormRow></div>
         </div>
       </Modal>
+      <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={doDelete} title="Delete Shift" message={deleteTarget ? `Delete shift "${deleteTarget.name}"?` : ''} />
     </div>
   )
 }
@@ -2938,13 +3047,39 @@ export function WorkoutsModule() {
 export function DietModule() {
   const { has } = useApp()
   const [open, setOpen] = useState(false)
-  const [form, setForm] = useState<any>({ name: '', description: '', meals: [] })
+  const [form, setForm] = useState<any>({ name: '', description: '', meals: {} })
   const { data, reload } = useFetch<any>('/api/diet')
   const plans = data?.plans || []
+
+  const DIET_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+  const DIET_MEALS = ['Breakfast', 'Brunch', 'Lunch', 'Snack', 'Dinner', 'Late Night', 'Pre Workout', 'Post Workout']
+
+  const emptyGrid = () => {
+    const g: Record<string, Record<string, string>> = {}
+    for (const day of DIET_DAYS) { g[day] = {}; for (const meal of DIET_MEALS) g[day][meal] = '' }
+    return g
+  }
+
+  const openAdd = () => { setForm({ name: '', description: '', meals: emptyGrid() }); setOpen(true) }
+
+  const setCell = (day: string, meal: string, val: string) => {
+    setForm((f: any) => ({ ...f, meals: { ...f.meals, [day]: { ...f.meals[day], [meal]: val } } }))
+  }
+
+  const copyToAll = () => {
+    const monday = form.meals['Monday'] || {}
+    setForm((f: any) => {
+      const newMeals: any = {}
+      for (const day of DIET_DAYS) { newMeals[day] = { ...monday } }
+      return { ...f, meals: newMeals }
+    })
+    toast.success('Monday plan copied to all days')
+  }
+
   return (
     <div>
       <PageHeader title="Diet Plans"
-        action={has('diet.add') ? () => setOpen(true) : undefined}
+        action={has('diet.add') ? openAdd : undefined}
         actionLabel="Add Plan" />
       <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
       <DataTable
@@ -2956,16 +3091,61 @@ export function DietModule() {
         ]}
         rows={plans}
       />
-      <Modal open={open} onClose={() => setOpen(false)} title="Add Diet Plan"
+      <Modal open={open} onClose={() => setOpen(false)} title="Add Diet Plan" size="xl"
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={async () => {
-            try { await apiPost('/api/diet', form); toast.success('Plan created'); setOpen(false); reload() }
-            catch (e: any) { toast.error(e.message) }
+            try {
+              const meals: any[] = []
+              for (const day of DIET_DAYS) {
+                for (const meal of DIET_MEALS) {
+                  const val = (form.meals[day]?.[meal] || '').trim()
+                  if (val) meals.push({ dayOfWeek: day, timing: meal, foods: val })
+                }
+              }
+              await apiPost('/api/diet', { name: form.name, description: form.description, meals })
+              toast.success('Plan created'); setOpen(false); reload()
+            } catch (e: any) { toast.error(e.message) }
           }}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
-        <div className="mt-3"><FormRow label="Description"><Textarea rows={2} value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow></div>
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <FormRow label="Plan Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
+          <FormRow label="Description"><Input value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow>
+        </div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs text-muted-foreground">Weekly diet grid (max 60 chars per cell). Fill Monday and click Copy in All.</div>
+          <Button size="sm" variant="outline" onClick={copyToAll}><Copy className="h-3 w-3 mr-1" />Copy in All</Button>
+        </div>
+        <div className="overflow-x-auto max-h-[55vh] overflow-y-auto border rounded">
+          <table className="w-full text-xs">
+            <thead className="bg-muted/50 border-b sticky top-0">
+              <tr>
+                <th className="px-2 py-2 text-left font-medium text-nowrap">Day</th>
+                {DIET_MEALS.map(m => <th key={m} className="px-2 py-2 text-left font-medium text-nowrap min-w-[120px]">{m}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {DIET_DAYS.map(day => (
+                <tr key={day} className="border-b last:border-0">
+                  <td className="px-2 py-1.5 font-medium text-nowrap bg-muted/20">{day}</td>
+                  {DIET_MEALS.map(meal => (
+                    <td key={meal} className="px-1 py-1">
+                      <textarea
+                        value={form.meals?.[day]?.[meal] || ''}
+                        onChange={e => setCell(day, meal, e.target.value)}
+                        maxLength={60}
+                        rows={2}
+                        className="w-full text-xs border rounded px-1 py-0.5 resize-none"
+                        placeholder="—"
+                      />
+                      <div className="text-[10px] text-muted-foreground text-right">{(form.meals?.[day]?.[meal] || '').length}/60</div>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </Modal>
     </div>
   )

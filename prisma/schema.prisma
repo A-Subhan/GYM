@@ -65,6 +65,8 @@ model Branch {
   posSales           PosSale[]
   followUps          FollowUp[]
   freezes            MembershipFreeze[]
+  knockOffBills      KnockOffBill[] @relation("KnockOffBranch")
+  gymMasterFiles     GymMasterFile[] @relation("GymMasterBranch")
 }
 
 model Role {
@@ -185,6 +187,17 @@ model Account {
   cnic              String?
   ntn               String?
   description       String?
+  // New COA fields per spec
+  fbr               String?
+  otherName         String?
+  referenceNumber   String?
+  faxNumber         String?
+  city              String?
+  country           String?
+  website           String?
+  paymentTerms      String?
+  registrationNumber String?
+  // Opening balance fields removed per spec — OTB uses separate screen
   openingBalance    Float    @default(0)
   openingBalanceType String?
   createdAt         DateTime @default(now())
@@ -193,6 +206,7 @@ model Account {
   lines             VoucherLine[]
   bookVouchers      Voucher[] @relation("VoucherBookAccount")
   mappings          AccountMapping[]
+  knockOffBills     KnockOffBill[] @relation("KnockOffAccount")
 
   @@index([code])
   @@index([parentId])
@@ -927,4 +941,75 @@ model Allowance {
   description String?
   isStatutory Boolean @default(false)
   createdAt  DateTime @default(now())
+}
+
+// =================================================================
+// KNOCK OFF / BILLWISE
+// =================================================================
+
+model KnockOffBill {
+  id            String   @id @default(cuid())
+  billId        String   @unique  // OTB/BranchID/000001
+  accountId     String   // The Customer/Supplier account from COA
+  account       Account  @relation("KnockOffAccount", fields: [accountId], references: [id])
+  branchId      String
+  branch        Branch   @relation("KnockOffBranch", fields: [branchId], references: [id])
+  billNumber    String   // mandatory, user entered
+  referenceNumber String? // optional
+  billType      String   // Sales Bill, Purchase Bill, Credit Note, etc.
+  amount        Float    // mandatory
+  referenceDate DateTime?
+  dueDate       DateTime?
+  description   String?    // max 20 chars — handled in app since SQLite doesn't enforce
+  isDebit       Boolean  // auto-determined by billType
+  outstandingAmount Float @default(0)
+  adjustedAmount Float   @default(0)
+  status        String   @default("Open") // Open, Settled, Partial
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([accountId])
+  @@index([branchId])
+}
+
+// =================================================================
+// GYM MASTER FILE
+// =================================================================
+
+model GymMasterFile {
+  id            String   @id @default(cuid())
+  masterType    String   // Exercise, Equipment, ExerciseType, etc.
+  masterId      String   // e.g. "001" for Exercise master
+  code          String   // e.g. "0010001" for individual record
+  name          String
+  description   String?
+  branchId     String?  // for branchwise equipment
+  branch        Branch?  @relation("GymMasterBranch", fields: [branchId], references: [id])
+  isActive      Boolean  @default(true)
+  extra         String?  // JSON for additional fields
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([masterType, code])
+  @@index([masterType])
+  @@index([branchId])
+}
+
+// =================================================================
+// PAYROLL MASTER FILE
+// =================================================================
+
+model PayrollMasterFile {
+  id            String   @id @default(cuid())
+  masterType    String   // Education, Designation, Country, Department, Shirt, etc.
+  code          String
+  name          String
+  description   String?
+  isActive      Boolean  @default(true)
+  extra         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([masterType, code])
+  @@index([masterType])
 }

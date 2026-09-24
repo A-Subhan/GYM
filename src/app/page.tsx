@@ -232,6 +232,7 @@ function fmtDateTime(d: string | Date | null | undefined) {
 // App Shell
 // =================================================================
 export default function Home() {
+  const [companyName, setCompanyName] = useState('Contoura Gym')
   const [session, setSession] = useState<SessionUser | null>(null)
   const [loadingSession, setLoadingSession] = useState(true)
   const [branches, setBranches] = useState<Branch[]>([])
@@ -265,6 +266,12 @@ export default function Home() {
   }, [])
 
   useEffect(() => { refreshSession() }, [refreshSession])
+
+  useEffect(() => {
+    fetch('/api/company').then(r => r.json()).then(d => {
+      if (d.company?.name) setCompanyName(d.company.name)
+    }).catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (session) {
@@ -348,8 +355,8 @@ export default function Home() {
 
           <div className="font-semibold text-lg flex items-center gap-2">
             <div className="h-7 w-7 rounded bg-primary/15 text-primary flex items-center justify-center text-sm font-bold">C</div>
-            <span className="hidden sm:inline">Contoura Gym</span>
-            <span className="sm:hidden text-base">Contoura</span>
+            <span className="hidden sm:inline">{companyName}</span>
+            <span className="sm:hidden text-base">{companyName.slice(0, 8)}</span>
           </div>
 
           <div className="flex-1" />
@@ -405,7 +412,7 @@ function SidebarContent({ nav, active, onNavigate, session, onLogout }: any) {
     <div className="h-full flex flex-col">
       <div className="h-14 border-b flex items-center px-4 gap-2">
         <div className="h-7 w-7 rounded bg-primary/15 text-primary flex items-center justify-center text-sm font-bold">C</div>
-        <div className="font-semibold">Contoura Gym</div>
+        <div className="font-semibold">{companyName}</div>
       </div>
       <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5 text-sm">
         {nav.map((item: any) => {
@@ -532,7 +539,7 @@ function LoginScreen({ login }: { login: (u: string, p: string) => Promise<boole
           <div className="flex items-center gap-2">
             <div className="h-9 w-9 rounded bg-primary/15 text-primary flex items-center justify-center font-bold">C</div>
             <div>
-              <CardTitle className="text-xl">Contoura Gym</CardTitle>
+              <CardTitle className="text-xl">{companyName}</CardTitle>
               <div className="text-xs text-muted-foreground">Management System</div>
             </div>
           </div>

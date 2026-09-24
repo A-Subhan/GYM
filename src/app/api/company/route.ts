@@ -16,11 +16,10 @@ export async function PATCH(req: NextRequest) {
   const data = await req.json()
   const existing = await db.company.findFirst()
   if (!existing) return NextResponse.json({ error: 'Company not initialized' }, { status: 404 })
-  // companyId, accountingType are NOT changeable after setup per spec §38
+  // Company Name cannot be changed after initial setup
   const company = await db.company.update({
     where: { id: existing.id },
     data: {
-      name: data.name,
       address: data.address,
       phone: data.phone,
       email: data.email,
