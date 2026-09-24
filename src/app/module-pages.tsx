@@ -670,12 +670,22 @@ export function MembersModule() {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<any>(null)
   const [viewing, setViewing] = useState<any>(null)
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
   const { data, reload } = useFetch<any>(`/api/members?status=${status !== 'all' ? status : ''}${branchesParam}`)
   const { data: plansData } = useFetch<any>('/api/memberships')
   const plans = plansData?.plans || []
   const members = (data?.members || []).filter((m: any) =>
     !search || m.memberId.toLowerCase().includes(search.toLowerCase()) || (m.firstName + ' ' + (m.lastName || '')).toLowerCase().includes(search.toLowerCase()) || m.phone?.includes(search))
+
+  const doDelete = async () => {
+    if (!deleteTarget) return
+    try {
+      await apiDelete(`/api/members/${deleteTarget.id}`)
+      toast.success('Member deleted (soft delete)')
+      setDeleteTarget(null); reload()
+    } catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  }
 
   return (
     <div>
@@ -698,6 +708,13 @@ export function MembersModule() {
       </Toolbar>
       <DataTable
         columns={[
+          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
+            <div className="flex gap-0.5">
+              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setViewing(r) }} title="View"><Eye className="h-3.5 w-3.5" /></Button>
+              {has('members.edit') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditing(r); setOpen(true) }} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>}
+              {has('members.delete') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r) }} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+            </div>
+          ) },
           { key: 'memberId', label: 'ID', mono: true },
           { key: 'name', label: 'Name', render: (r: any) => `${r.firstName} ${r.lastName || ''}` },
           { key: 'phone', label: 'Phone' },
@@ -706,18 +723,13 @@ export function MembersModule() {
           { key: 'membershipPlan', label: 'Plan', render: (r: any) => r.membershipPlan?.name || '—' },
           { key: 'feeRelaxationDays', label: 'Grace', align: 'right', render: (r: any) => `${r.feeRelaxationDays}d` },
           { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
-          { key: 'actions', label: '', align: 'right', render: (r: any) => (
-            <div className="flex gap-1 justify-end">
-              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setViewing(r) }}><Eye className="h-3.5 w-3.5" /></Button>
-              {has('members.edit') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditing(r); setOpen(true) }}><Edit className="h-3.5 w-3.5" /></Button>}
-            </div>
-          ) },
         ]}
         rows={members}
         onRowClick={(r: any) => setViewing(r)}
       />
       <MemberFormModal open={open} onClose={() => setOpen(false)} editing={editing} plans={plans} onSaved={() => { setOpen(false); reload() }} />
       <MemberViewModal open={!!viewing} member={viewing} onClose={() => setViewing(null)} onEdit={() => { setEditing(viewing); setViewing(null); setOpen(true) }} />
+      <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={doDelete} title="Delete Member" message={deleteTarget ? `Soft-delete member "${deleteTarget.firstName} ${deleteTarget.lastName || ''}"? The record will remain in the database but disappear from the list.` : ''} />
     </div>
   )
 }
@@ -784,7 +796,18 @@ function MemberFormModal({ open, onClose, editing, plans, onSaved }: any) {
         </TabsContent>
         <TabsContent value="contact" className="grid grid-cols-2 gap-3">
           <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
-          <FormRow label="WhatsApp"><Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} /></FormRow>
+          <FormRow label="WhatsApp">
+            <div className="flex gap-2 items-center">
+              <Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} />
+              <label className="flex items-center gap-1 text-xs whitespace-nowrap cursor-pointer">
+                <input type="checkbox" checked={form.sameAsPhone || false} onChange={e => {
+                  if (e.target.checked) setForm({ ...form, sameAsPhone: true, whatsapp: form.phone || '' })
+                  else setForm({ ...form, sameAsPhone: false })
+                }} />
+                Same as Phone
+              </label>
+            </div>
+          </FormRow>
           <FormRow label="Email"><Input value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
           <FormRow label="Emergency Contact"><Input value={form.emergencyContact || ''} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} /></FormRow>
           <FormRow label="Emergency #"><Input value={form.emergencyContactNo || ''} onChange={e => setForm({ ...form, emergencyContactNo: e.target.value })} /></FormRow>
@@ -1159,16 +1182,26 @@ export function ProspectsModule() {
   const [status, setStatus] = useState('all')
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const [form, setForm] = useState<any>({})
   const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
   const { data, reload } = useFetch<any>(`/api/prospects?status=${status !== 'all' ? status : ''}${branchesParam}`)
   const prospects = (data?.prospects || []).filter((p: any) =>
     !search || p.name?.toLowerCase().includes(search.toLowerCase()) || p.phone?.includes(search))
 
+  const openAdd = () => { setEditing(null); setForm({ source: 'WalkIn', status: 'New' }); setOpen(true) }
+  const openEdit = (p: any) => { setEditing(p); setForm({ ...p }); setOpen(true) }
+  const doDelete = async () => {
+    if (!deleteTarget) return
+    try { await apiDelete(`/api/prospects/${deleteTarget.id}`); toast.success('Prospect deleted'); setDeleteTarget(null); reload() }
+    catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  }
+
   return (
     <div>
       <PageHeader title="Prospects / Inquiries"
-        action={has('prospects.add') ? () => { setForm({ source: 'WalkIn', status: 'New' }); setOpen(true) } : undefined}
+        action={has('prospects.add') ? openAdd : undefined}
         actionLabel="Add Prospect" />
       <Toolbar>
         <SearchInput value={search} onChange={setSearch} placeholder="Search name or phone…" />
@@ -1189,6 +1222,21 @@ export function ProspectsModule() {
       </Toolbar>
       <DataTable
         columns={[
+          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
+            <div className="flex gap-0.5">
+              {has('prospects.edit') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(r) }} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>}
+              {has('prospects.delete') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r) }} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+              {r.status !== 'Converted' && has('prospects.convert') && (
+                <Button size="sm" variant="outline" onClick={async (e) => {
+                  e.stopPropagation()
+                  if (confirm(`Mark ${r.name} as converted?`)) {
+                    try { await apiPatch(`/api/prospects/${r.id}`, { action: 'convert', convertedMemberId: null }); toast.success('Marked as converted'); reload() }
+                    catch (e: any) { toast.error(e.message) }
+                  }
+                }}>Convert</Button>
+              )}
+            </div>
+          ) },
           { key: 'prospectId', label: 'ID', mono: true },
           { key: 'name', label: 'Name' },
           { key: 'phone', label: 'Phone' },
@@ -1197,33 +1245,35 @@ export function ProspectsModule() {
           { key: 'inquiryDate', label: 'Inquiry', render: (r: any) => fmtDateStr(r.inquiryDate) },
           { key: 'followUpDate', label: 'Follow Up', render: (r: any) => fmtDateStr(r.followUpDate) },
           { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
-          { key: 'actions', label: '', align: 'right', render: (r: any) =>
-            r.status !== 'Converted' && has('prospects.convert') && (
-              <Button size="sm" variant="outline" onClick={async (e) => {
-                e.stopPropagation()
-                // open member form pre-filled — quick action: just mark as converted for demo
-                if (confirm(`Mark ${r.name} as converted? This will open the member form pre-populated.`)) {
-                  try { await apiPatch(`/api/prospects/${r.id}`, { action: 'convert', convertedMemberId: null }); toast.success('Marked as converted'); reload() }
-                  catch (e: any) { toast.error(e.message) }
-                }
-              }}>Convert</Button>
-            )
-          },
         ]}
         rows={prospects}
       />
-      <Modal open={open} onClose={() => setOpen(false)} title="Add Prospect"
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Edit Prospect' : 'Add Prospect'}
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={async () => {
-            try { await apiPost('/api/prospects', form); toast.success('Prospect added'); setOpen(false); reload() }
+            try {
+              if (editing) { await apiPatch(`/api/prospects/${editing.id}`, form); toast.success('Prospect updated') }
+              else { await apiPost('/api/prospects', form); toast.success('Prospect added') }
+              setOpen(false); reload() }
             catch (e: any) { toast.error(e.message) }
           }}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
         <div className="grid grid-cols-2 gap-3">
           <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
           <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
-          <FormRow label="WhatsApp"><Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} /></FormRow>
+          <FormRow label="WhatsApp">
+            <div className="flex gap-2 items-center">
+              <Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} />
+              <label className="flex items-center gap-1 text-xs whitespace-nowrap cursor-pointer">
+                <input type="checkbox" checked={form.sameAsPhone || false} onChange={e => {
+                  if (e.target.checked) setForm({ ...form, sameAsPhone: true, whatsapp: form.phone || '' })
+                  else setForm({ ...form, sameAsPhone: false })
+                }} />
+                Same as Phone
+              </label>
+            </div>
+          </FormRow>
           <FormRow label="Gender">
             <Select value={form.gender || ''} onValueChange={v => setForm({ ...form, gender: v })}>
               <SelectTrigger><SelectValue /></SelectTrigger>
@@ -1262,6 +1312,7 @@ export function ProspectsModule() {
           <div className="col-span-2"><FormRow label="Notes"><Textarea rows={2} value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></FormRow></div>
         </div>
       </Modal>
+      <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={doDelete} title="Delete Prospect" message={deleteTarget ? `Delete prospect "${deleteTarget.name}"?` : ''} />
     </div>
   )
 }
@@ -1774,7 +1825,18 @@ export function StaffModule() {
             <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
           </TabsContent>
           <TabsContent value="contact" className="grid grid-cols-2 gap-3">
-            <FormRow label="WhatsApp"><Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} /></FormRow>
+            <FormRow label="WhatsApp">
+            <div className="flex gap-2 items-center">
+              <Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} />
+              <label className="flex items-center gap-1 text-xs whitespace-nowrap cursor-pointer">
+                <input type="checkbox" checked={form.sameAsPhone || false} onChange={e => {
+                  if (e.target.checked) setForm({ ...form, sameAsPhone: true, whatsapp: form.phone || '' })
+                  else setForm({ ...form, sameAsPhone: false })
+                }} />
+                Same as Phone
+              </label>
+            </div>
+          </FormRow>
             <FormRow label="Telephone"><Input value={form.telephone || ''} onChange={e => setForm({ ...form, telephone: e.target.value })} /></FormRow>
             <FormRow label="Emergency Contact"><Input value={form.emergencyContact || ''} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} /></FormRow>
             <FormRow label="Emergency #"><Input value={form.emergencyContactNo || ''} onChange={e => setForm({ ...form, emergencyContactNo: e.target.value })} /></FormRow>
@@ -1948,13 +2010,22 @@ export function LeavesModule() {
   const { has } = useApp()
   const [status, setStatus] = useState('all')
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const [form, setForm] = useState<any>({})
   const { data, reload } = useFetch<any>(`/api/leaves?status=${status !== 'all' ? status : ''}`)
   const { data: staffData } = useFetch<any>('/api/staff')
   const leaves = data?.leaves || []
+  const openAdd = () => { setEditing(null); setForm({}); setOpen(true) }
+  const openEdit = (r: any) => { setEditing(r); setForm({ ...r, fromDate: r.fromDate?.slice(0,10), toDate: r.toDate?.slice(0,10) }); setOpen(true) }
+  const doDelete = async () => {
+    if (!deleteTarget) return
+    try { await apiDelete(`/api/leaves?id=${deleteTarget.id}`); toast.success('Leave deleted'); setDeleteTarget(null); reload() }
+    catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  }
   return (
     <div>
-      <PageHeader title="Leaves" action={has('leaves.add') ? () => { setForm({}); setOpen(true) } : undefined} actionLabel="Apply Leave" />
+      <PageHeader title="Leaves" action={has('leaves.add') ? openAdd : undefined} actionLabel="Apply Leave" />
       <Toolbar>
         <Select value={status} onValueChange={setStatus}>
           <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
@@ -1969,6 +2040,18 @@ export function LeavesModule() {
       </Toolbar>
       <DataTable
         columns={[
+          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
+            <div className="flex gap-0.5">
+              {has('leaves.edit') && r.status === 'Pending' && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(r) }} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>}
+              {has('leaves.delete') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r) }} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+              {r.status === 'Pending' && has('leaves.approve') && (
+                <>
+                  <Button size="sm" variant="outline" onClick={async (e) => { e.stopPropagation(); await apiPatch('/api/leaves', { id: r.id, status: 'Approved' }); toast.success('Approved'); reload() }}>Approve</Button>
+                  <Button size="sm" variant="ghost" onClick={async (e) => { e.stopPropagation(); await apiPatch('/api/leaves', { id: r.id, status: 'Rejected' }); toast.success('Rejected'); reload() }}>Reject</Button>
+                </>
+              )}
+            </div>
+          ) },
           { key: 'staff', label: 'Staff', render: (r: any) => `${r.staff?.firstName} ${r.staff?.lastName || ''}` },
           { key: 'leaveType', label: 'Type' },
           { key: 'fromDate', label: 'From', render: (r: any) => fmtDateStr(r.fromDate) },
@@ -1976,21 +2059,18 @@ export function LeavesModule() {
           { key: 'days', label: 'Days', align: 'right' },
           { key: 'reason', label: 'Reason' },
           { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
-          { key: 'actions', label: '', align: 'right', render: (r: any) => r.status === 'Pending' && has('leaves.approve') && (
-            <div className="flex gap-1">
-              <Button size="sm" variant="outline" onClick={async (e) => { e.stopPropagation(); await apiPatch('/api/leaves', { id: r.id, status: 'Approved' }); toast.success('Approved'); reload() }}>Approve</Button>
-              <Button size="sm" variant="ghost" onClick={async (e) => { e.stopPropagation(); await apiPatch('/api/leaves', { id: r.id, status: 'Rejected' }); toast.success('Rejected'); reload() }}>Reject</Button>
-            </div>
-          ) },
         ]}
         rows={leaves}
       />
-      <Modal open={open} onClose={() => setOpen(false)} title="Apply Leave"
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Edit Leave' : 'Apply Leave'}
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={async () => {
-            try { await apiPost('/api/leaves', form); toast.success('Leave applied'); setOpen(false); reload() }
-            catch (e: any) { toast.error(e.message) }
+            try {
+              if (editing) { await apiPatch('/api/leaves', { id: editing.id, ...form, status: 'Pending' }); toast.success('Leave updated') }
+              else { await apiPost('/api/leaves', form); toast.success('Leave applied') }
+              setOpen(false); reload()
+            } catch (e: any) { toast.error(e.message) }
           }}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
         <div className="grid grid-cols-2 gap-3">
@@ -2016,6 +2096,7 @@ export function LeavesModule() {
           <div className="col-span-2"><FormRow label="Reason"><Textarea rows={2} value={form.reason || ''} onChange={e => setForm({ ...form, reason: e.target.value })} /></FormRow></div>
         </div>
       </Modal>
+      <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={doDelete} title="Delete Leave" message={deleteTarget ? `Delete leave record?` : ''} />
     </div>
   )
 }
