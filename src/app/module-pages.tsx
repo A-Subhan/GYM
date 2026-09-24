@@ -220,9 +220,9 @@ function AccountFormModal({ open, onClose, form, setForm, onSaved, accounts }: a
 // =================================================================
 // VOUCHERS
 // =================================================================
-export function VouchersModule() {
+export function VouchersModule({ presetType, presetTitle }: { presetType?: string, presetTitle?: string } = {}) {
   const { session, has, selectedBranchIds } = useApp()
-  const [type, setType] = useState('all')
+  const [type, setType] = useState(presetType || 'all')
   const [status, setStatus] = useState('all')
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
@@ -237,24 +237,24 @@ export function VouchersModule() {
 
   return (
     <div>
-      <PageHeader title="Vouchers"
+      <PageHeader title={presetTitle || 'Vouchers'}
         action={has('vouchers.add') ? () => setOpen(true) : undefined}
         actionLabel="New Voucher" />
       <Toolbar>
         <SearchInput value={search} onChange={setSearch} placeholder="Search voucher no, description…" />
-        <Select value={type} onValueChange={setType}>
-          <SelectTrigger className="w-40"><SelectValue placeholder="Type" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All types</SelectItem>
-            <SelectItem value="CRV">CRV — Cash Receipt</SelectItem>
-            <SelectItem value="CPV">CPV — Cash Payment</SelectItem>
-            <SelectItem value="BRV">BRV — Bank Receipt</SelectItem>
-            <SelectItem value="BPV">BPV — Bank Payment</SelectItem>
-            <SelectItem value="JV">JV — Journal</SelectItem>
-            <SelectItem value="POS-SALE">POS Sale</SelectItem>
-            <SelectItem value="FEE">Fee Payment</SelectItem>
-          </SelectContent>
-        </Select>
+        {!presetType && (
+          <Select value={type} onValueChange={setType}>
+            <SelectTrigger className="w-40"><SelectValue placeholder="Type" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              <SelectItem value="CRV">CRV — Cash Receipt</SelectItem>
+              <SelectItem value="CPV">CPV — Cash Payment</SelectItem>
+              <SelectItem value="BRV">BRV — Bank Receipt</SelectItem>
+              <SelectItem value="BPV">BPV — Bank Payment</SelectItem>
+              <SelectItem value="JV">JV — Journal</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
         <Select value={status} onValueChange={setStatus}>
           <SelectTrigger className="w-32"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
@@ -268,6 +268,15 @@ export function VouchersModule() {
       </Toolbar>
       <DataTable
         columns={[
+          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
+            <div className="flex gap-0.5">
+              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setViewing(r); setViewOpen(true) }} title="View"><Eye className="h-3.5 w-3.5" /></Button>
+              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); window.print() }} title="Print"><Printer className="h-3.5 w-3.5" /></Button>
+              {r.status === 'Posted' && has('vouchers.reverse') && (
+                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setReverseTarget(r) }} title="Reverse"><X className="h-3.5 w-3.5 text-amber-600" /></Button>
+              )}
+            </div>
+          ) },
           { key: 'voucherNo', label: 'Voucher #', mono: true },
           { key: 'voucherType', label: 'Type' },
           { key: 'voucherDate', label: 'Date', render: (r: any) => fmtDateStr(r.voucherDate) },
@@ -276,20 +285,12 @@ export function VouchersModule() {
           { key: 'totalDebit', label: 'Debit', align: 'right', mono: true, render: (r: any) => fmtMoney(r.totalDebit) },
           { key: 'totalCredit', label: 'Credit', align: 'right', mono: true, render: (r: any) => fmtMoney(r.totalCredit) },
           { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
-          { key: 'actions', label: '', align: 'right', render: (r: any) => (
-            <div className="flex gap-1 justify-end">
-              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setViewing(r); setViewOpen(true) }}><Eye className="h-3.5 w-3.5" /></Button>
-              {r.status === 'Posted' && has('vouchers.reverse') && (
-                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setReverseTarget(r) }}><X className="h-3.5 w-3.5" /></Button>
-              )}
-            </div>
-          ) },
         ]}
         rows={vouchers}
         onRowClick={(r: any) => { setViewing(r); setViewOpen(true) }}
       />
 
-      <VoucherFormModal open={open} onClose={() => setOpen(false)} defaultType={type !== 'all' ? type : 'CRV'} onSaved={() => { setOpen(false); reload() }} />
+      <VoucherFormModal open={open} onClose={() => setOpen(false)} defaultType={presetType || (type !== 'all' ? type : 'CRV')} onSaved={() => { setOpen(false); reload() }} />
       <VoucherViewModal open={viewOpen} voucher={viewing} onClose={() => setViewOpen(false)} />
       <ReverseModal open={!!reverseTarget} voucher={reverseTarget} onClose={() => setReverseTarget(null)} onDone={() => { setReverseTarget(null); reload() }} />
     </div>
@@ -297,146 +298,263 @@ export function VouchersModule() {
 }
 
 function VoucherFormModal({ open, onClose, defaultType, onSaved }: any) {
-  const { session } = useApp()
+  const { session, branches } = useApp()
   const { data: accountsData } = useFetch<any>('/api/accounts')
+  const { data: taxHeadsData } = useFetch<any>('/api/tax-heads')
   const accounts = accountsData?.accounts || []
-  const detailAccounts = accounts.filter((a: any) => a.isDetail)
-  const bookAccounts = accounts.filter((a: any) => a.bookType === 'Cash' || a.bookType === 'Bank')
-  const [form, setForm] = useState<any>({ voucherType: defaultType || 'CRV', voucherDate: new Date().toISOString().slice(0, 10), branchId: session?.branchId, lines: [{ accountId: '', debit: 0, credit: 0, lineDescription: '' }] })
+  const taxHeads = taxHeadsData?.taxHeads || []
+  const isJV = defaultType === 'JV'
+  const isCashType = defaultType === 'CRV' || defaultType === 'CPV'
+  const isBankType = defaultType === 'BRV' || defaultType === 'BPV'
+  const bookAccounts = accounts.filter((a: any) =>
+    a.isActive && (isCashType ? a.bookType === 'Cash' : isBankType ? a.bookType === 'Bank' : false)
+  )
+  const detailAccounts = accounts.filter((a: any) => a.isDetail && a.isActive)
 
-  useEffect(() => { setForm((f: any) => ({ ...f, voucherType: defaultType })) }, [defaultType])
-  useEffect(() => { if (session?.branchId) setForm((f: any) => ({ ...f, branchId: session.branchId })) }, [session])
+  const emptyLine = () => ({
+    accountId: '', lineDescription: '', amount: 0, debit: 0, credit: 0,
+    taxAccountId: '', taxRate: 0, taxAmount: 0,
+    chequeNo: '', chequeAmount: 0, chequeBankName: '', chequeStatus: '',
+    status: 'Active',
+  })
 
-  const totalDebit = form.lines.reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0)
-  const totalCredit = form.lines.reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0)
-  const balanced = Math.abs(totalDebit - totalCredit) < 0.01
+  const [form, setForm] = useState<any>({
+    voucherDate: new Date().toISOString().slice(0, 10),
+    reference: '', bookAccountId: '', branchId: session?.branchId || branches[0]?.id || '',
+    description: '', lines: [emptyLine()],
+  })
 
-  // Auto-set book account side based on voucher type
-  // CRV: cash/bank debited; CPV: cash/bank credited; BRV: bank debited; BPV: bank credited
-  const isCashReceipt = form.voucherType === 'CRV' || form.voucherType === 'BRV'
+  useEffect(() => {
+    if (open) {
+      setForm({
+        voucherDate: new Date().toISOString().slice(0, 10),
+        reference: '', bookAccountId: '', branchId: session?.branchId || branches[0]?.id || '',
+        description: '', lines: [emptyLine()],
+      })
+    }
+  }, [open])
+
+  // Tax calc: when amount or taxRate changes, auto-calc taxAmount = amount * taxRate / 100
+  const onLineAmountChange = (i: number, amt: number) => {
+    setForm((f: any) => ({
+      ...f,
+      lines: f.lines.map((l: any, idx: number) => {
+        if (idx !== i) return l
+        const taxRate = Number(l.taxRate) || 0
+        const taxAmount = l.taxAccountId ? Math.round(amt * taxRate) / 100 : 0
+        return { ...l, amount: amt, taxAmount }
+      }),
+    }))
+  }
+  const onLineTaxAccountChange = (i: number, taxAccountId: string) => {
+    setForm((f: any) => ({
+      ...f,
+      lines: f.lines.map((l: any, idx: number) => {
+        if (idx !== i) return l
+        const th = taxHeads.find((t: any) => t.id === taxAccountId)
+        const taxRate = th?.rate || 0
+        const amt = Number(l.amount) || 0
+        return { ...l, taxAccountId, taxRate, taxAmount: taxAccountId ? Math.round(amt * taxRate) / 100 : 0 }
+      }),
+    }))
+  }
+  const onLineTaxRateChange = (i: number, taxRate: number) => {
+    setForm((f: any) => ({
+      ...f,
+      lines: f.lines.map((l: any, idx: number) => {
+        if (idx !== i) return l
+        const amt = Number(l.amount) || 0
+        return { ...l, taxRate, taxAmount: l.taxAccountId ? Math.round(amt * taxRate) / 100 : 0 }
+      }),
+    }))
+  }
 
   const setLine = (i: number, patch: any) => {
     setForm((f: any) => ({ ...f, lines: f.lines.map((l: any, idx: number) => idx === i ? { ...l, ...patch } : l) }))
   }
-  const addLine = () => setForm((f: any) => ({ ...f, lines: [...f.lines, { accountId: '', debit: 0, credit: 0, lineDescription: '' }] }))
+  const addLine = () => setForm((f: any) => ({ ...f, lines: [...f.lines, emptyLine()] }))
   const removeLine = (i: number) => setForm((f: any) => ({ ...f, lines: f.lines.filter((_: any, idx: number) => idx !== i) }))
 
+  // Totals
+  const totalDetailAmount = form.lines.reduce((s: number, l: any) => s + (Number(l.amount) || 0), 0)
+  const totalTaxAmount = form.lines.reduce((s: number, l: any) => s + (Number(l.taxAmount) || 0), 0)
+  const grandTotal = totalDetailAmount + totalTaxAmount
+  const totalDebitJV = form.lines.reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0)
+  const totalCreditJV = form.lines.reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0)
+  const balancedJV = Math.abs(totalDebitJV - totalCreditJV) < 0.01
+  const canSave = isJV ? balancedJV : (form.bookAccountId && form.lines.length > 0 && form.lines.every((l: any) => l.accountId) && totalDetailAmount > 0)
+
   const save = async () => {
-    if (!form.voucherDate || !form.branchId || !form.bookAccountId) {
-      toast.error('Date, branch, and book account are required')
-      return
-    }
-    if (form.lines.length === 0 || !form.lines[0].accountId) {
-      toast.error('At least one line is required')
-      return
-    }
-    if (!balanced) { toast.error('Voucher not balanced'); return }
+    if (!form.voucherDate || !form.branchId) { toast.error('Date and branch are required'); return }
+    if (!isJV && !form.bookAccountId) { toast.error('Book Account is required'); return }
+    if (isJV && !balancedJV) { toast.error(`JV not balanced: Dr ${totalDebitJV} vs Cr ${totalCreditJV}`); return }
     try {
-      await apiPost('/api/vouchers', { ...form, status: 'Posted' })
+      const payload: any = {
+        voucherType: defaultType,
+        voucherDate: form.voucherDate,
+        branchId: form.branchId,
+        bookAccountId: isJV ? null : form.bookAccountId,
+        description: form.description,
+        reference: form.reference,
+        status: 'Posted',
+        lines: form.lines.map((l: any) => ({
+          accountId: l.accountId,
+          amount: Number(l.amount) || 0,
+          debit: isJV ? (Number(l.debit) || 0) : 0,
+          credit: isJV ? (Number(l.credit) || 0) : 0,
+          lineDescription: l.lineDescription,
+          taxAccountId: l.taxAccountId || null,
+          taxRate: Number(l.taxRate) || 0,
+          taxAmount: Number(l.taxAmount) || 0,
+          chequeNo: l.chequeNo || null,
+          chequeAmount: l.chequeAmount ? Number(l.chequeAmount) : null,
+          chequeBankName: l.chequeBankName || null,
+          chequeStatus: l.chequeStatus || null,
+          status: l.status || 'Active',
+        })),
+      }
+      await apiPost('/api/vouchers', payload)
       toast.success('Voucher posted')
       onSaved()
     } catch (e: any) { toast.error(e.message) }
   }
 
+  const title = `New ${defaultType === 'CRV' ? 'Cash Receipt' : defaultType === 'CPV' ? 'Cash Payment' : defaultType === 'BRV' ? 'Bank Receipt' : defaultType === 'BPV' ? 'Bank Payment' : 'Journal'} Voucher`
+
   return (
-    <Modal open={open} onClose={onClose} title="New Voucher" size="xl"
+    <Modal open={open} onClose={onClose} title={title} size="xl"
       footer={<>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button onClick={save} disabled={!balanced}><Save className="h-4 w-4 mr-1" /> {balanced ? 'Post Voucher' : `Out of balance by ${Math.abs(totalDebit - totalCredit).toFixed(2)}`}</Button>
+        <Button onClick={save} disabled={!canSave}>
+          <Save className="h-4 w-4 mr-1" />
+          {isJV ? (balancedJV ? 'Post Voucher' : `Out of balance: ${Math.abs(totalDebitJV - totalCreditJV).toFixed(2)}`)
+                : (canSave ? 'Post Voucher' : 'Fill all required fields')}
+        </Button>
       </>}>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <FormRow label="Voucher Type" required>
-          <Select value={form.voucherType} onValueChange={v => setForm({ ...form, voucherType: v })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="CRV">CRV — Cash Receipt</SelectItem>
-              <SelectItem value="CPV">CPV — Cash Payment</SelectItem>
-              <SelectItem value="BRV">BRV — Bank Receipt</SelectItem>
-              <SelectItem value="BPV">BPV — Bank Payment</SelectItem>
-              <SelectItem value="JV">JV — Journal</SelectItem>
-            </SelectContent>
-          </Select>
-        </FormRow>
-        <FormRow label="Date" required><Input type="date" value={form.voucherDate} onChange={e => setForm({ ...form, voucherDate: e.target.value })} /></FormRow>
-        <FormRow label="Branch" required>
-          <Select value={form.branchId || ''} onValueChange={v => setForm({ ...form, branchId: v })}>
-            <SelectTrigger><SelectValue placeholder="Select branch" /></SelectTrigger>
-            <SelectContent>
-              {/* branches fetched via context — using session fallback */}
-            </SelectContent>
-          </Select>
-        </FormRow>
-        <FormRow label="Book Account" required>
-          <Select value={form.bookAccountId || ''} onValueChange={v => setForm({ ...form, bookAccountId: v })}>
-            <SelectTrigger><SelectValue placeholder="Cash/Bank account" /></SelectTrigger>
-            <SelectContent>
-              {bookAccounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </FormRow>
-        <div className="col-span-2 sm:col-span-4"><FormRow label="Description"><Input value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow></div>
-        <div className="col-span-2 sm:col-span-4"><FormRow label="Reference"><Input value={form.reference || ''} onChange={e => setForm({ ...form, reference: e.target.value })} /></FormRow></div>
+      {/* HEADER: Date | Reference | Book Account | Branch */}
+      <div className="grid grid-cols-2 sm:grid-cols-12 gap-3 items-end">
+        <div className="sm:col-span-3"><FormRow label="Date" required><Input type="date" value={form.voucherDate} onChange={e => setForm({ ...form, voucherDate: e.target.value })} /></FormRow></div>
+        <div className="sm:col-span-3"><FormRow label="Reference #"><Input value={form.reference || ''} onChange={e => setForm({ ...form, reference: e.target.value })} /></FormRow></div>
+        <div className="sm:col-span-3">
+          {isJV ? (
+            <FormRow label="Book Account"><Input disabled value="— Not required for JV —" className="bg-muted/40 text-xs" /></FormRow>
+          ) : (
+            <FormRow label="Book Account" required>
+              <Select value={form.bookAccountId || '__none__'} onValueChange={v => setForm({ ...form, bookAccountId: v === '__none__' ? '' : v })}>
+                <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— Select —</SelectItem>
+                  {bookAccounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormRow>
+          )}
+        </div>
+        <div className="sm:col-span-3">
+          <FormRow label="Branch" required>
+            <Select value={form.branchId || '__none__'} onValueChange={v => setForm({ ...form, branchId: v === '__none__' ? '' : v })}>
+              <SelectTrigger><SelectValue placeholder="Select branch" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">— Select —</SelectItem>
+                {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormRow>
+        </div>
+        <div className="sm:col-span-12"><FormRow label="Description"><Input value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow></div>
       </div>
 
       <div className="mt-4 border rounded">
         <div className="px-3 py-2 bg-muted/40 border-b font-medium text-sm flex items-center justify-between">
-          <span>Detail Lines</span>
-          <span className={`text-xs ${balanced ? 'text-green-600' : 'text-red-600'}`}>
-            Dr: {fmtMoney(totalDebit)} · Cr: {fmtMoney(totalCredit)} · {balanced ? 'Balanced' : 'Not balanced'}
+          <span>Detail Lines {isJV ? '(manual Debit / Credit)' : `(${defaultType === 'CRV' || defaultType === 'BRV' ? 'Credit side' : 'Debit side'} — Book Account auto-${defaultType === 'CRV' || defaultType === 'BRV' ? 'Debited' : 'Credited'})`}</span>
+          <span className="text-xs text-muted-foreground">
+            {isJV ? `Dr: ${fmtMoney(totalDebitJV)} · Cr: ${fmtMoney(totalCreditJV)} · ${balancedJV ? 'Balanced' : 'Not balanced'}`
+                  : `Base: ${fmtMoney(totalDetailAmount)} · Tax: ${fmtMoney(totalTaxAmount)} · Total: ${fmtMoney(grandTotal)}`}
           </span>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/30 border-b text-xs">
+        <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-muted/30 border-b sticky top-0">
               <tr>
                 <th className="px-2 py-1.5 text-left">Account</th>
-                <th className="px-2 py-1.5 text-left">Line Description</th>
-                <th className="px-2 py-1.5 text-right">Debit</th>
-                <th className="px-2 py-1.5 text-right">Credit</th>
+                <th className="px-2 py-1.5 text-left">Description</th>
+                {isJV ? (
+                  <><th className="px-2 py-1.5 text-right">Debit</th><th className="px-2 py-1.5 text-right">Credit</th></>
+                ) : (
+                  <th className="px-2 py-1.5 text-right">Amount</th>
+                )}
+                <th className="px-2 py-1.5 text-left">Tax Account</th>
+                <th className="px-2 py-1.5 text-right">Tax %</th>
+                <th className="px-2 py-1.5 text-right">Tax Amount</th>
+                {isBankType && <><th className="px-2 py-1.5 text-left">Cheque #</th><th className="px-2 py-1.5 text-right">Cheque Amt</th><th className="px-2 py-1.5 text-left">Bank Name</th><th className="px-2 py-1.5 text-left">Cheque Status</th></>}
                 <th className="px-2 py-1.5"></th>
               </tr>
             </thead>
             <tbody>
               {form.lines.map((l: any, i: number) => (
-                <tr key={i} className="border-b last:border-0">
-                  <td className="px-2 py-1.5">
-                    <Select value={l.accountId} onValueChange={v => setLine(i, { accountId: v })}>
-                      <SelectTrigger className="h-8 min-w-[200px]"><SelectValue placeholder="Select detail account" /></SelectTrigger>
+                <tr key={i} className="border-b last:border-0 align-top">
+                  <td className="px-2 py-1.5 min-w-[180px]">
+                    <Select value={l.accountId || '__none__'} onValueChange={v => setLine(i, { accountId: v === '__none__' ? '' : v })}>
+                      <SelectTrigger className="h-7"><SelectValue placeholder="Account" /></SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="__none__">—</SelectItem>
                         {detailAccounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </td>
-                  <td className="px-2 py-1.5">
-                    <Input value={l.lineDescription || ''} onChange={e => setLine(i, { lineDescription: e.target.value })} className="h-8" />
+                  <td className="px-2 py-1.5 min-w-[140px]"><Input value={l.lineDescription || ''} onChange={e => setLine(i, { lineDescription: e.target.value })} className="h-7" /></td>
+                  {isJV ? (
+                    <>
+                      <td className="px-2 py-1.5 w-24"><Input type="number" value={l.debit || 0} onChange={e => setLine(i, { debit: Number(e.target.value), credit: 0, amount: Number(e.target.value) })} className="h-7 text-right" /></td>
+                      <td className="px-2 py-1.5 w-24"><Input type="number" value={l.credit || 0} onChange={e => setLine(i, { credit: Number(e.target.value), debit: 0, amount: Number(e.target.value) })} className="h-7 text-right" /></td>
+                    </>
+                  ) : (
+                    <td className="px-2 py-1.5 w-28"><Input type="number" value={l.amount || 0} onChange={e => onLineAmountChange(i, Number(e.target.value))} className="h-7 text-right" /></td>
+                  )}
+                  <td className="px-2 py-1.5 min-w-[160px]">
+                    <Select value={l.taxAccountId || '__none__'} onValueChange={v => onLineTaxAccountChange(i, v === '__none__' ? '' : v)}>
+                      <SelectTrigger className="h-7"><SelectValue placeholder="None" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">None</SelectItem>
+                        {taxHeads.filter((t: any) => t.isActive).map((t: any) => <SelectItem key={t.id} value={t.id}>{t.code} — {t.shortName} ({t.rate}%)</SelectItem>)}
+                      </SelectContent>
+                    </Select>
                   </td>
-                  <td className="px-2 py-1.5 w-28">
-                    <Input type="number" value={l.debit || 0} onChange={e => setLine(i, { debit: Number(e.target.value), credit: 0 })}
-                      className="h-8 text-right" />
-                  </td>
-                  <td className="px-2 py-1.5 w-28">
-                    <Input type="number" value={l.credit || 0} onChange={e => setLine(i, { credit: Number(e.target.value), debit: 0 })}
-                      className="h-8 text-right" />
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <Button size="sm" variant="ghost" onClick={() => removeLine(i)} disabled={form.lines.length === 1}><Trash2 className="h-3 w-3" /></Button>
-                  </td>
+                  <td className="px-2 py-1.5 w-20"><Input type="number" step="0.01" value={l.taxRate || 0} onChange={e => onLineTaxRateChange(i, Number(e.target.value))} className="h-7 text-right" /></td>
+                  <td className="px-2 py-1.5 w-24"><Input type="number" value={l.taxAmount || 0} readOnly className="h-7 text-right bg-muted/30" /></td>
+                  {isBankType && (
+                    <>
+                      <td className="px-2 py-1.5 min-w-[120px]"><Input value={l.chequeNo || ''} onChange={e => setLine(i, { chequeNo: e.target.value })} className="h-7" placeholder="Cheque #" /></td>
+                      <td className="px-2 py-1.5 w-28"><Input type="number" value={l.amount || 0} readOnly className="h-7 text-right bg-muted/30" title="Linked to Amount" /></td>
+                      <td className="px-2 py-1.5 min-w-[120px]"><Input value={l.chequeBankName || ''} onChange={e => setLine(i, { chequeBankName: e.target.value })} className="h-7" placeholder="Bank name" /></td>
+                      <td className="px-2 py-1.5 min-w-[120px]">
+                        <Select value={l.chequeStatus || '__none__'} onValueChange={v => setLine(i, { chequeStatus: v === '__none__' ? '' : v })}>
+                          <SelectTrigger className="h-7"><SelectValue placeholder="—" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">—</SelectItem>
+                            <SelectItem value="Hold">Hold</SelectItem>
+                            <SelectItem value="Clear">Clear</SelectItem>
+                            <SelectItem value="Bounced">Bounced</SelectItem>
+                            <SelectItem value="Deposited">Deposited</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </td>
+                    </>
+                  )}
+                  <td className="px-2 py-1.5"><Button size="sm" variant="ghost" onClick={() => removeLine(i)} disabled={form.lines.length === 1}><Trash2 className="h-3 w-3" /></Button></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <div className="p-2 border-t">
-          <Button size="sm" variant="outline" onClick={addLine}><Plus className="h-3 w-3 mr-1" />Add Line</Button>
-        </div>
+        <div className="p-2 border-t"><Button size="sm" variant="outline" onClick={addLine}><Plus className="h-3 w-3 mr-1" />Add Line</Button></div>
       </div>
-
       <div className="mt-2 text-xs text-muted-foreground">
-        {form.voucherType === 'CRV' && 'CRV: Cash account is debited (cash received).'}
-        {form.voucherType === 'CPV' && 'CPV: Cash account is credited (cash paid out).'}
-        {form.voucherType === 'BRV' && 'BRV: Bank account is debited (received in bank).'}
-        {form.voucherType === 'BPV' && 'BPV: Bank account is credited (paid from bank).'}
-        {form.voucherType === 'JV' && 'JV: Journal entry — specify both debit and credit lines.'}
+        {defaultType === 'CRV' && 'CRV: Book Account (cash) is auto-DEBITED. Detail lines are credited. Tax Amount is auto-calculated.'}
+        {defaultType === 'CPV' && 'CPV: Book Account (cash) is auto-CREDITED. Detail lines are debited. Tax Amount is auto-calculated.'}
+        {defaultType === 'BRV' && 'BRV: Book Account (bank) is auto-DEBITED. Detail lines are credited. Tax Amount is auto-calculated.'}
+        {defaultType === 'BPV' && 'BPV: Book Account (bank) is auto-CREDITED. Detail lines are debited. Tax Amount is auto-calculated. Cheque Amount is linked to line Amount.'}
+        {defaultType === 'JV' && 'JV: Manual Debit and Credit entry. Total Debit must equal Total Credit.'}
       </div>
     </Modal>
   )

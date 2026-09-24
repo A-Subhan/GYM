@@ -1,23 +1,22 @@
 import { db } from './db'
 import type { Prisma } from '@prisma/client'
 
-// Voucher type → which side the book account goes on
-// CRV (Cash Receipt): book/cash account is DEBITED (cash in)
-// CPV (Cash Payment): book/cash account is CREDITED (cash out)
-// BRV (Bank Receipt): book/bank account is DEBITED
-// BPV (Bank Payment): book/bank account is CREDITED
-// JV: no book account, lines specify both sides
-
-type VoucherType = 'CRV' | 'CPV' | 'BRV' | 'BPV' | 'JV' | 'POS-SALE' | 'FEE'
+type VoucherType = 'CRV' | 'CPV' | 'BRV' | 'BPV' | 'JV' | 'OTB' | 'POS-SALE' | 'FEE'
 
 interface VoucherLineInput {
   accountId: string
-  debit: number
-  credit: number
+  amount?: number
+  debit?: number
+  credit?: number
   lineDescription?: string
   taxAccountId?: string
   taxRate?: number
   taxAmount?: number
+  chequeNo?: string
+  chequeAmount?: number
+  chequeBankName?: string
+  chequeStatus?: string
+  status?: string
 }
 
 interface PostVoucherInput {
@@ -30,27 +29,92 @@ interface PostVoucherInput {
   lines: VoucherLineInput[]
   postedById: string
   status?: 'Draft' | 'Posted'
-  cheque?: { chequeNo: string; chequeDate: Date; bankName?: string; amount: number } | null
+}
+
+function usesBookAccount(vt: VoucherType): boolean {
+  return vt === 'CRV' || vt === 'CPV' || vt === 'BRV' || vt === 'BPV'
+}
+
+function bookAccountIsDebited(vt: VoucherType): boolean {
+  return vt === 'CRV' || vt === 'BRV'
+}
+
+// Generate voucher number: TYPE/BranchID/MonthYear/000001
+function generateVoucherNo(vt: string, branchId: string, date: Date): string {
+  const prefix = vt
+  const monthYear = String(date.getMonth() + 1).padStart(2, '0') + String(date.getFullYear()).slice(-2)
+  return `${prefix}/${branchId}/${monthYear}/000001` // simplified — would need counter in production
 }
 
 export async function postVoucher(input: PostVoucherInput) {
-  // validate balanced
-  const totalDebit = input.lines.reduce((s, l) => s + (l.debit || 0), 0)
-  const totalCredit = input.lines.reduce((s, l) => s + (l.credit || 0), 0)
-  if (Math.abs(totalDebit - totalCredit) > 0.01) {
+  let finalLines: Array<any> = []
+
+  if (usesBookAccount(input.voucherType)) {
+    if (!input.bookAccountId) throw new Error(`Book account required for ${input.voucherType}`)
+    if (input.lines.length === 0) throw new Error('Voucher must have at least one detail line')
+
+    const detailIsCredit = bookAccountIsDebited(input.voucherType)
+    const detailLines = input.lines.map((l) => {
+      const amt = Number(l.amount || 0)
+      return {
+        accountId: l.accountId,
+        debit: detailIsCredit ? 0 : amt,
+        credit: detailIsCredit ? amt : 0,
+        amount: amt,
+        lineDescription: l.lineDescription,
+        taxAccountId: l.taxAccountId,
+        taxRate: Number(l.taxRate) || 0,
+        taxAmount: Number(l.taxAmount) || 0,
+        chequeNo: l.chequeNo,
+        chequeAmount: l.chequeAmount,
+        chequeBankName: l.chequeBankName,
+        chequeStatus: l.chequeStatus,
+        status: l.status || 'Active',
+      }
+    })
+    const totalDetail = detailLines.reduce((s, l) => s + l.debit + l.credit, 0)
+    const bookLine = {
+      accountId: input.bookAccountId,
+      debit: detailIsCredit ? totalDetail : 0,
+      credit: detailIsCredit ? 0 : totalDetail,
+      amount: totalDetail,
+      lineDescription: `Book account — ${input.voucherType}`,
+      taxRate: 0,
+      taxAmount: 0,
+      status: 'Active',
+    }
+    finalLines = [bookLine, ...detailLines]
+  } else {
+    if (input.lines.length === 0) throw new Error('Voucher must have at least one line')
+    finalLines = input.lines.map((l) => ({
+      accountId: l.accountId,
+      debit: Number(l.debit) || 0,
+      credit: Number(l.credit) || 0,
+      amount: Number(l.amount) || 0,
+      lineDescription: l.lineDescription,
+      taxAccountId: l.taxAccountId,
+      taxRate: Number(l.taxRate) || 0,
+      taxAmount: Number(l.taxAmount) || 0,
+      chequeNo: l.chequeNo,
+      chequeAmount: l.chequeAmount,
+      chequeBankName: l.chequeBankName,
+      chequeStatus: l.chequeStatus,
+      status: l.status || 'Active',
+    }))
+  }
+
+  const totalDebit = finalLines.reduce((s, l) => s + l.debit, 0)
+  const totalCredit = finalLines.reduce((s, l) => s + l.credit, 0)
+  // For OTB, don't enforce balance. For all others, enforce.
+  if (input.voucherType !== 'OTB' && Math.abs(totalDebit - totalCredit) > 0.01) {
     throw new Error(`Voucher not balanced: debit=${totalDebit}, credit=${totalCredit}`)
   }
-  if (input.lines.length === 0) throw new Error('Voucher must have at least one line')
 
-  // validate voucher type / book account rules
-  if (['CRV', 'CPV', 'BRV', 'BPV'].includes(input.voucherType) && !input.bookAccountId) {
-    throw new Error(`Book account required for ${input.voucherType}`)
-  }
-
-  // generate voucher number: <TYPE>-<YY>-<SEQ>
-  const prefix = `${input.voucherType}-${new Date().getFullYear().toString().slice(-2)}-`
-  const count = await db.voucher.count({ where: { voucherNo: { startsWith: prefix } } })
-  const voucherNo = `${prefix}${String(count + 1).padStart(5, '0')}`
+  // Generate voucher number
+  const prefix = input.voucherType
+  const monthYear = String(input.voucherDate.getMonth() + 1).padStart(2, '0') + String(input.voucherDate.getFullYear()).slice(-2)
+  const count = await db.voucher.count({ where: { voucherNo: { startsWith: `${prefix}/${input.branchId}/${monthYear}/` } } })
+  const voucherNo = `${prefix}/${input.branchId}/${monthYear}/${String(count + 1).padStart(6, '0')}`
 
   return await db.$transaction(async (tx) => {
     const voucher = await tx.voucher.create({
@@ -68,29 +132,26 @@ export async function postVoucher(input: PostVoucherInput) {
         totalDebit,
         totalCredit,
         lines: {
-          create: input.lines.map((l) => ({
+          create: finalLines.map((l) => ({
             accountId: l.accountId,
             debit: l.debit,
             credit: l.credit,
+            amount: l.amount,
             lineDescription: l.lineDescription,
             taxAccountId: l.taxAccountId,
-            taxRate: l.taxRate ?? 0,
-            taxAmount: l.taxAmount ?? 0,
+            taxRate: l.taxRate,
+            taxAmount: l.taxAmount,
+            chequeNo: l.chequeNo,
+            chequeAmount: l.chequeAmount,
+            chequeBankName: l.chequeBankName,
+            chequeStatus: l.chequeStatus,
+            status: l.status,
           })),
         },
-        cheques: input.cheque
-          ? { create: { chequeNo: input.cheque.chequeNo, chequeDate: input.cheque.chequeDate, bankName: input.cheque.bankName, amount: input.cheque.amount, status: 'Hold' } }
-          : undefined,
       },
       include: { lines: true, cheques: true },
     })
 
-    // For POS sales, deduct inventory
-    if (input.voucherType === 'POS-SALE' && input.reference) {
-      // reference carries POS sale ID; handled by caller
-    }
-
-    // Audit
     await tx.auditLog.create({
       data: {
         userId: input.postedById,
@@ -127,17 +188,19 @@ export async function reverseVoucher(voucherId: string, userId: string, reason: 
         reversedById: userId,
         reversedAt: new Date(),
         reversalReason: reason,
-        totalDebit: v.totalCredit, // swap sides
+        totalDebit: v.totalCredit,
         totalCredit: v.totalDebit,
         lines: {
           create: v.lines.map((l) => ({
             accountId: l.accountId,
             debit: l.credit,
             credit: l.debit,
+            amount: l.amount,
             lineDescription: `Reversal: ${l.lineDescription || ''}`,
             taxAccountId: l.taxAccountId,
             taxRate: l.taxRate,
             taxAmount: l.taxAmount,
+            status: 'Active',
           })),
         },
       },
@@ -153,44 +216,37 @@ export async function reverseVoucher(voucherId: string, userId: string, reason: 
   })
 }
 
-// Account balance helper — sum of posted lines
+export async function deleteVoucher(voucherId: string, userId: string) {
+  const v = await db.voucher.findUnique({ where: { id: voucherId } })
+  if (!v) throw new Error('Voucher not found')
+  if (v.status === 'Posted') throw new Error('Posted vouchers cannot be deleted. Use reversal instead.')
+  if (v.status === 'Reversed') throw new Error('Reversed vouchers cannot be deleted.')
+  return await db.$transaction(async (tx) => {
+    await tx.voucherLine.deleteMany({ where: { voucherId } })
+    await tx.cheque.deleteMany({ where: { voucherId } })
+    await tx.voucher.delete({ where: { id: voucherId } })
+    await tx.auditLog.create({ data: { userId, action: 'DELETE', module: 'vouchers', details: JSON.stringify({ voucherId, voucherNo: v.voucherNo }) } })
+    return { success: true }
+  })
+}
+
 export async function getAccountBalance(accountId: string, asOf?: Date): Promise<{ debit: number; credit: number; balance: number }> {
   const lines = await db.voucherLine.findMany({
-    where: {
-      accountId,
-      voucher: {
-        status: 'Posted',
-        ...(asOf ? { voucherDate: { lte: asOf } } : {}),
-      },
-    },
+    where: { accountId, voucher: { status: 'Posted', ...(asOf ? { voucherDate: { lte: asOf } } : {}) } },
   })
   const debit = lines.reduce((s, l) => s + l.debit, 0)
   const credit = lines.reduce((s, l) => s + l.credit, 0)
   return { debit, credit, balance: debit - credit }
 }
 
-// Account balance over a period
-export async function getAccountBalanceBetween(
-  accountId: string,
-  from: Date,
-  to: Date,
-): Promise<{ debit: number; credit: number; balance: number; opening: number }> {
-  const openingLines = await db.voucherLine.findMany({
-    where: { accountId, voucher: { status: 'Posted', voucherDate: { lt: from } } },
-  })
-  const periodLines = await db.voucherLine.findMany({
-    where: { accountId, voucher: { status: 'Posted', voucherDate: { gte: from, lte: to } } },
-  })
+export async function getAccountBalanceBetween(accountId: string, from: Date, to: Date) {
+  const openingLines = await db.voucherLine.findMany({ where: { accountId, voucher: { status: 'Posted', voucherDate: { lt: from } } } })
+  const periodLines = await db.voucherLine.findMany({ where: { accountId, voucher: { status: 'Posted', voucherDate: { gte: from, lte: to } } } })
   const openingDebit = openingLines.reduce((s, l) => s + l.debit, 0)
   const openingCredit = openingLines.reduce((s, l) => s + l.credit, 0)
   const debit = periodLines.reduce((s, l) => s + l.debit, 0)
   const credit = periodLines.reduce((s, l) => s + l.credit, 0)
-  return {
-    opening: openingDebit - openingCredit,
-    debit,
-    credit,
-    balance: openingDebit - openingCredit + debit - credit,
-  }
+  return { opening: openingDebit - openingCredit, debit, credit, balance: openingDebit - openingCredit + debit - credit }
 }
 
 export type { VoucherType, PostVoucherInput, VoucherLineInput }
