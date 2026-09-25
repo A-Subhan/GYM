@@ -930,10 +930,10 @@ function MemberFormModal({ open, onClose, editing, plans, onSaved }: any) {
           </FormRow>
         </TabsContent>
         <TabsContent value="contact" className="grid grid-cols-2 gap-3">
-          <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
+          <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value, ...(form.sameAsPhone ? { whatsapp: e.target.value } : {}) })} /></FormRow>
           <FormRow label="WhatsApp">
             <div className="flex gap-2 items-center">
-              <Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} />
+              <Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} disabled={!!form.sameAsPhone} />
               <label className="flex items-center gap-1 text-xs whitespace-nowrap cursor-pointer">
                 <input type="checkbox" checked={form.sameAsPhone || false} onChange={e => {
                   if (e.target.checked) setForm({ ...form, sameAsPhone: true, whatsapp: form.phone || '' })
@@ -1155,7 +1155,8 @@ export function AttendanceModule() {
     const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
     if (inputDate < firstDayOfMonth) return 'Cannot enter attendance for last month'
     if (inputDate > lastDayOfMonth) return 'Cannot enter attendance for next month'
-    if (inputDate > today) return 'Cannot enter attendance for next day'
+    if (inputDate < today) return 'Cannot enter attendance for a previous day'
+    if (inputDate > today) return 'Cannot enter attendance for a future day'
     return null
   }
 
@@ -1449,10 +1450,10 @@ export function ProspectsModule() {
         </>}>
         <div className="grid grid-cols-2 gap-3">
           <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
-          <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
+          <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value, ...(form.sameAsPhone ? { whatsapp: e.target.value } : {}) })} /></FormRow>
           <FormRow label="WhatsApp">
             <div className="flex gap-2 items-center">
-              <Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} />
+              <Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} disabled={!!form.sameAsPhone} />
               <label className="flex items-center gap-1 text-xs whitespace-nowrap cursor-pointer">
                 <input type="checkbox" checked={form.sameAsPhone || false} onChange={e => {
                   if (e.target.checked) setForm({ ...form, sameAsPhone: true, whatsapp: form.phone || '' })
@@ -1960,6 +1961,8 @@ export function StaffModule() {
   const { has, selectedBranchIds, branches } = useApp()
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const [form, setForm] = useState<any>({})
   const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
   const { data, reload } = useFetch<any>(`/api/staff${branchesParam ? `?${branchesParam.slice(1)}` : ''}`)
@@ -1970,10 +1973,18 @@ export function StaffModule() {
   const designations = payrollMasters.filter((r: any) => r.masterType === 'Designation' && r.isActive)
   const staff = (data?.staff || []).filter((s: any) => !search || s.employeeId?.toLowerCase().includes(search.toLowerCase()) || s.firstName?.toLowerCase().includes(search.toLowerCase()))
 
+  const openAdd = () => { setEditing(null); setForm({ isTrainer: false, overtimeAllowed: false }); setOpen(true) }
+  const openEdit = (s: any) => { setEditing(s); setForm({ ...s, joiningDate: s.joiningDate ? s.joiningDate.slice(0, 10) : '' }); setOpen(true) }
+  const doDelete = async () => {
+    if (!deleteTarget) return
+    try { await apiDelete(`/api/staff?id=${deleteTarget.id}`); toast.success('Staff deleted'); setDeleteTarget(null); reload() }
+    catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  }
+
   return (
     <div>
       <PageHeader title="Staff"
-        action={has('staff.add') ? () => { setForm({ isTrainer: false, overtimeAllowed: false }); setOpen(true) } : undefined}
+        action={has('staff.add') ? openAdd : undefined}
         actionLabel="Add Staff" />
       <Toolbar>
         <SearchInput value={search} onChange={setSearch} placeholder="Search by ID or name…" />
@@ -1981,6 +1992,12 @@ export function StaffModule() {
       </Toolbar>
       <DataTable
         columns={[
+          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
+            <div className="flex gap-0.5">
+              {has('staff.edit') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(r) }} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>}
+              {has('staff.delete') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r) }} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+            </div>
+          ) },
           { key: 'employeeId', label: 'ID', mono: true },
           { key: 'name', label: 'Name', render: (r: any) => `${r.firstName} ${r.lastName || ''}` },
           { key: 'designation', label: 'Designation' },
@@ -1993,12 +2010,15 @@ export function StaffModule() {
         ]}
         rows={staff}
       />
-      <Modal open={open} onClose={() => setOpen(false)} title="Add Staff" size="lg"
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Edit Staff' : 'Add Staff'} size="lg"
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={async () => {
-            try { await apiPost('/api/staff', form); toast.success('Staff added'); setOpen(false); reload() }
-            catch (e: any) { toast.error(e.message) }
+            try {
+              if (editing) { await apiPatch('/api/staff', { ...form, id: editing.id }); toast.success('Staff updated') }
+              else { await apiPost('/api/staff', form); toast.success('Staff added') }
+              setOpen(false); reload()
+            } catch (e: any) { toast.error(e.message) }
           }}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
         {/* Single long scrollable form - no tabs */}
@@ -2017,10 +2037,10 @@ export function StaffModule() {
           <div>
             <div className="text-xs font-semibold uppercase text-muted-foreground mb-2 pb-1 border-b">Contact Information</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
+              <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value, ...(form.sameAsPhone ? { whatsapp: e.target.value } : {}) })} /></FormRow>
               <FormRow label="WhatsApp">
                 <div className="flex gap-2 items-center">
-                  <Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} />
+                  <Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} disabled={!!form.sameAsPhone} />
                   <label className="flex items-center gap-1 text-xs whitespace-nowrap cursor-pointer">
                     <input type="checkbox" checked={form.sameAsPhone || false} onChange={e => {
                       if (e.target.checked) setForm({ ...form, sameAsPhone: true, whatsapp: form.phone || '' })
@@ -2098,6 +2118,7 @@ export function StaffModule() {
           </div>
         </div>
       </Modal>
+      <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={doDelete} title="Delete Staff" message={deleteTarget ? `Delete staff "${deleteTarget.firstName} ${deleteTarget.lastName || ''}"? This will soft-delete the record.` : ''} />
     </div>
   )
 }

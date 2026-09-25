@@ -37,6 +37,16 @@ export async function POST(req: NextRequest) {
   const date = data.date ? new Date(data.date) : new Date()
   date.setHours(0, 0, 0, 0)
 
+  // Backend validation: only current day allowed (prevent previous/future day and month)
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+  const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  if (date < firstDayOfMonth) return NextResponse.json({ error: 'Cannot enter attendance for last month' }, { status: 400 })
+  if (date > lastDayOfMonth) return NextResponse.json({ error: 'Cannot enter attendance for next month' }, { status: 400 })
+  if (date < today) return NextResponse.json({ error: 'Cannot enter attendance for a previous day' }, { status: 400 })
+  if (date > today) return NextResponse.json({ error: 'Cannot enter attendance for a future day' }, { status: 400 })
+
   const existing = await db.attendance.findUnique({ where: { memberId_date: { memberId: data.memberId, date } } })
   if (existing) {
     return NextResponse.json({ error: 'Already checked in today', record: existing }, { status: 400 })

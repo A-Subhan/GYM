@@ -27,14 +27,16 @@ export async function POST(req: NextRequest) {
   const to = new Date(data.toDate)
   if (to < from) return NextResponse.json({ error: 'toDate must be after fromDate' }, { status: 400 })
   const days = Math.ceil((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)) + 1
-  // Generate leave ID: LV-0001
-  const count = await db.leave.count()
-  const leaveId = `LV-${String(count + 1).padStart(4, '0')}`
+  // Generate leave ID: BranchID/LV-0001
+  const staff = await db.staff.findUnique({ where: { id: data.staffId } })
+  const branchId = data.branchId || staff?.branchId || session.branchId || 'GLOBAL'
+  const count = await db.leave.count({ where: { branchId, leaveId: { startsWith: `${branchId}/LV-` } } })
+  const leaveId = `${branchId}/LV-${String(count + 1).padStart(4, '0')}`
   const leave = await db.leave.create({
     data: {
       leaveId,
       staffId: data.staffId,
-      branchId: data.branchId || null,
+      branchId: branchId || null,
       leaveType: data.leaveType,
       fromDate: from,
       toDate: to,
@@ -59,4 +61,16 @@ export async function PATCH(req: NextRequest) {
   })
   await db.auditLog.create({ data: { userId: session.id, action: status.toUpperCase(), module: 'leaves', details: JSON.stringify({ id }) } })
   return NextResponse.json({ leave })
+}
+
+export async function DELETE(req: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!session.permissions.includes('leaves.delete')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const url = new URL(req.url)
+  const id = url.searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+  await db.leave.delete({ where: { id } })
+  await db.auditLog.create({ data: { userId: session.id, action: 'DELETE', module: 'leaves', details: JSON.stringify({ id }) } })
+  return NextResponse.json({ success: true })
 }

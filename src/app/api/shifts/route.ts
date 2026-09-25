@@ -27,3 +27,34 @@ export async function POST(req: NextRequest) {
   })
   return NextResponse.json({ shift })
 }
+
+export async function PATCH(req: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!session.permissions.includes('shifts.edit')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const data = await req.json()
+  if (!data.id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+  const shift = await db.shift.update({
+    where: { id: data.id },
+    data: {
+      name: data.name,
+      timeIn: data.timeIn,
+      timeOut: data.timeOut,
+      workingDays: data.workingDays,
+      branchId: data.branchId || null,
+      isActive: data.isActive,
+    },
+  })
+  return NextResponse.json({ shift })
+}
+
+export async function DELETE(req: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!session.permissions.includes('shifts.delete')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const url = new URL(req.url)
+  const id = url.searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+  await db.shift.delete({ where: { id } })
+  return NextResponse.json({ success: true })
+}
