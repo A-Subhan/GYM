@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     where: {
       ...(status ? { status } : {}),
       ...(source ? { source } : {}),
-      ...(allowed ? { OR: [{ preferredBranchId: { in: allowed } }, { preferredBranchId: null }] } : {}),
+      ...(allowed ? { OR: [{ branchId: { in: allowed } }, { branchId: null }] } : {}),
       ...(search ? {
         OR: [
           { prospectId: { contains: search } },
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
         ]
       } : {}),
     },
-    include: { preferredBranch: true },
+    include: { branch: true },
     orderBy: { createdAt: 'desc' },
     take: 200,
   })
@@ -39,8 +39,9 @@ export async function POST(req: NextRequest) {
   const data = await req.json()
   if (!data.name) return NextResponse.json({ error: 'Name required' }, { status: 400 })
 
-  const count = await db.prospect.count()
-  const prospectId = `P-${String(count + 1).padStart(5, '0')}`
+  const branchId = data.branchId || session.branchId
+  const count = await db.prospect.count({ where: { branchId, prospectId: { startsWith: `${branchId}/P-` } } })
+  const prospectId = `${branchId}/P-${String(count + 1).padStart(5, '0')}`
 
   const prospect = await db.prospect.create({
     data: {
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
       age: data.age ? Number(data.age) : null,
       dob: data.dob ? new Date(data.dob) : null,
       interestedMembership: data.interestedMembership,
-      preferredBranchId: data.preferredBranchId || null,
+      branchId: branchId || null,
       source: data.source || 'WalkIn',
       status: data.status || 'New',
       inquiryDate: data.inquiryDate ? new Date(data.inquiryDate) : new Date(),

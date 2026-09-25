@@ -209,35 +209,61 @@ export function ConfirmModal({ open, onClose, onConfirm, title, message }: any) 
 }
 
 // =================================================================
-// Branches
+// Branches (with hierarchy: Company → Control → Detail)
 // =================================================================
 export function BranchesModule() {
   const { has } = useApp()
   const [search, setSearch] = useState('')
   const { data, reload } = useFetch<any>('/api/branches')
   const [open, setOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
   const [form, setForm] = useState<any>({})
+  const [confirmDel, setConfirmDel] = useState<any>(null)
 
   const branches = (data?.branches || []).filter((b: any) =>
     !search || b.name.toLowerCase().includes(search.toLowerCase()) || b.code.toLowerCase().includes(search.toLowerCase()))
 
+  // Build hierarchy
+  const byId = new Map(branches.map((b: any) => [b.id, b]))
+  const roots = branches.filter((b: any) => !b.parentId)
+
+  const renderBranch = (b: any, depth = 0): ReactNode => {
+    const children = branches.filter((c: any) => c.parentId === b.id)
+    return (
+      <div key={b.id}>
+        <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted/40" style={{ paddingLeft: `${depth * 20 + 8}px` }}>
+          <span className="font-mono text-xs text-muted-foreground w-20">{b.code}</span>
+          <span className="flex-1 text-sm">{b.name}</span>
+          <Badge variant="outline" className="text-xs">{b.level || 'Detail'}</Badge>
+          {b.city && <span className="text-xs text-muted-foreground">{b.city}</span>}
+          <Badge variant={b.isActive ? 'default' : 'destructive'} className="text-xs">{b.isActive ? 'Active' : 'Inactive'}</Badge>
+          {has('branches.edit') && (
+            <button onClick={() => { setEditing(b); setForm(b); setEditOpen(true) }} className="text-xs text-primary hover:underline">Edit</button>
+          )}
+          {has('branches.delete') && (
+            <button onClick={() => setConfirmDel(b)} className="text-xs text-destructive hover:underline">Delete</button>
+          )}
+        </div>
+        {children.map((c: any) => renderBranch(c, depth + 1))}
+      </div>
+    )
+  }
+
   return (
     <div>
-      <PageHeader title="Branches" action={has('branches.add') ? () => { setForm({}); setOpen(true) } : undefined} actionLabel="New Branch" />
+      <PageHeader title="Branches" action={has('branches.add') ? () => { setForm({ level: 'Detail' }); setOpen(true) } : undefined} actionLabel="New Branch" />
       <Toolbar>
         <SearchInput value={search} onChange={setSearch} placeholder="Search branches…" />
+        <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
       </Toolbar>
-      <DataTable
-        columns={[
-          { key: 'code', label: 'Code', mono: true },
-          { key: 'name', label: 'Name' },
-          { key: 'city', label: 'City' },
-          { key: 'phone', label: 'Phone' },
-          { key: 'email', label: 'Email' },
-          { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
-        ]}
-        rows={branches}
-      />
+      <Card>
+        <CardContent className="p-0">
+          {branches.length === 0 ? <EmptyState message="No branches" /> : roots.map((b: any) => renderBranch(b, 0))}
+        </CardContent>
+      </Card>
+
+      {/* Add Modal */}
       <Modal open={open} onClose={() => setOpen(false)} title="New Branch"
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
@@ -246,17 +272,66 @@ export function BranchesModule() {
             catch (e: any) { toast.error(e.message) }
           }}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
-          <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
-          <FormRow label="City"><Input value={form.city || ''} onChange={e => setForm({ ...form, city: e.target.value })} /></FormRow>
-          <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
-          <FormRow label="Email"><Input value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
-          <FormRow label="STRN"><Input value={form.strn || ''} onChange={e => setForm({ ...form, strn: e.target.value })} /></FormRow>
-          <FormRow label="NTN"><Input value={form.ntn || ''} onChange={e => setForm({ ...form, ntn: e.target.value })} /></FormRow>
-          <div className="col-span-2"><FormRow label="Address"><Input value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></FormRow></div>
-        </div>
-        <div className="text-xs text-muted-foreground mt-3">Branch code is generated automatically (BR-001, BR-002, …)</div>
+        <BranchForm form={form} setForm={setForm} branches={branches} />
+        <div className="text-xs text-muted-foreground mt-3">Branch code is generated automatically (BR-001, BR-002, …). Hierarchy: Company → Control (Head Office) → Detail (Branch).</div>
       </Modal>
+
+      {/* Edit Modal */}
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit Branch"
+        footer={<>
+          <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+          <Button onClick={async () => {
+            try { await apiPatch('/api/branches', { ...form, id: editing.id }); toast.success('Branch updated'); setEditOpen(false); reload() }
+            catch (e: any) { toast.error(e.message) }
+          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+        </>}>
+        <BranchForm form={form} setForm={setForm} branches={branches} excludeId={editing?.id} />
+      </Modal>
+
+      {/* Delete confirmation */}
+      <ConfirmModal open={!!confirmDel} onClose={() => setConfirmDel(null)} title="Delete Branch"
+        message={`Delete "${confirmDel?.name}"? This will soft-delete the branch.`}
+        onConfirm={async () => {
+          try { await apiDelete(`/api/branches?id=${confirmDel.id}`); toast.success('Branch deleted'); reload() }
+          catch (e: any) { toast.error(e.message) }
+        }} />
+    </div>
+  )
+}
+
+function BranchForm({ form, setForm, branches, excludeId }: any) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
+      <FormRow label="Level" required>
+        <Select value={form.level || 'Detail'} onValueChange={v => setForm({ ...form, level: v })}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Company">Company (top-level)</SelectItem>
+            <SelectItem value="Control">Control (Head Office)</SelectItem>
+            <SelectItem value="Detail">Detail (Branch)</SelectItem>
+          </SelectContent>
+        </Select>
+      </FormRow>
+      <FormRow label="Parent Branch">
+        <Select value={form.parentId || ''} onValueChange={v => setForm({ ...form, parentId: v || null })}>
+          <SelectTrigger><SelectValue placeholder="Root (no parent)" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">Root (no parent)</SelectItem>
+            {branches.filter((b: any) => b.id !== excludeId && b.level !== 'Detail').map((b: any) => (
+              <SelectItem key={b.id} value={b.id}>{b.code} — {b.name} ({b.level})</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </FormRow>
+      <FormRow label="City"><Input value={form.city || ''} onChange={e => setForm({ ...form, city: e.target.value })} /></FormRow>
+      <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
+      <FormRow label="Email"><Input value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
+      <FormRow label="STRN"><Input value={form.strn || ''} onChange={e => setForm({ ...form, strn: e.target.value })} /></FormRow>
+      <FormRow label="NTN"><Input value={form.ntn || ''} onChange={e => setForm({ ...form, ntn: e.target.value })} /></FormRow>
+      <FormRow label="FBR"><Input value={form.fbr || ''} onChange={e => setForm({ ...form, fbr: e.target.value })} /></FormRow>
+      <FormRow label="Logo URL"><Input value={form.logo || ''} onChange={e => setForm({ ...form, logo: e.target.value })} /></FormRow>
+      <div className="col-span-2"><FormRow label="Address"><Input value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></FormRow></div>
     </div>
   )
 }

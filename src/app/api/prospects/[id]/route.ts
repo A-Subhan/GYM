@@ -26,7 +26,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       gender: data.gender,
       age: data.age ? Number(data.age) : null,
       interestedMembership: data.interestedMembership,
-      preferredBranchId: data.preferredBranchId,
+      branchId: data.branchId,
       source: data.source,
       status: data.status,
       followUpDate: data.followUpDate ? new Date(data.followUpDate) : null,

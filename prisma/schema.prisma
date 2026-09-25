@@ -25,6 +25,7 @@ model Company {
   accountingType String   @default("FIFO")
   strn           String?
   ntn            String?
+  fbr            String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
@@ -39,14 +40,19 @@ model Branch {
   email     String?
   strn      String?
   ntn       String?
+  fbr       String?
   logo      String?
+  level     String   @default("Detail") // "Company" | "Control" | "Detail"
+  parentId  String?
+  parent    Branch?  @relation("BranchHierarchy", fields: [parentId], references: [id])
+  children  Branch[] @relation("BranchHierarchy")
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   isDeleted Boolean  @default(false)
 
   users              User[]
-  accounts           Account[]
+  charts             Charts[]
   members            Member[]
   attendance         Attendance[]
   fees               Fee[]
@@ -59,7 +65,6 @@ model Branch {
   staff              Staff[]
   shifts             Shift[]
   calendar           CalendarDay[]
-  vouchers           Voucher[]
   taxHeads           TaxHead[]
   payroll            Payroll[]
   posSales           PosSale[]
@@ -67,6 +72,10 @@ model Branch {
   freezes            MembershipFreeze[]
   knockOffBills      KnockOffBill[] @relation("KnockOffBranch")
   gymMasterFiles     GymMasterFile[] @relation("GymMasterBranch")
+  cashBooks          CashBook[]
+  bankBooks          BankBook[]
+  jvs                JV[]
+  openTBs            OpenTB[]
 }
 
 model Role {
@@ -89,6 +98,7 @@ model Permission {
   description String?
 
   roles RolePermission[]
+  userPermissions UserPermission[]
 }
 
 model RolePermission {
@@ -123,6 +133,18 @@ model User {
 
   sessions  Session[]
   auditLogs AuditLog[]
+  userPermissions UserPermission[]
+}
+
+model UserPermission {
+  id           String  @id @default(cuid())
+  userId       String
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionId])
+  @@index([userId])
 }
 
 model Session {
@@ -159,54 +181,55 @@ model AuditLog {
 }
 
 // =================================================================
-// FINANCE
+// FINANCE — CHARTS (formerly Account)
 // =================================================================
 
-model Account {
+model Charts {
   id                 String   @id @default(cuid())
   code               String
   name               String
   parentId           String?
-  parent             Account? @relation("AccountHierarchy", fields: [parentId], references: [id])
-  children           Account[] @relation("AccountHierarchy")
+  parent             Charts?  @relation("ChartsHierarchy", fields: [parentId], references: [id])
+  children           Charts[] @relation("ChartsHierarchy")
   accountType        String
   bookType           String?
   accountTag         String?
-  isControl         Boolean  @default(false)
-  isDetail          Boolean  @default(true)
-  isActive          Boolean  @default(true)
-  branchId          String?
-  branch            Branch?  @relation(fields: [branchId], references: [id])
-  contactName       String?
-  phone             String?
-  email             String?
-  address           String?
-  bankName          String?
-  bankAccountNo     String?
-  bankBranch        String?
-  cnic              String?
-  ntn               String?
-  description       String?
-  // New COA fields per spec
-  fbr               String?
-  otherName         String?
-  referenceNumber   String?
-  faxNumber         String?
-  city              String?
-  country           String?
-  website           String?
-  paymentTerms      String?
+  isControl          Boolean  @default(false)
+  isDetail           Boolean  @default(true)
+  isActive           Boolean  @default(true)
+  branchId           String?
+  branch             Branch?  @relation(fields: [branchId], references: [id])
+  contactName        String?
+  phone              String?
+  email              String?
+  address            String?
+  bankName           String?
+  bankAccountNo      String?
+  bankBranch         String?
+  cnic               String?
+  ntn                String?
+  strn               String?
+  fbr                String?
+  description        String?
+  otherName          String?
+  referenceNumber    String?
+  faxNumber          String?
+  city               String?
+  country            String?
+  website            String?
+  paymentTerms       String?
   registrationNumber String?
-  // Opening balance fields removed per spec — OTB uses separate screen
-  openingBalance    Float    @default(0)
-  openingBalanceType String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  lines             VoucherLine[]
-  bookVouchers      Voucher[] @relation("VoucherBookAccount")
-  mappings          AccountMapping[]
-  knockOffBills     KnockOffBill[] @relation("KnockOffAccount")
+  cashLines          CashBookLine[]
+  bankLines          BankBookLine[]
+  jvLines            JVLine[]
+  openTBLines        OpenTBLine[]
+  bookCashVouchers   CashBook[] @relation("CashBookBookAccount")
+  bookBankVouchers   BankBook[] @relation("BankBookBookAccount")
+  mappings           AccountMapping[]
+  knockOffBills      KnockOffBill[] @relation("KnockOffAccount")
 
   @@index([code])
   @@index([parentId])
@@ -254,18 +277,22 @@ model TaxHead {
   @@index([code])
 }
 
-model Voucher {
+// =================================================================
+// CASH BOOK (CPV + CRV)
+// =================================================================
+
+model CashBook {
   id           String   @id @default(cuid())
   voucherNo    String   @unique
-  voucherType  String
+  voucherType  String   // "CPV" | "CRV"
   voucherDate  DateTime
   branchId     String
   branch       Branch   @relation(fields: [branchId], references: [id])
   bookAccountId String?
-  bookAccount  Account? @relation("VoucherBookAccount", fields: [bookAccountId], references: [id])
+  bookAccount  Charts?  @relation("CashBookBookAccount", fields: [bookAccountId], references: [id])
   description  String?
   reference    String?
-  status       String   @default("Draft")
+  status       String   @default("Posted")
   postedById   String?
   postedAt     DateTime?
   reversedById String?
@@ -276,11 +303,7 @@ model Voucher {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  lines      VoucherLine[]
-  cheques    Cheque[]
-  feePayments FeePayment[]
-  fees       Fee[]     @relation("FeeVoucher")
-  payrolls   Payroll[]
+  lines       CashBookLine[]
 
   @@index([voucherType])
   @@index([voucherDate])
@@ -288,12 +311,12 @@ model Voucher {
   @@index([status])
 }
 
-model VoucherLine {
+model CashBookLine {
   id         String   @id @default(cuid())
   voucherId  String
-  voucher    Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  voucher    CashBook @relation(fields: [voucherId], references: [id], onDelete: Cascade)
   accountId  String
-  account    Account  @relation(fields: [accountId], references: [id])
+  account    Charts   @relation(fields: [accountId], references: [id])
   lineDescription String?
   amount     Float    @default(0)
   debit      Float    @default(0)
@@ -312,10 +335,163 @@ model VoucherLine {
   @@index([accountId])
 }
 
-model Cheque {
+// =================================================================
+// BANK BOOK (BPV + BRV)
+// =================================================================
+
+model BankBook {
+  id           String   @id @default(cuid())
+  voucherNo    String   @unique
+  voucherType  String   // "BPV" | "BRV"
+  voucherDate  DateTime
+  branchId     String
+  branch       Branch   @relation(fields: [branchId], references: [id])
+  bookAccountId String?
+  bookAccount  Charts?  @relation("BankBookBookAccount", fields: [bookAccountId], references: [id])
+  description  String?
+  reference    String?
+  status       String   @default("Posted")
+  postedById   String?
+  postedAt     DateTime?
+  reversedById String?
+  reversedAt   DateTime?
+  reversalReason String?
+  totalDebit   Float    @default(0)
+  totalCredit  Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  lines       BankBookLine[]
+
+  @@index([voucherType])
+  @@index([voucherDate])
+  @@index([branchId])
+  @@index([status])
+}
+
+model BankBookLine {
   id         String   @id @default(cuid())
   voucherId  String
-  voucher    Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  voucher    BankBook @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  accountId  String
+  account    Charts   @relation(fields: [accountId], references: [id])
+  lineDescription String?
+  amount     Float    @default(0)
+  debit      Float    @default(0)
+  credit     Float    @default(0)
+  taxAccountId String?
+  taxRate    Float    @default(0)
+  taxAmount  Float    @default(0)
+  chequeNo   String?
+  chequeAmount Float?
+  chequeBankName String?
+  chequeStatus String?
+  status     String   @default("Active")
+  createdAt  DateTime @default(now())
+
+  @@index([voucherId])
+  @@index([accountId])
+}
+
+// =================================================================
+// JOURNAL VOUCHER (JV only)
+// =================================================================
+
+model JV {
+  id           String   @id @default(cuid())
+  voucherNo    String   @unique
+  voucherType  String   @default("JV")
+  voucherDate  DateTime
+  branchId     String
+  branch       Branch   @relation(fields: [branchId], references: [id])
+  description  String?
+  reference    String?
+  status       String   @default("Posted")
+  postedById   String?
+  postedAt     DateTime?
+  reversedById String?
+  reversedAt   DateTime?
+  reversalReason String?
+  totalDebit   Float    @default(0)
+  totalCredit  Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  lines       JVLine[]
+
+  @@index([voucherDate])
+  @@index([branchId])
+  @@index([status])
+}
+
+model JVLine {
+  id         String   @id @default(cuid())
+  voucherId  String
+  voucher    JV       @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  accountId  String
+  account    Charts   @relation(fields: [accountId], references: [id])
+  lineDescription String?
+  amount     Float    @default(0)
+  debit      Float    @default(0)
+  credit     Float    @default(0)
+  taxAccountId String?
+  taxRate    Float    @default(0)
+  taxAmount  Float    @default(0)
+  status     String   @default("Active")
+  createdAt  DateTime @default(now())
+
+  @@index([voucherId])
+  @@index([accountId])
+}
+
+// =================================================================
+// OPENING TRIAL BALANCE (OTB)
+// =================================================================
+
+model OpenTB {
+  id           String   @id @default(cuid())
+  voucherNo    String   @unique
+  voucherType  String   @default("OTV")
+  voucherDate  DateTime
+  branchId     String
+  branch       Branch   @relation(fields: [branchId], references: [id])
+  description  String?
+  status       String   @default("Posted")
+  postedById   String?
+  postedAt     DateTime?
+  totalDebit   Float    @default(0)
+  totalCredit  Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  lines       OpenTBLine[]
+
+  @@index([voucherDate])
+  @@index([branchId])
+}
+
+model OpenTBLine {
+  id         String   @id @default(cuid())
+  voucherId  String
+  voucher    OpenTB   @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  accountId  String
+  account    Charts   @relation(fields: [accountId], references: [id])
+  lineDescription String?
+  debit      Float    @default(0)
+  credit     Float    @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([voucherId])
+  @@index([accountId])
+}
+
+// =================================================================
+// CHEQUES (shared across CashBook/BankBook)
+// =================================================================
+
+model Cheque {
+  id         String   @id @default(cuid())
+  voucherNo  String   // references CashBook.voucherNo or BankBook.voucherNo
   chequeNo   String
   chequeDate DateTime
   bankName   String?
@@ -336,7 +512,7 @@ model AccountMapping {
   branchId    String?
   key         String
   accountId   String
-  account     Account  @relation(fields: [accountId], references: [id])
+  account     Charts   @relation(fields: [accountId], references: [id])
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -352,6 +528,9 @@ model FinanceDefaults {
   defaultBankAccountId String?
   defaultTaxHeadId String?
   financialYearId String?
+  financeType     String   @default("FIFO") // "FIFO" | "Billwise"
+  coaLevelDetailing Int    @default(2) // digits per level (e.g. 2 = 01, 01001, ...)
+  coaLevelLocked  Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
@@ -433,6 +612,7 @@ model MembershipPlan {
 
 model Attendance {
   id         String   @id @default(cuid())
+  attendanceId String  @unique
   memberId   String
   member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
   branchId   String
@@ -466,8 +646,7 @@ model Fee {
   paymentAccountId String?
   paymentDate  DateTime?
   reference    String?
-  voucherId    String?
-  voucher      Voucher? @relation("FeeVoucher", fields: [voucherId], references: [id])
+  voucherNo    String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -483,8 +662,7 @@ model FeePayment {
   id         String   @id @default(cuid())
   feeId      String
   fee        Fee       @relation(fields: [feeId], references: [id], onDelete: Cascade)
-  voucherId  String
-  voucher    Voucher   @relation(fields: [voucherId], references: [id])
+  voucherNo  String
   amount     Float
   method     String
   accountId  String
@@ -503,8 +681,8 @@ model Prospect {
   age        Int?
   dob        DateTime?
   interestedMembership String?
-  preferredBranchId String?
-  preferredBranch  Branch? @relation(fields: [preferredBranchId], references: [id])
+  branchId   String?
+  branch     Branch?  @relation(fields: [branchId], references: [id])
   source     String
   status     String   @default("New")
   inquiryDate DateTime @default(now())
@@ -517,10 +695,12 @@ model Prospect {
 
   @@index([status])
   @@index([source])
+  @@index([branchId])
 }
 
 model MembershipFreeze {
   id         String   @id @default(cuid())
+  freezeId   String   @unique
   memberId   String
   member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
   branchId   String
@@ -539,6 +719,7 @@ model MembershipFreeze {
 
 model FollowUp {
   id         String   @id @default(cuid())
+  followUpId String   @unique
   memberId   String?
   member     Member?  @relation(fields: [memberId], references: [id], onDelete: Cascade)
   prospectId String?
@@ -584,6 +765,7 @@ model Exercise {
 
 model WorkoutPlan {
   id         String   @id @default(cuid())
+  workoutPlanId String @unique
   name       String
   description String?
   isGeneral  Boolean  @default(true)
@@ -636,6 +818,7 @@ model WorkoutAssignment {
 
 model DietPlan {
   id         String   @id @default(cuid())
+  dietPlanId String   @unique
   name       String
   description String?
   branchId   String?
@@ -678,6 +861,7 @@ model DietAssignment {
 
 model ProgressEntry {
   id         String   @id @default(cuid())
+  progressId String   @unique
   memberId   String
   member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
   date       DateTime @default(now())
@@ -770,7 +954,7 @@ model PosSale {
   total      Float
   paymentMethod String
   paymentAccountId String?
-  voucherId  String?
+  voucherNo  String?
   status     String   @default("Completed")
   notes      String?
   createdAt  DateTime @default(now())
@@ -866,8 +1050,10 @@ model CalendarDay {
 
 model Leave {
   id         String   @id @default(cuid())
+  leaveId    String   @unique
   staffId    String
   staff      Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  branchId   String?
   leaveType  String
   fromDate   DateTime
   toDate     DateTime
@@ -918,21 +1104,12 @@ model Payroll {
   totalDeductions Float
   netPay     Float
   status     String   @default("Draft")
-  voucherId  String?
-  voucher    Voucher? @relation(fields: [voucherId], references: [id])
+  voucherNo  String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   @@unique([staffId, month, year])
   @@index([branchId])
-}
-
-model LeaveType {
-  id         String   @id @default(cuid())
-  name       String   @unique
-  allowedDays Int
-  isPaid     Boolean  @default(false)
-  createdAt  DateTime @default(now())
 }
 
 model Allowance {
@@ -949,22 +1126,22 @@ model Allowance {
 
 model KnockOffBill {
   id            String   @id @default(cuid())
-  billId        String   @unique  // OTB/BranchID/000001
-  accountId     String   // The Customer/Supplier account from COA
-  account       Account  @relation("KnockOffAccount", fields: [accountId], references: [id])
+  billId        String   @unique
+  accountId     String
+  account       Charts   @relation("KnockOffAccount", fields: [accountId], references: [id])
   branchId      String
   branch        Branch   @relation("KnockOffBranch", fields: [branchId], references: [id])
-  billNumber    String   // mandatory, user entered
-  referenceNumber String? // optional
-  billType      String   // Sales Bill, Purchase Bill, Credit Note, etc.
-  amount        Float    // mandatory
+  billNumber    String
+  referenceNumber String?
+  billType      String
+  amount        Float
   referenceDate DateTime?
   dueDate       DateTime?
-  description   String?    // max 20 chars — handled in app since SQLite doesn't enforce
-  isDebit       Boolean  // auto-determined by billType
+  description   String?
+  isDebit       Boolean
   outstandingAmount Float @default(0)
   adjustedAmount Float   @default(0)
-  status        String   @default("Open") // Open, Settled, Partial
+  status        String   @default("Open")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -978,15 +1155,15 @@ model KnockOffBill {
 
 model GymMasterFile {
   id            String   @id @default(cuid())
-  masterType    String   // Exercise, Equipment, ExerciseType, etc.
-  masterId      String   // e.g. "001" for Exercise master
-  code          String   // e.g. "0010001" for individual record
+  masterType    String
+  masterId      String
+  code          String
   name          String
   description   String?
-  branchId     String?  // for branchwise equipment
+  branchId     String?
   branch        Branch?  @relation("GymMasterBranch", fields: [branchId], references: [id])
   isActive      Boolean  @default(true)
-  extra         String?  // JSON for additional fields
+  extra         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -1001,7 +1178,7 @@ model GymMasterFile {
 
 model PayrollMasterFile {
   id            String   @id @default(cuid())
-  masterType    String   // Education, Designation, Country, Department, Shirt, etc.
+  masterType    String
   code          String
   name          String
   description   String?

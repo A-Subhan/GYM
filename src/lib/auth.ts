@@ -26,11 +26,17 @@ export async function getSession(): Promise<SessionUser | null> {
 
   const user = await db.user.findUnique({
     where: { id: payload.userId },
-    include: { role: { include: { permissions: { include: { permission: true } } } } },
+    include: {
+      role: { include: { permissions: { include: { permission: true } } } },
+      userPermissions: { include: { permission: true } },
+    },
   })
   if (!user || !user.isActive || user.isDeleted) return null
 
-  const perms = user.role?.permissions?.map(p => p.permission.code) ?? []
+  const rolePerms = user.role?.permissions?.map(p => p.permission.code) ?? []
+  const userPerms = user.userPermissions?.map(p => p.permission.code) ?? []
+  // Merge role permissions + user override permissions (union)
+  const perms = Array.from(new Set([...rolePerms, ...userPerms]))
   const isSuperAdmin = user.role?.name === 'Super Admin' || user.role?.name === 'Owner'
 
   return {

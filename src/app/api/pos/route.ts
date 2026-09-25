@@ -84,24 +84,24 @@ export async function POST(req: NextRequest) {
       return s
     })
 
-    // Post voucher (separate tx, references sale.id via reference)
+    // Post voucher as CRV (cash) or BRV (bank/online)
+    const voucherType = paymentMethod === 'Cash' ? 'CRV' : 'BRV'
     const voucher = await postVoucher({
-      voucherType: 'POS-SALE',
+      voucherType: voucherType as any,
       voucherDate: new Date(),
       branchId,
       bookAccountId: debitAccountId,
       description: `POS Sale ${saleNo}`,
       reference: sale.id,
       lines: [
-        { accountId: debitAccountId, debit: total, credit: 0, lineDescription: `Sale ${saleNo}` },
-        { accountId: posIncomeMapping.accountId, debit: 0, credit: total, lineDescription: `POS income` },
+        { accountId: posIncomeMapping.accountId, debit: 0, credit: total, lineDescription: `POS income ${saleNo}` },
       ],
       postedById: session.id,
       status: 'Posted',
     })
 
     // link voucher to sale
-    await db.posSale.update({ where: { id: sale.id }, data: { voucherId: voucher.id } })
+    await db.posSale.update({ where: { id: sale.id }, data: { voucherNo: voucher.voucherNo } })
 
     return NextResponse.json({ sale, voucher })
   } catch (e: any) {

@@ -27,9 +27,14 @@ export async function POST(req: NextRequest) {
   const to = new Date(data.toDate)
   if (to < from) return NextResponse.json({ error: 'toDate must be after fromDate' }, { status: 400 })
   const days = Math.ceil((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)) + 1
+  // Generate leave ID: LV-0001
+  const count = await db.leave.count()
+  const leaveId = `LV-${String(count + 1).padStart(4, '0')}`
   const leave = await db.leave.create({
     data: {
+      leaveId,
       staffId: data.staffId,
+      branchId: data.branchId || null,
       leaveType: data.leaveType,
       fromDate: from,
       toDate: to,

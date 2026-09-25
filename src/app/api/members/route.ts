@@ -44,9 +44,12 @@ export async function POST(req: NextRequest) {
   // Fee Relaxation Days: 0..27
   const feeRelaxationDays = Math.max(0, Math.min(27, Number(data.feeRelaxationDays) || 0))
 
-  // Auto-generate member ID
-  const count = await db.member.count()
-  const memberId = `M-${String(count + 1).padStart(5, '0')}`
+  // Auto-generate member ID: BranchID/MonthYear/00001
+  const date = new Date()
+  const monthYear = String(date.getMonth() + 1).padStart(2, '0') + String(date.getFullYear()).slice(-2)
+  const branchId = data.branchId || session.branchId
+  const count = await db.member.count({ where: { branchId, memberId: { startsWith: `${branchId}/${monthYear}/` } } })
+  const memberId = `${branchId}/${monthYear}/${String(count + 1).padStart(5, '0')}`
 
   const member = await db.member.create({
     data: {

@@ -35,6 +35,7 @@ import {
   FinanceReportsModule as FinanceReportsModuleImpl,
   AccountMappingsModule as AccountMappingsModuleImpl,
   FinanceDefaultsModule as FinanceDefaultsModuleImpl,
+  AdminDefaultsModule as AdminDefaultsModuleImpl,
   PeriodsModule as PeriodsModuleImpl,
   MembersModule as MembersModuleImpl,
   MembershipsModule as MembershipsModuleImpl,
@@ -88,7 +89,7 @@ type ModuleKey =
   | 'staff' | 'staff-shifts' | 'staff-calendar' | 'staff-leaves' | 'staff-overtime'
   | 'payroll'
   // Admin
-  | 'admin-company' | 'admin-branches' | 'admin-users' | 'admin-roles'
+  | 'admin-defaults' | 'admin-company' | 'admin-branches' | 'admin-users' | 'admin-roles'
   | 'admin-audit'
 
 const NAV = [
@@ -145,10 +146,10 @@ const NAV = [
   },
   {
     label: 'Admin', icon: Settings, children: [
+      { key: 'admin-defaults', label: 'Defaults', perm: 'company.view' },
       { key: 'admin-company', label: 'Company', perm: 'company.view' },
       { key: 'admin-branches', label: 'Branches', perm: 'branches.view' },
-      { key: 'admin-users', label: 'Users', perm: 'users.view' },
-      { key: 'admin-roles', label: 'Roles & Permissions', perm: 'roles.view' },
+      { key: 'admin-users', label: 'Users, Roles & Permissions', perm: 'users.view' },
       { key: 'admin-audit', label: 'Audit Log', perm: 'audit.view' },
     ],
   },
@@ -609,6 +610,7 @@ function ModuleRouter({ active, setActive }: { active: ModuleKey, setActive: (m:
     case 'staff-leaves': return <LeavesModule />
     case 'staff-overtime': return <OvertimeModule />
     case 'payroll': return <PayrollModule />
+    case 'admin-defaults': return <AdminDefaultsModule />
     case 'admin-company': return <CompanyModule />
     case 'admin-branches': return <BranchesModule />
     case 'admin-users': return <UsersModule />
@@ -682,6 +684,7 @@ function BranchesModule() { return <BranchesModuleImpl /> }
 function UsersModule() { return <UsersModuleImpl /> }
 function RolesModule() { return <RolesModuleImpl /> }
 function AuditModule() { return <AuditModuleImpl /> }
+function AdminDefaultsModule() { return <AdminDefaultsModuleImpl /> }
 
 // =================================================================
 // Opening Trial Balance — COA grid with Dr/Cr, allows unbalanced save

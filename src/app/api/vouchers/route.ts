@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, getSelectedBranchIds } from '@/lib/auth'
-import { postVoucher } from '@/lib/accounting'
+import { postVoucher, listAllVouchers } from '@/lib/accounting'
 
 export async function GET(req: NextRequest) {
   const session = await getSession()
@@ -15,16 +15,12 @@ export async function GET(req: NextRequest) {
   const search = url.searchParams.get('q')
   const allowed = getSelectedBranchIds(session, branchesParam)
 
-  const vouchers = await db.voucher.findMany({
-    where: {
-      ...(voucherType ? { voucherType } : {}),
-      ...(status ? { status } : {}),
-      ...(allowed ? { branchId: { in: allowed } } : {}),
-      ...(from || to ? { voucherDate: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) } } : {}),
-      ...(search ? { OR: [{ voucherNo: { contains: search } }, { description: { contains: search } }, { reference: { contains: search } }] } : {}),
-    },
-    include: { branch: true, bookAccount: true, lines: { include: { account: true } }, cheques: true },
-    orderBy: { voucherDate: 'desc' },
+  const vouchers = await listAllVouchers({
+    ...(voucherType ? { voucherType } : {}),
+    ...(status ? { status } : {}),
+    ...(allowed ? { branchIds: allowed } : {}),
+    ...(from || to ? { from: from ? new Date(from) : undefined, to: to ? new Date(to) : undefined } : {}),
+    ...(search ? { search } : {}),
     take: 200,
   })
   return NextResponse.json({ vouchers })

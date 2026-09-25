@@ -10,14 +10,12 @@ export async function GET(req: NextRequest) {
   const allowed = getSelectedBranchIds(session, url.searchParams.get('branches'))
 
   // Real stats from DB
-  const [members, activeMembers, todayAttendance, unpaidFees, prospects, drafts, postedVouchers, todayRevenue, branches, staff] = await Promise.all([
+  const [members, activeMembers, todayAttendance, unpaidFees, prospects, todayRevenue, branches, staff] = await Promise.all([
     db.member.count({ where: { isDeleted: false, ...(allowed ? { branchId: { in: allowed } } : {}) } }),
     db.member.count({ where: { isDeleted: false, isActive: true, status: 'Active', ...(allowed ? { branchId: { in: allowed } } : {}) } }),
     db.attendance.count({ where: { date: { gte: new Date(new Date().setHours(0, 0, 0, 0)) }, ...(allowed ? { branchId: { in: allowed } } : {}) } }),
     db.fee.aggregate({ where: { status: { in: ['Unpaid', 'Late', 'Overdue', 'Partial'] }, ...(allowed ? { branchId: { in: allowed } } : {}) }, _sum: { balance: true } }),
     db.prospect.count({ where: { status: { not: 'Converted' } } }),
-    db.voucher.count({ where: { status: 'Draft', ...(allowed ? { branchId: { in: allowed } } : {}) } }),
-    db.voucher.count({ where: { status: 'Posted', ...(allowed ? { branchId: { in: allowed } } : {}) } }),
     db.fee.aggregate({
       where: { paymentDate: { gte: new Date(new Date().setHours(0, 0, 0, 0)) }, ...(allowed ? { branchId: { in: allowed } } : {}) },
       _sum: { paidAmount: true },
@@ -25,6 +23,16 @@ export async function GET(req: NextRequest) {
     db.branch.count({ where: { isDeleted: false, ...(allowed ? { id: { in: allowed } } : {}) } }),
     db.staff.count({ where: { isDeleted: false, isActive: true, ...(allowed ? { branchId: { in: allowed } } : {}) } }),
   ])
+
+  // Posted vouchers across all 4 voucher tables
+  const [cashPosted, bankPosted, jvPosted, otbPosted] = await Promise.all([
+    db.cashBook.count({ where: { status: 'Posted', ...(allowed ? { branchId: { in: allowed } } : {}) } }),
+    db.bankBook.count({ where: { status: 'Posted', ...(allowed ? { branchId: { in: allowed } } : {}) } }),
+    db.jV.count({ where: { status: 'Posted', ...(allowed ? { branchId: { in: allowed } } : {}) } }),
+    db.openTB.count({ where: { status: 'Posted', ...(allowed ? { branchId: { in: allowed } } : {}) } }),
+  ])
+  const postedVouchers = cashPosted + bankPosted + jvPosted + otbPosted
+  const drafts = 0 // No draft concept in the new voucher tables (Posted/Reversed only)
 
   // Due/Grace alerts: fees with dueDate <= today + member's relaxation days
   const today = new Date()

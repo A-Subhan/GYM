@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
       ...(status ? { status } : {}),
       ...(memberId ? { memberId } : {}),
     },
-    include: { member: true, branch: true, voucher: true, payments: true },
+    include: { member: { include: { membershipPlan: true } }, branch: true, payments: true },
     orderBy: { dueDate: 'desc' },
     take: 200,
   })
@@ -39,9 +39,11 @@ export async function POST(req: NextRequest) {
   const discount = Number(data.discount) || 0
   const dueDate = data.dueDate ? new Date(data.dueDate) : billingPeriodEnd
 
-  // Generate fee number
-  const count = await db.fee.count()
-  const feeNo = `F-${String(count + 1).padStart(5, '0')}`
+  // Generate fee number: BranchID/MonthYear/00001
+  const date = new Date()
+  const monthYear = String(date.getMonth() + 1).padStart(2, '0') + String(date.getFullYear()).slice(-2)
+  const count = await db.fee.count({ where: { branchId: member.branchId, feeNo: { startsWith: `${member.branchId}/${monthYear}/` } } })
+  const feeNo = `${member.branchId}/${monthYear}/${String(count + 1).padStart(5, '0')}`
 
   const fee = await db.fee.create({
     data: {

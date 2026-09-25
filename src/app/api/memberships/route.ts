@@ -15,8 +15,11 @@ export async function POST(req: NextRequest) {
   if (!session.permissions.includes('memberships.add')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const data = await req.json()
   if (!data.name || !data.durationDays) return NextResponse.json({ error: 'Name and duration required' }, { status: 400 })
-  const count = await db.membershipPlan.count()
-  const code = data.code || `MP-${String(count + 1).padStart(3, '0')}`
+  // Generate code: BranchID/MonthYear/00001
+  const date = new Date()
+  const monthYear = String(date.getMonth() + 1).padStart(2, '0') + String(date.getFullYear()).slice(-2)
+  const count = await db.membershipPlan.count({ where: { code: { startsWith: `${monthYear}/` } } })
+  const code = data.code || `${monthYear}/${String(count + 1).padStart(5, '0')}`
   const plan = await db.membershipPlan.create({
     data: {
       code,

@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
@@ -132,9 +132,9 @@ function AccountFormModal({ open, onClose, form, setForm, onSaved, accounts }: a
       </>}>
       <div className="grid grid-cols-2 gap-3">
         <FormRow label="Account Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
-        <FormRow label="Parent Account">
+        <FormRow label="Parent Account" required>
           <Select value={form.parentId || ''} onValueChange={v => setForm({ ...form, parentId: v || null })}>
-            <SelectTrigger><SelectValue placeholder="Root (no parent)" /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder="Select parent" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="">Root (no parent)</SelectItem>
               {accounts.filter((a: any) => !a.isDetail).map((a: any) => (
@@ -155,29 +155,35 @@ function AccountFormModal({ open, onClose, form, setForm, onSaved, accounts }: a
             </SelectContent>
           </Select>
         </FormRow>
-        <FormRow label="Book Type">
-          <Select value={form.bookType || ''} onValueChange={v => setForm({ ...form, bookType: v || null })}>
-            <SelectTrigger><SelectValue placeholder="General" /></SelectTrigger>
+        <FormRow label="Account Tag" required>
+          <Select value={form.accountTag || ''} onValueChange={v => setForm({ ...form, accountTag: v })}>
+            <SelectTrigger><SelectValue placeholder="Select tag" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">General</SelectItem>
+              <SelectItem value="Asset">Asset</SelectItem>
+              <SelectItem value="Liability">Liability</SelectItem>
+              <SelectItem value="Equity">Equity</SelectItem>
+              <SelectItem value="Income">Income</SelectItem>
+              <SelectItem value="Expense">Expense</SelectItem>
               <SelectItem value="Cash">Cash</SelectItem>
               <SelectItem value="Bank">Bank</SelectItem>
-            </SelectContent>
-          </Select>
-        </FormRow>
-        <FormRow label="Account Tag">
-          <Select value={form.accountTag || ''} onValueChange={v => setForm({ ...form, accountTag: v || null })}>
-            <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">None</SelectItem>
               <SelectItem value="Customer">Customer</SelectItem>
+              <SelectItem value="Supplier">Supplier</SelectItem>
               <SelectItem value="Vendor">Vendor</SelectItem>
-              <SelectItem value="Bank">Bank</SelectItem>
-              <SelectItem value="Cash">Cash</SelectItem>
+              <SelectItem value="Tax">Tax</SelectItem>
             </SelectContent>
           </Select>
         </FormRow>
-        <FormRow label="Control / Detail">
+        <FormRow label="Book Type" required>
+          <Select value={form.bookType || ''} onValueChange={v => setForm({ ...form, bookType: v })}>
+            <SelectTrigger><SelectValue placeholder="Select book type" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="General">General</SelectItem>
+              <SelectItem value="Cash">Cash</SelectItem>
+              <SelectItem value="Bank">Bank</SelectItem>
+            </SelectContent>
+          </Select>
+        </FormRow>
+        <FormRow label="Control / Detail" required>
           <Select value={form.isControl ? 'Control' : 'Detail'} onValueChange={v => setForm({ ...form, isControl: v === 'Control' })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -201,15 +207,26 @@ function AccountFormModal({ open, onClose, form, setForm, onSaved, accounts }: a
         <FormRow label="Email"><Input value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
         <FormRow label="CNIC"><Input value={form.cnic || ''} onChange={e => setForm({ ...form, cnic: e.target.value })} /></FormRow>
         <FormRow label="NTN"><Input value={form.ntn || ''} onChange={e => setForm({ ...form, ntn: e.target.value })} /></FormRow>
+        <FormRow label="STRN"><Input value={form.strn || ''} onChange={e => setForm({ ...form, strn: e.target.value })} /></FormRow>
+        <FormRow label="FBR"><Input value={form.fbr || ''} onChange={e => setForm({ ...form, fbr: e.target.value })} /></FormRow>
+        <FormRow label="Other Name"><Input value={form.otherName || ''} onChange={e => setForm({ ...form, otherName: e.target.value })} /></FormRow>
+        <FormRow label="Reference Number"><Input value={form.referenceNumber || ''} onChange={e => setForm({ ...form, referenceNumber: e.target.value })} /></FormRow>
+        <FormRow label="Fax Number"><Input value={form.faxNumber || ''} onChange={e => setForm({ ...form, faxNumber: e.target.value })} /></FormRow>
+        <FormRow label="City"><Input value={form.city || ''} onChange={e => setForm({ ...form, city: e.target.value })} /></FormRow>
+        <FormRow label="Country"><Input value={form.country || ''} onChange={e => setForm({ ...form, country: e.target.value })} /></FormRow>
+        <FormRow label="Website"><Input value={form.website || ''} onChange={e => setForm({ ...form, website: e.target.value })} /></FormRow>
+        <FormRow label="Registration Number"><Input value={form.registrationNumber || ''} onChange={e => setForm({ ...form, registrationNumber: e.target.value })} /></FormRow>
+        <FormRow label="Payment Terms">
+          <Input
+            value={form.paymentTerms || ''}
+            onChange={e => setForm({ ...form, paymentTerms: e.target.value })}
+            disabled={!['Customer', 'Supplier'].includes(form.accountTag)}
+            placeholder={!['Customer', 'Supplier'].includes(form.accountTag) ? 'Only for Customer/Supplier' : 'e.g. Net 30'}
+          />
+        </FormRow>
         <FormRow label="Bank Name"><Input value={form.bankName || ''} onChange={e => setForm({ ...form, bankName: e.target.value })} /></FormRow>
         <FormRow label="Bank A/C #"><Input value={form.bankAccountNo || ''} onChange={e => setForm({ ...form, bankAccountNo: e.target.value })} /></FormRow>
-        <FormRow label="Opening Balance"><Input type="number" value={form.openingBalance || 0} onChange={e => setForm({ ...form, openingBalance: Number(e.target.value) })} /></FormRow>
-        <FormRow label="Opening Type">
-          <Select value={form.openingBalanceType || 'Dr'} onValueChange={v => setForm({ ...form, openingBalanceType: v })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="Dr">Debit</SelectItem><SelectItem value="Cr">Credit</SelectItem></SelectContent>
-          </Select>
-        </FormRow>
+        <div className="col-span-2"><FormRow label="Address"><Input value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></FormRow></div>
         <div className="col-span-2"><FormRow label="Description"><Textarea rows={2} value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow></div>
       </div>
       {parent && <div className="mt-3 text-xs text-muted-foreground">Parent: <code>{parent.code} — {parent.name}</code>. Code will be auto-generated under this parent.</div>}
@@ -1237,9 +1254,12 @@ export function FeesModule() {
       </Toolbar>
       <DataTable
         columns={[
-          { key: 'feeNo', label: 'Fee #', mono: true },
-          { key: 'member', label: 'Member', render: (r: any) => `${r.member?.firstName} ${r.member?.lastName || ''}` },
-          { key: 'billingPeriodStart', label: 'Period', render: (r: any) => `${fmtDateStr(r.billingPeriodStart)} — ${fmtDateStr(r.billingPeriodEnd)}` },
+          { key: 'feeNo', label: 'Fee ID#', mono: true },
+          { key: 'member', label: 'Member Name', render: (r: any) => `${r.member?.firstName} ${r.member?.lastName || ''}` },
+          { key: 'joiningDate', label: 'Joining Date', render: (r: any) => fmtDateStr(r.member?.joiningDate) },
+          { key: 'billingPeriodStart', label: 'Bill Starting Date', render: (r: any) => fmtDateStr(r.billingPeriodStart) },
+          { key: 'feeAmount', label: 'Fee Amount', align: 'right', mono: true, render: (r: any) => fmtMoney(r.member?.membershipPlan?.amount) },
+          { key: 'billingPeriod', label: 'Period / Billing Date', render: (r: any) => `${fmtDateStr(r.billingPeriodStart)} — ${fmtDateStr(r.billingPeriodEnd)}` },
           { key: 'amount', label: 'Amount', align: 'right', mono: true, render: (r: any) => fmtMoney(r.amount) },
           { key: 'paidAmount', label: 'Paid', align: 'right', mono: true, render: (r: any) => fmtMoney(r.paidAmount) },
           { key: 'balance', label: 'Balance', align: 'right', mono: true, render: (r: any) => fmtMoney(r.balance) },
@@ -1247,7 +1267,7 @@ export function FeesModule() {
           { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
           { key: 'actions', label: '', align: 'right', render: (r: any) => (
             r.status !== 'Paid' && has('fees.post') ? (
-              <Button size="sm" onClick={(e) => { e.stopPropagation(); setPayTarget(r); setPayOpen(true) }}>Collect</Button>
+              <Button size="sm" onClick={(e) => { e.stopPropagation(); setPayTarget(r); setPayOpen(true) }}>Collect Fee</Button>
             ) : null
           ) },
         ]}
@@ -2242,7 +2262,9 @@ export function LeavesModule() {
   const [form, setForm] = useState<any>({})
   const { data, reload } = useFetch<any>(`/api/leaves?status=${status !== 'all' ? status : ''}`)
   const { data: staffData } = useFetch<any>('/api/staff')
+  const { data: payrollMasterData } = useFetch<any>('/api/payroll-master-files?type=LeaveType')
   const leaves = data?.leaves || []
+  const leaveTypes = (payrollMasterData?.records || []).filter((r: any) => r.isActive)
   const openAdd = () => { setEditing(null); setForm({}); setOpen(true) }
   const openEdit = (r: any) => { setEditing(r); setForm({ ...r, fromDate: r.fromDate?.slice(0,10), toDate: r.toDate?.slice(0,10) }); setOpen(true) }
   const doDelete = async () => {
@@ -2307,14 +2329,12 @@ export function LeavesModule() {
               <SelectContent>{(staffData?.staff || []).map((s: any) => <SelectItem key={s.id} value={s.id}>{s.employeeId} — {s.firstName} {s.lastName || ''}</SelectItem>)}</SelectContent>
             </Select>
           </FormRow>
-          <FormRow label="Type">
-            <Select value={form.leaveType || 'Casual'} onValueChange={v => setForm({ ...form, leaveType: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+          <FormRow label="Type" required>
+            <Select value={form.leaveType || ''} onValueChange={v => setForm({ ...form, leaveType: v })}>
+              <SelectTrigger><SelectValue placeholder="Select leave type" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="Casual">Casual</SelectItem>
-                <SelectItem value="Sick">Sick</SelectItem>
-                <SelectItem value="Paid">Paid</SelectItem>
-                <SelectItem value="Unpaid">Unpaid</SelectItem>
+                {leaveTypes.length === 0 && <SelectItem value="" disabled>No leave types configured</SelectItem>}
+                {leaveTypes.map((lt: any) => <SelectItem key={lt.id} value={lt.name}>{lt.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </FormRow>
@@ -2473,7 +2493,7 @@ export function CompanyModule() {
   useEffect(() => { if (company) setForm(company) }, [company])
   return (
     <div>
-      <PageHeader title="Company" action={has('company.edit') ? () => {
+      <PageHeader title="Company Information" action={has('company.edit') ? () => {
         apiPatch('/api/company', form).then(() => { toast.success('Company updated'); reload() }).catch((e: any) => toast.error(e.message))
       } : undefined} actionLabel="Save Changes" />
       <Card className="max-w-2xl">
@@ -2481,16 +2501,24 @@ export function CompanyModule() {
           <div className="grid grid-cols-2 gap-3">
             <FormRow label="Company ID"><Input value={company?.companyId || ''} disabled className="bg-muted/40" /></FormRow>
             <FormRow label="Accounting Type"><Input value={company?.accountingType || ''} disabled className="bg-muted/40" /></FormRow>
-            <FormRow label="Name"><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
+            <FormRow label="Company Name (locked after first save)">
+              <Input
+                value={form.name || ''}
+                onChange={e => setForm({ ...form, name: e.target.value })}
+                disabled={!!company}
+                className={!!company ? 'bg-muted/40' : ''}
+              />
+            </FormRow>
             <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
             <FormRow label="Email"><Input value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
             <FormRow label="Website"><Input value={form.website || ''} onChange={e => setForm({ ...form, website: e.target.value })} /></FormRow>
             <FormRow label="STRN"><Input value={form.strn || ''} onChange={e => setForm({ ...form, strn: e.target.value })} /></FormRow>
             <FormRow label="NTN"><Input value={form.ntn || ''} onChange={e => setForm({ ...form, ntn: e.target.value })} /></FormRow>
+            <FormRow label="FBR Details"><Input value={form.fbr || ''} onChange={e => setForm({ ...form, fbr: e.target.value })} /></FormRow>
             <div className="col-span-2"><FormRow label="Address"><Textarea rows={2} value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></FormRow></div>
           </div>
           <div className="mt-3 text-xs text-muted-foreground">
-            Company ID and accounting type are set at initial setup and cannot be changed.
+            Company Name is locked after initial setup and displayed throughout the software. STRN, NTN, FBR, and other details can be edited anytime.
           </div>
         </CardContent>
       </Card>
@@ -2499,36 +2527,67 @@ export function CompanyModule() {
 }
 
 // =================================================================
-// USERS
+// USERS, ROLES AND PERMISSIONS (combined single screen)
 // =================================================================
 export function UsersModule() {
-  const { has } = useApp()
+  const { has, session } = useApp()
+  const [tab, setTab] = useState<'users' | 'roles'>('users')
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<any>({})
+  const [permOpen, setPermOpen] = useState(false)
+  const [permTarget, setPermTarget] = useState<any>(null)
   const { data, reload } = useFetch<any>('/api/users')
   const { data: rolesData } = useFetch<any>('/api/roles')
   const { data: branchesData } = useFetch<any>('/api/branches')
   const users = data?.users || []
   const roles = rolesData?.roles || []
+  const permissions = rolesData?.permissions || []
   const branches = branchesData?.branches || []
 
   return (
     <div>
-      <PageHeader title="Users"
-        action={has('users.add') ? () => { setForm({ isActive: true, accessibleBranchIds: '*' }); setOpen(true) } : undefined}
-        actionLabel="Add User" />
-      <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
-      <DataTable
-        columns={[
-          { key: 'username', label: 'Username', mono: true },
-          { key: 'fullName', label: 'Name' },
-          { key: 'email', label: 'Email' },
-          { key: 'role', label: 'Role', render: (r: any) => r.role?.name },
-          { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
-          { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
-        ]}
-        rows={users}
-      />
+      <PageHeader title="Users, Roles & Permissions" />
+      <Tabs value={tab} onValueChange={(v) => setTab(v as 'users' | 'roles')}>
+        <TabsList>
+          <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="roles">Roles & Permissions</TabsTrigger>
+        </TabsList>
+        <TabsContent value="users" className="mt-4">
+          <Toolbar>
+            <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+            {has('users.add') && (
+              <Button size="sm" onClick={() => { setForm({ isActive: true, accessibleBranchIds: '*' }); setOpen(true) }}>
+                <Plus className="h-4 w-4 mr-1" /> Add User
+              </Button>
+            )}
+          </Toolbar>
+          <DataTable
+            columns={[
+              { key: 'username', label: 'Username', mono: true },
+              { key: 'fullName', label: 'Name' },
+              { key: 'email', label: 'Email' },
+              { key: 'phone', label: 'Phone' },
+              { key: 'role', label: 'Role', render: (r: any) => r.role?.name },
+              { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
+              { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
+              { key: 'actions', label: '', align: 'right', render: (r: any) => (
+                <div className="flex gap-1 justify-end">
+                  {has('users.edit') && (
+                    <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setPermTarget(r); setPermOpen(true) }}>
+                      Permission
+                    </Button>
+                  )}
+                </div>
+              )},
+            ]}
+            rows={users}
+          />
+        </TabsContent>
+        <TabsContent value="roles" className="mt-4">
+          <RolesAndPermissionsTab />
+        </TabsContent>
+      </Tabs>
+
       <Modal open={open} onClose={() => setOpen(false)} title="Add User"
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
@@ -2543,6 +2602,7 @@ export function UsersModule() {
           <FormRow label="Email"><Input value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
           <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
           <FormRow label="Password" required><Input type="password" value={form.password || ''} onChange={e => setForm({ ...form, password: e.target.value })} /></FormRow>
+          <FormRow label="Photo URL"><Input value={form.photo || ''} onChange={e => setForm({ ...form, photo: e.target.value })} /></FormRow>
           <FormRow label="Role" required>
             <Select value={form.roleId || ''} onValueChange={v => setForm({ ...form, roleId: v })}>
               <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
@@ -2566,15 +2626,106 @@ export function UsersModule() {
           </FormRow>
         </div>
       </Modal>
+
+      <UserPermissionPopup
+        open={permOpen}
+        user={permTarget}
+        permissions={permissions}
+        onClose={() => setPermOpen(false)}
+        onSaved={() => { setPermOpen(false); reload() }}
+      />
     </div>
   )
 }
 
-// =================================================================
-// ROLES
-// =================================================================
-export function RolesModule() {
-  const { has, session } = useApp()
+// Per-user Permission popup with View/Add/Edit/Delete/Print per software screen
+function UserPermissionPopup({ open, user, permissions, onClose, onSaved }: any) {
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    if (user) setSelected(new Set(user.userPermissions || []))
+  }, [user])
+
+  if (!user) return null
+
+  // Group permissions by module (each module = one software screen)
+  const grouped = permissions.reduce((acc: any, p: any) => {
+    if (!acc[p.module]) acc[p.module] = []
+    acc[p.module].push(p)
+    return acc
+  }, {})
+
+  const toggle = (code: string) => {
+    setSelected(prev => {
+      const n = new Set(prev)
+      if (n.has(code)) n.delete(code); else n.add(code)
+      return n
+    })
+  }
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await apiPatch('/api/users', { id: user.id, permissionCodes: Array.from(selected) })
+      toast.success('User permissions saved')
+      onSaved()
+    } catch (e: any) { toast.error(e.message) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Permissions — ${user.fullName} (${user.username})`} size="xl"
+      footer={<>
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button onClick={save} disabled={saving}><Save className="h-4 w-4 mr-1" />{saving ? 'Saving…' : 'Save Permissions'}</Button>
+      </>}>
+      <div className="text-xs text-muted-foreground mb-3">
+        Each row represents a software screen. Toggle View / Add / Edit / Delete / Print to grant per-user access. These permissions are merged with the user&apos;s role permissions.
+      </div>
+      <div className="overflow-x-auto border rounded">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 border-b">
+            <tr>
+              <th className="px-3 py-2 text-left font-medium">Software Screen</th>
+              <th className="px-3 py-2 text-center font-medium">View</th>
+              <th className="px-3 py-2 text-center font-medium">Add</th>
+              <th className="px-3 py-2 text-center font-medium">Edit</th>
+              <th className="px-3 py-2 text-center font-medium">Delete</th>
+              <th className="px-3 py-2 text-center font-medium">Print</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(grouped).map(([mod, perms]: any) => {
+              const findPerm = (action: string) => (perms as any[]).find((p: any) => p.action === action)
+              return (
+                <tr key={mod} className="border-b last:border-0">
+                  <td className="px-3 py-2 font-medium capitalize">{mod}</td>
+                  {['view', 'add', 'edit', 'delete', 'print'].map(action => {
+                    const p = findPerm(action)
+                    return (
+                      <td key={action} className="px-3 py-2 text-center">
+                        {p ? (
+                          <Checkbox
+                            checked={selected.has(p.code)}
+                            onCheckedChange={() => toggle(p.code)}
+                          />
+                        ) : <span className="text-muted-foreground">—</span>}
+                      </td>
+                    )
+                  })}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Modal>
+  )
+}
+
+// Roles & Permissions tab (extracted from the original RolesModule)
+function RolesAndPermissionsTab() {
+  const { session } = useApp()
   const [selectedRole, setSelectedRole] = useState<string>('')
   const { data, reload } = useFetch<any>('/api/roles')
   const roles = data?.roles || []
@@ -2600,7 +2751,6 @@ export function RolesModule() {
 
   return (
     <div>
-      <PageHeader title="Roles & Permissions" />
       <Toolbar>
         <Select value={selectedRole || current?.id || ''} onValueChange={setSelectedRole}>
           <SelectTrigger className="w-64"><SelectValue placeholder="Select role" /></SelectTrigger>
@@ -2633,6 +2783,11 @@ export function RolesModule() {
       )}
     </div>
   )
+}
+
+// Backward-compatible: keep RolesModule export pointing to the same combined screen
+export function RolesModule() {
+  return <UsersModule />
 }
 
 // =================================================================
@@ -2925,16 +3080,127 @@ function ReportRenderer({ report }: any) {
 }
 
 // =================================================================
-// FINANCE DEFAULTS (stub for now)
+// FINANCE DEFAULTS (FIFO/Billwise + COA Level Detailing + lock)
 // =================================================================
 export function FinanceDefaultsModule() {
+  const { has } = useApp()
+  const { data, reload } = useFetch<any>('/api/finance-defaults')
+  const { data: accountsData } = useFetch<any>('/api/accounts')
+  const { data: taxHeadsData } = useFetch<any>('/api/tax-heads')
+  const { data: yearsData } = useFetch<any>('/api/financial-years')
+  const [form, setForm] = useState<any>({})
+  const defaults = data?.defaults
+  const accounts = accountsData?.accounts || []
+  const taxHeads = taxHeadsData?.taxHeads || []
+  const years = yearsData?.years || []
+  useEffect(() => {
+    if (defaults) setForm(defaults)
+    else setForm({ financeType: 'FIFO', coaLevelDetailing: 2 })
+  }, [defaults])
+
+  const isLocked = defaults?.coaLevelLocked === true
+
   return (
     <div>
-      <PageHeader title="Finance Defaults" />
-      <Card><CardContent className="p-4">
-        <div className="text-sm text-muted-foreground">Configure default cash account, bank account, tax head, and active financial year per branch. Mappings drive automatic voucher posting from fees and POS.</div>
-        <div className="mt-3"><Button size="sm" variant="outline" onClick={() => toast.info('Use Account Mappings page to configure fee/POS accounts.')}>Go to Account Mappings</Button></div>
-      </CardContent></Card>
+      <PageHeader title="Finance Defaults" action={has('finance.settings') ? () => {
+        apiPost('/api/finance-defaults', form).then(() => { toast.success('Finance defaults saved'); reload() }).catch((e: any) => toast.error(e.message))
+      } : undefined} actionLabel="Save Defaults" />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 max-w-4xl">
+        <Card>
+          <CardHeader><CardTitle className="text-base">Finance Type</CardTitle></CardHeader>
+          <CardContent className="p-4 space-y-3">
+            <FormRow label="Accounting Method">
+              <Select value={form.financeType || 'FIFO'} onValueChange={v => setForm({ ...form, financeType: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="FIFO">FIFO (First In, First Out)</SelectItem>
+                  <SelectItem value="Billwise">Billwise / Knockoff</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormRow>
+            <div className="text-xs text-muted-foreground">
+              When Billwise / Knockoff is enabled, the Opening Trial Balance screen will show a Knock Off button beside Customer and Supplier accounts only. This setting is configured once.
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle className="text-base">COA Level Detailing</CardTitle></CardHeader>
+          <CardContent className="p-4 space-y-3">
+            <FormRow label="Digits per Level">
+              <Select
+                value={String(form.coaLevelDetailing || 2)}
+                onValueChange={v => setForm({ ...form, coaLevelDetailing: Number(v) })}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1 digit (e.g. 0, 01, 011, 0111)</SelectItem>
+                  <SelectItem value="2">2 digits (e.g. 01, 01001, 01001001)</SelectItem>
+                  <SelectItem value="3">3 digits (e.g. 001, 001001, 001001001)</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormRow>
+            {isLocked && (
+              <div className="text-xs text-amber-600 dark:text-amber-400">
+                ⚠ Locked: Chart accounts already exist under the current configuration. The setting cannot be changed.
+              </div>
+            )}
+            <div className="text-xs text-muted-foreground">
+              Once a Chart account is created, this setting is automatically locked to preserve code integrity.
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="lg:col-span-2">
+          <CardHeader><CardTitle className="text-base">Default Accounts (Optional)</CardTitle></CardHeader>
+          <CardContent className="p-4">
+            <div className="grid grid-cols-2 gap-3">
+              <FormRow label="Default Cash Account">
+                <Select value={form.defaultCashAccountId || ''} onValueChange={v => setForm({ ...form, defaultCashAccountId: v || null })}>
+                  <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">(Not set)</SelectItem>
+                    {accounts.filter((a: any) => a.bookType === 'Cash').map((a: any) => (
+                      <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormRow>
+              <FormRow label="Default Bank Account">
+                <Select value={form.defaultBankAccountId || ''} onValueChange={v => setForm({ ...form, defaultBankAccountId: v || null })}>
+                  <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">(Not set)</SelectItem>
+                    {accounts.filter((a: any) => a.bookType === 'Bank').map((a: any) => (
+                      <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormRow>
+              <FormRow label="Default Tax Head">
+                <Select value={form.defaultTaxHeadId || ''} onValueChange={v => setForm({ ...form, defaultTaxHeadId: v || null })}>
+                  <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">(Not set)</SelectItem>
+                    {taxHeads.map((t: any) => (
+                      <SelectItem key={t.id} value={t.id}>{t.code} — {t.name} ({t.rate}%)</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormRow>
+              <FormRow label="Active Financial Year">
+                <Select value={form.financialYearId || ''} onValueChange={v => setForm({ ...form, financialYearId: v || null })}>
+                  <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">(Not set)</SelectItem>
+                    {years.map((y: any) => (
+                      <SelectItem key={y.id} value={y.id}>{y.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormRow>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
@@ -2957,15 +3223,21 @@ export function PeriodsModule() {
 // EXERCISES
 // =================================================================
 export function ExercisesModule() {
-  const { has } = useApp()
+  const { has, session, selectedBranchIds } = useApp()
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<any>({})
   const { data, reload } = useFetch<any>('/api/exercises')
   const exercises = data?.exercises || []
+  // Load Equipment master from GymMasterFile (branchwise)
+  const branchFilter = selectedBranchIds.length === 1 ? `&branchId=${selectedBranchIds[0]}` : ''
+  const { data: gmData } = useFetch<any>(`/api/gym-master-files?type=Equipment${branchFilter}`)
+  const equipmentOptions = (gmData?.records || []).filter((r: any) => r.isActive)
+  const { data: typeData } = useFetch<any>(`/api/gym-master-files?type=ExerciseType${branchFilter}`)
+  const exerciseTypeOptions = (typeData?.records || []).filter((r: any) => r.isActive)
   return (
     <div>
       <PageHeader title="Exercises"
-        action={has('workouts.add') ? () => { setForm({}); setOpen(true) } : undefined}
+        action={has('workouts.add') ? () => { setForm({ branchId: session?.branchId }); setOpen(true) } : undefined}
         actionLabel="Add Exercise" />
       <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
       <DataTable
@@ -2974,6 +3246,7 @@ export function ExercisesModule() {
           { key: 'name', label: 'Name' },
           { key: 'category', label: 'Category' },
           { key: 'muscleGroup', label: 'Muscle Group' },
+          { key: 'equipment', label: 'Equipment' },
           { key: 'sets', label: 'Sets', align: 'right' },
           { key: 'reps', label: 'Reps' },
           { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
@@ -2984,7 +3257,7 @@ export function ExercisesModule() {
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={async () => {
-            try { await apiPost('/api/exercises', form); toast.success('Exercise added'); setOpen(false); reload() }
+            try { await apiPost('/api/exercises', { ...form, branchId: form.branchId || session?.branchId }); toast.success('Exercise added'); setOpen(false); reload() }
             catch (e: any) { toast.error(e.message) }
           }}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
@@ -2992,7 +3265,25 @@ export function ExercisesModule() {
           <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
           <FormRow label="Category"><Input value={form.category || ''} onChange={e => setForm({ ...form, category: e.target.value })} placeholder="Chest, Back, Legs…" /></FormRow>
           <FormRow label="Muscle Group"><Input value={form.muscleGroup || ''} onChange={e => setForm({ ...form, muscleGroup: e.target.value })} /></FormRow>
-          <FormRow label="Equipment"><Input value={form.equipment || ''} onChange={e => setForm({ ...form, equipment: e.target.value })} /></FormRow>
+          <FormRow label="Equipment">
+            <Select value={form.equipment || ''} onValueChange={v => setForm({ ...form, equipment: v })}>
+              <SelectTrigger><SelectValue placeholder="Select equipment (from GymMasterFile)" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">(None)</SelectItem>
+                {equipmentOptions.map((eq: any) => (
+                  <SelectItem key={eq.id} value={eq.name}>{eq.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Branch">
+            <Select value={form.branchId || session?.branchId || ''} onValueChange={v => setForm({ ...form, branchId: v })}>
+              <SelectTrigger><SelectValue placeholder="Select branch" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">(Global / All branches)</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormRow>
           <FormRow label="Sets"><Input type="number" value={form.sets || ''} onChange={e => setForm({ ...form, sets: e.target.value })} /></FormRow>
           <FormRow label="Reps"><Input value={form.reps || ''} onChange={e => setForm({ ...form, reps: e.target.value })} placeholder="8-12" /></FormRow>
           <FormRow label="Duration"><Input value={form.duration || ''} onChange={e => setForm({ ...form, duration: e.target.value })} placeholder="30 sec" /></FormRow>
@@ -3202,6 +3493,34 @@ export function ProgressModule() {
           <div className="col-span-2"><FormRow label="Notes"><Textarea rows={2} value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></FormRow></div>
         </div>
       </Modal>
+    </div>
+  )
+}
+
+// =================================================================
+// ADMIN DEFAULTS (single screen with 3 tabs)
+// =================================================================
+export function AdminDefaultsModule() {
+  const [tab, setTab] = useState<'company' | 'finance' | 'mapping'>('company')
+  return (
+    <div>
+      <PageHeader title="Admin Defaults" />
+      <Tabs value={tab} onValueChange={(v) => setTab(v as 'company' | 'finance' | 'mapping')}>
+        <TabsList>
+          <TabsTrigger value="company">Company Information</TabsTrigger>
+          <TabsTrigger value="finance">Finance</TabsTrigger>
+          <TabsTrigger value="mapping">Account Mapping</TabsTrigger>
+        </TabsList>
+        <TabsContent value="company" className="mt-4">
+          <CompanyModule />
+        </TabsContent>
+        <TabsContent value="finance" className="mt-4">
+          <FinanceDefaultsModule />
+        </TabsContent>
+        <TabsContent value="mapping" className="mt-4">
+          <AccountMappingsModule />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

@@ -15,8 +15,12 @@ export async function POST(req: NextRequest) {
   if (!session.permissions.includes('workouts.add')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const data = await req.json()
   if (!data.name) return NextResponse.json({ error: 'Name required' }, { status: 400 })
+  // Generate workout plan ID: WO-000001
+  const count = await db.workoutPlan.count()
+  const workoutPlanId = `WO-${String(count + 1).padStart(6, '0')}`
   const plan = await db.workoutPlan.create({
     data: {
+      workoutPlanId,
       name: data.name,
       description: data.description,
       isGeneral: data.isGeneral !== false,

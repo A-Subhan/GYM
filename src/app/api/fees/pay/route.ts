@@ -79,8 +79,8 @@ export async function POST(req: NextRequest) {
         paymentAccountId: accountId,
         paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
         reference: reference || fee.reference,
-        voucherId: voucher.id,
-        payments: { create: { voucherId: voucher.id, amount: payAmount, method, accountId } },
+        voucherNo: voucher.voucherNo,
+        payments: { create: { voucherNo: voucher.voucherNo, amount: payAmount, method, accountId } },
       },
       include: { payments: true },
     })

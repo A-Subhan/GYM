@@ -15,8 +15,12 @@ export async function POST(req: NextRequest) {
   if (!session.permissions.includes('diet.add')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const data = await req.json()
   if (!data.name) return NextResponse.json({ error: 'Name required' }, { status: 400 })
+  // Generate diet plan ID: DP-000001
+  const count = await db.dietPlan.count()
+  const dietPlanId = `DP-${String(count + 1).padStart(6, '0')}`
   const plan = await db.dietPlan.create({
     data: {
+      dietPlanId,
       name: data.name,
       description: data.description,
       branchId: data.branchId || session.branchId,

@@ -38,8 +38,13 @@ export async function POST(req: NextRequest) {
   })
   if (overlapping) return NextResponse.json({ error: 'Overlapping freeze exists' }, { status: 400 })
 
+  // Generate freeze ID: F-000001
+  const count = await db.membershipFreeze.count()
+  const freezeId = `F-${String(count + 1).padStart(6, '0')}`
+
   const freeze = await db.membershipFreeze.create({
     data: {
+      freezeId,
       memberId: data.memberId,
       branchId: member.branchId,
       freezeFrom: from,

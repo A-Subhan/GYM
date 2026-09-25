@@ -42,8 +42,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Already checked in today', record: existing }, { status: 400 })
   }
 
+  // Generate attendance ID: BranchID/MonthYear/00001
+  const monthYear = String(date.getMonth() + 1).padStart(2, '0') + String(date.getFullYear()).slice(-2)
+  const count = await db.attendance.count({ where: { branchId: member.branchId, attendanceId: { startsWith: `${member.branchId}/${monthYear}/` } } })
+  const attendanceId = `${member.branchId}/${monthYear}/${String(count + 1).padStart(5, '0')}`
+
   const record = await db.attendance.create({
     data: {
+      attendanceId,
       memberId: data.memberId,
       branchId: member.branchId,
       date,

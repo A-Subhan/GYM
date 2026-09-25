@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   const data = await req.json()
   if (!data.key || !data.accountId) return NextResponse.json({ error: 'key and accountId required' }, { status: 400 })
   // Validate account type matches key
-  const account = await db.account.findUnique({ where: { id: data.accountId } })
+  const account = await db.charts.findUnique({ where: { id: data.accountId } })
   if (!account) return NextResponse.json({ error: 'Invalid account' }, { status: 400 })
 
   const existing = data.branchId

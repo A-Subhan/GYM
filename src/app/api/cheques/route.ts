@@ -10,17 +10,37 @@ export async function GET(req: NextRequest) {
   const branchId = url.searchParams.get('branchId')
   const allowed = session.accessibleBranchIds === '*' ? null : session.accessibleBranchIds.split(',')
 
+  // Cheque model no longer has a voucher relation — it stores voucherNo as a string
+  // We fetch all cheques and enrich with voucher info via voucherNo lookup
   const cheques = await db.cheque.findMany({
     where: {
       ...(status ? { status } : {}),
-      ...(branchId && branchId !== 'all' ? { voucher: { branchId } } : {}),
-      ...(allowed ? { voucher: { branchId: { in: allowed } } } : {}),
     },
-    include: { voucher: { include: { branch: true, bookAccount: true } } },
     orderBy: { chequeDate: 'desc' },
     take: 200,
   })
-  return NextResponse.json({ cheques })
+
+  // Enrich with voucher/branch info via voucherNo
+  const voucherNos = [...new Set(cheques.map(c => c.voucherNo))]
+  const [cashBooks, bankBooks] = await Promise.all([
+    db.cashBook.findMany({ where: { voucherNo: { in: voucherNos } }, include: { branch: true, bookAccount: true } }),
+    db.bankBook.findMany({ where: { voucherNo: { in: voucherNos } }, include: { branch: true, bookAccount: true } }),
+  ])
+  const voucherByNo: Record<string, any> = {}
+  for (const v of [...cashBooks, ...bankBooks]) voucherByNo[v.voucherNo] = v
+
+  const enriched = cheques
+    .map(c => {
+      const voucher = voucherByNo[c.voucherNo]
+      if (!voucher) return null
+      // Apply branch filter
+      if (branchId && branchId !== 'all' && voucher.branchId !== branchId) return null
+      if (allowed && !allowed.includes(voucher.branchId)) return null
+      return { ...c, voucher }
+    })
+    .filter(Boolean)
+
+  return NextResponse.json({ cheques: enriched })
 }
 
 export async function PATCH(req: NextRequest) {

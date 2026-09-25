@@ -30,8 +30,19 @@ export async function POST(req: NextRequest) {
     branchId = member?.branchId
   }
 
+  // Generate follow-up ID: BranchID/FW-000001
+  let followUpId: string
+  if (branchId) {
+    const count = await db.followUp.count({ where: { branchId, followUpId: { startsWith: `${branchId}/FW-` } } })
+    followUpId = `${branchId}/FW-${String(count + 1).padStart(6, '0')}`
+  } else {
+    const count = await db.followUp.count()
+    followUpId = `FW-${String(count + 1).padStart(6, '0')}`
+  }
+
   const record = await db.followUp.create({
     data: {
+      followUpId,
       memberId: data.memberId || null,
       prospectId: data.prospectId || null,
       branchId: branchId || null,

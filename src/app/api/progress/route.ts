@@ -21,8 +21,14 @@ export async function POST(req: NextRequest) {
   if (!session.permissions.includes('progress.add')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const data = await req.json()
   if (!data.memberId) return NextResponse.json({ error: 'Member required' }, { status: 400 })
+  const member = await db.member.findUnique({ where: { id: data.memberId } })
+  if (!member) return NextResponse.json({ error: 'Member not found' }, { status: 404 })
+  // Generate progress ID: BranchID/PG-000001
+  const count = await db.progressEntry.count({ where: { member: { branchId: member.branchId }, progressId: { startsWith: `${member.branchId}/PG-` } } })
+  const progressId = `${member.branchId}/PG-${String(count + 1).padStart(6, '0')}`
   const record = await db.progressEntry.create({
     data: {
+      progressId,
       memberId: data.memberId,
       date: data.date ? new Date(data.date) : new Date(),
       weight: data.weight ? Number(data.weight) : null,
