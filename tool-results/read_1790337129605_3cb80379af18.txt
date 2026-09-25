@@ -1,0 +1,1016 @@
+     1→// Contoura Gym Management System — full ERP schema
+     2→
+     3→generator client {
+     4→  provider = "prisma-client-js"
+     5→}
+     6→
+     7→datasource db {
+     8→  provider = "sqlite"
+     9→  url      = env("DATABASE_URL")
+    10→}
+    11→
+    12→// =================================================================
+    13→// CORE
+    14→// =================================================================
+    15→
+    16→model Company {
+    17→  id             String   @id @default(cuid())
+    18→  companyId      String   @unique
+    19→  name           String
+    20→  address        String?
+    21→  phone          String?
+    22→  email          String?
+    23→  website        String?
+    24→  logo           String?
+    25→  accountingType String   @default("FIFO")
+    26→  strn           String?
+    27→  ntn            String?
+    28→  createdAt      DateTime @default(now())
+    29→  updatedAt      DateTime @updatedAt
+    30→}
+    31→
+    32→model Branch {
+    33→  id        String   @id @default(cuid())
+    34→  code      String   @unique
+    35→  name      String
+    36→  address   String?
+    37→  city      String?
+    38→  phone     String?
+    39→  email     String?
+    40→  strn      String?
+    41→  ntn       String?
+    42→  logo      String?
+    43→  isActive  Boolean  @default(true)
+    44→  createdAt DateTime @default(now())
+    45→  updatedAt DateTime @updatedAt
+    46→  isDeleted Boolean  @default(false)
+    47→
+    48→  users              User[]
+    49→  accounts           Account[]
+    50→  members            Member[]
+    51→  attendance         Attendance[]
+    52→  fees               Fee[]
+    53→  equipment          Equipment[]
+    54→  inventory          InventoryItem[]
+    55→  prospects          Prospect[]
+    56→  exercises          Exercise[]
+    57→  workoutPlans       WorkoutPlan[]
+    58→  dietPlans          DietPlan[]
+    59→  staff              Staff[]
+    60→  shifts             Shift[]
+    61→  calendar           CalendarDay[]
+    62→  vouchers           Voucher[]
+    63→  taxHeads           TaxHead[]
+    64→  payroll            Payroll[]
+    65→  posSales           PosSale[]
+    66→  followUps          FollowUp[]
+    67→  freezes            MembershipFreeze[]
+    68→  knockOffBills      KnockOffBill[] @relation("KnockOffBranch")
+    69→  gymMasterFiles     GymMasterFile[] @relation("GymMasterBranch")
+    70→}
+    71→
+    72→model Role {
+    73→  id          String   @id @default(cuid())
+    74→  name        String   @unique
+    75→  description String?
+    76→  isSystem    Boolean  @default(false)
+    77→  createdAt   DateTime @default(now())
+    78→  updatedAt   DateTime @updatedAt
+    79→
+    80→  users       User[]
+    81→  permissions RolePermission[]
+    82→}
+    83→
+    84→model Permission {
+    85→  id          String  @id @default(cuid())
+    86→  module      String
+    87→  action      String
+    88→  code        String  @unique
+    89→  description String?
+    90→
+    91→  roles RolePermission[]
+    92→}
+    93→
+    94→model RolePermission {
+    95→  roleId       String
+    96→  permissionId String
+    97→  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+    98→  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+    99→
+   100→  @@id([roleId, permissionId])
+   101→}
+   102→
+   103→model User {
+   104→  id                 String   @id @default(cuid())
+   105→  username           String   @unique
+   106→  email              String?  @unique
+   107→  fullName           String
+   108→  passwordHash       String
+   109→  roleId             String
+   110→  role               Role     @relation(fields: [roleId], references: [id])
+   111→  branchId           String?
+   112→  branch             Branch?  @relation(fields: [branchId], references: [id])
+   113→  accessibleBranchIds String  @default("*")
+   114→  phone              String?
+   115→  photo              String?
+   116→  isActive           Boolean  @default(true)
+   117→  failedLoginCount   Int      @default(0)
+   118→  lastLoginAt        DateTime?
+   119→  mustChangePassword Boolean  @default(false)
+   120→  createdAt          DateTime @default(now())
+   121→  updatedAt          DateTime @updatedAt
+   122→  isDeleted          Boolean  @default(false)
+   123→
+   124→  sessions  Session[]
+   125→  auditLogs AuditLog[]
+   126→}
+   127→
+   128→model Session {
+   129→  id           String   @id @default(cuid())
+   130→  userId       String
+   131→  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+   132→  refreshToken String
+   133→  ipAddress    String?
+   134→  userAgent    String?
+   135→  location     String?
+   136→  status       String   @default("Active")
+   137→  expiresAt    DateTime
+   138→  createdAt    DateTime @default(now())
+   139→  updatedAt    DateTime @updatedAt
+   140→
+   141→  @@index([userId])
+   142→  @@index([refreshToken])
+   143→}
+   144→
+   145→model AuditLog {
+   146→  id        String   @id @default(cuid())
+   147→  userId    String?
+   148→  user      User?    @relation(fields: [userId], references: [id])
+   149→  action    String
+   150→  module    String
+   151→  details   String?
+   152→  ipAddress String?
+   153→  location  String?
+   154→  createdAt DateTime @default(now())
+   155→
+   156→  @@index([userId])
+   157→  @@index([module])
+   158→  @@index([createdAt])
+   159→}
+   160→
+   161→// =================================================================
+   162→// FINANCE
+   163→// =================================================================
+   164→
+   165→model Account {
+   166→  id                 String   @id @default(cuid())
+   167→  code               String
+   168→  name               String
+   169→  parentId           String?
+   170→  parent             Account? @relation("AccountHierarchy", fields: [parentId], references: [id])
+   171→  children           Account[] @relation("AccountHierarchy")
+   172→  accountType        String
+   173→  bookType           String?
+   174→  accountTag         String?
+   175→  isControl         Boolean  @default(false)
+   176→  isDetail          Boolean  @default(true)
+   177→  isActive          Boolean  @default(true)
+   178→  branchId          String?
+   179→  branch            Branch?  @relation(fields: [branchId], references: [id])
+   180→  contactName       String?
+   181→  phone             String?
+   182→  email             String?
+   183→  address           String?
+   184→  bankName          String?
+   185→  bankAccountNo     String?
+   186→  bankBranch        String?
+   187→  cnic              String?
+   188→  ntn               String?
+   189→  description       String?
+   190→  // New COA fields per spec
+   191→  fbr               String?
+   192→  otherName         String?
+   193→  referenceNumber   String?
+   194→  faxNumber         String?
+   195→  city              String?
+   196→  country           String?
+   197→  website           String?
+   198→  paymentTerms      String?
+   199→  registrationNumber String?
+   200→  // Opening balance fields removed per spec — OTB uses separate screen
+   201→  openingBalance    Float    @default(0)
+   202→  openingBalanceType String?
+   203→  createdAt         DateTime @default(now())
+   204→  updatedAt         DateTime @updatedAt
+   205→
+   206→  lines             VoucherLine[]
+   207→  bookVouchers      Voucher[] @relation("VoucherBookAccount")
+   208→  mappings          AccountMapping[]
+   209→  knockOffBills     KnockOffBill[] @relation("KnockOffAccount")
+   210→
+   211→  @@index([code])
+   212→  @@index([parentId])
+   213→  @@index([branchId])
+   214→}
+   215→
+   216→model FinancialYear {
+   217→  id        String   @id @default(cuid())
+   218→  name      String   @unique
+   219→  startDate DateTime
+   220→  endDate   DateTime
+   221→  isActive Boolean  @default(true)
+   222→  isClosed  Boolean  @default(false)
+   223→  createdAt DateTime @default(now())
+   224→
+   225→  periods AccountingPeriod[]
+   226→}
+   227→
+   228→model AccountingPeriod {
+   229→  id               String   @id @default(cuid())
+   230→  financialYearId  String
+   231→  financialYear    FinancialYear @relation(fields: [financialYearId], references: [id])
+   232→  name             String
+   233→  startDate        DateTime
+   234→  endDate          DateTime
+   235→  status           String   @default("Open")
+   236→  createdAt        DateTime @default(now())
+   237→
+   238→  @@index([financialYearId])
+   239→}
+   240→
+   241→model TaxHead {
+   242→  id         String   @id @default(cuid())
+   243→  code       String
+   244→  shortName  String
+   245→  name       String
+   246→  taxType    String
+   247→  rate       Float
+   248→  branchId   String?
+   249→  branch     Branch?  @relation(fields: [branchId], references: [id])
+   250→  isActive   Boolean  @default(true)
+   251→  createdAt  DateTime @default(now())
+   252→  updatedAt  DateTime @updatedAt
+   253→
+   254→  @@index([code])
+   255→}
+   256→
+   257→model Voucher {
+   258→  id           String   @id @default(cuid())
+   259→  voucherNo    String   @unique
+   260→  voucherType  String
+   261→  voucherDate  DateTime
+   262→  branchId     String
+   263→  branch       Branch   @relation(fields: [branchId], references: [id])
+   264→  bookAccountId String?
+   265→  bookAccount  Account? @relation("VoucherBookAccount", fields: [bookAccountId], references: [id])
+   266→  description  String?
+   267→  reference    String?
+   268→  status       String   @default("Draft")
+   269→  postedById   String?
+   270→  postedAt     DateTime?
+   271→  reversedById String?
+   272→  reversedAt   DateTime?
+   273→  reversalReason String?
+   274→  totalDebit   Float    @default(0)
+   275→  totalCredit  Float    @default(0)
+   276→  createdAt    DateTime @default(now())
+   277→  updatedAt    DateTime @updatedAt
+   278→
+   279→  lines      VoucherLine[]
+   280→  cheques    Cheque[]
+   281→  feePayments FeePayment[]
+   282→  fees       Fee[]     @relation("FeeVoucher")
+   283→  payrolls   Payroll[]
+   284→
+   285→  @@index([voucherType])
+   286→  @@index([voucherDate])
+   287→  @@index([branchId])
+   288→  @@index([status])
+   289→}
+   290→
+   291→model VoucherLine {
+   292→  id         String   @id @default(cuid())
+   293→  voucherId  String
+   294→  voucher    Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+   295→  accountId  String
+   296→  account    Account  @relation(fields: [accountId], references: [id])
+   297→  lineDescription String?
+   298→  amount     Float    @default(0)
+   299→  debit      Float    @default(0)
+   300→  credit     Float    @default(0)
+   301→  taxAccountId String?
+   302→  taxRate    Float    @default(0)
+   303→  taxAmount  Float    @default(0)
+   304→  chequeNo   String?
+   305→  chequeAmount Float?
+   306→  chequeBankName String?
+   307→  chequeStatus String?
+   308→  status     String   @default("Active")
+   309→  createdAt  DateTime @default(now())
+   310→
+   311→  @@index([voucherId])
+   312→  @@index([accountId])
+   313→}
+   314→
+   315→model Cheque {
+   316→  id         String   @id @default(cuid())
+   317→  voucherId  String
+   318→  voucher    Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+   319→  chequeNo   String
+   320→  chequeDate DateTime
+   321→  bankName   String?
+   322→  amount     Float
+   323→  status     String   @default("Hold")
+   324→  statusChangedAt DateTime?
+   325→  statusChangedBy String?
+   326→  statusHistory String?
+   327→  createdAt  DateTime @default(now())
+   328→  updatedAt  DateTime @updatedAt
+   329→
+   330→  @@index([status])
+   331→  @@index([chequeNo])
+   332→}
+   333→
+   334→model AccountMapping {
+   335→  id          String   @id @default(cuid())
+   336→  branchId    String?
+   337→  key         String
+   338→  accountId   String
+   339→  account     Account  @relation(fields: [accountId], references: [id])
+   340→  description String?
+   341→  createdAt   DateTime @default(now())
+   342→  updatedAt   DateTime @updatedAt
+   343→
+   344→  @@unique([branchId, key])
+   345→  @@index([key])
+   346→}
+   347→
+   348→model FinanceDefaults {
+   349→  id              String   @id @default(cuid())
+   350→  branchId        String?  @unique
+   351→  defaultCashAccountId String?
+   352→  defaultBankAccountId String?
+   353→  defaultTaxHeadId String?
+   354→  financialYearId String?
+   355→  createdAt       DateTime @default(now())
+   356→  updatedAt       DateTime @updatedAt
+   357→}
+   358→
+   359→model UserReportFormat {
+   360→  id        String   @id @default(cuid())
+   361→  userId    String
+   362→  reportKey String
+   363→  name      String
+   364→  columns   String
+   365→  isDefault Boolean  @default(false)
+   366→  createdAt DateTime @default(now())
+   367→  updatedAt DateTime @updatedAt
+   368→
+   369→  @@unique([userId, reportKey, name])
+   370→  @@index([userId, reportKey])
+   371→}
+   372→
+   373→// =================================================================
+   374→// GYM
+   375→// =================================================================
+   376→
+   377→model Member {
+   378→  id              String   @id @default(cuid())
+   379→  memberId        String   @unique
+   380→  firstName       String
+   381→  lastName        String?
+   382→  gender          String?
+   383→  dob             DateTime?
+   384→  phone           String?
+   385→  whatsapp        String?
+   386→  email           String?
+   387→  address         String?
+   388→  emergencyContact String?
+   389→  emergencyContactNo String?
+   390→  photo           String?
+   391→  cnic            String?
+   392→  joiningDate     DateTime @default(now())
+   393→  billingStartDate DateTime?
+   394→  feeRelaxationDays Int @default(0)
+   395→  status          String   @default("Active")
+   396→  membershipPlanId String?
+   397→  membershipPlan   MembershipPlan? @relation(fields: [membershipPlanId], references: [id])
+   398→  branchId        String
+   399→  branch          Branch   @relation(fields: [branchId], references: [id])
+   400→  assignedTrainerId String?
+   401→  notes           String?
+   402→  isActive        Boolean  @default(true)
+   403→  createdAt       DateTime @default(now())
+   404→  updatedAt       DateTime @updatedAt
+   405→  isDeleted       Boolean  @default(false)
+   406→
+   407→  attendance         Attendance[]
+   408→  fees               Fee[]
+   409→  progress           ProgressEntry[]
+   410→  freezes            MembershipFreeze[]
+   411→  followUps          FollowUp[]
+   412→  workoutAssignments WorkoutAssignment[]
+   413→  dietAssignments    DietAssignment[]
+   414→
+   415→  @@index([branchId])
+   416→  @@index([status])
+   417→  @@index([phone])
+   418→}
+   419→
+   420→model MembershipPlan {
+   421→  id           String   @id @default(cuid())
+   422→  code          String   @unique
+   423→  name          String
+   424→  durationDays  Int
+   425→  amount        Float
+   426→  description   String?
+   427→  isActive      Boolean  @default(true)
+   428→  createdAt     DateTime @default(now())
+   429→  updatedAt     DateTime @updatedAt
+   430→
+   431→  members      Member[]
+   432→}
+   433→
+   434→model Attendance {
+   435→  id         String   @id @default(cuid())
+   436→  memberId   String
+   437→  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+   438→  branchId   String
+   439→  branch     Branch   @relation(fields: [branchId], references: [id])
+   440→  date       DateTime
+   441→  checkIn    DateTime?
+   442→  checkOut   DateTime?
+   443→  notes      String?
+   444→  createdAt  DateTime @default(now())
+   445→
+   446→  @@unique([memberId, date])
+   447→  @@index([branchId, date])
+   448→}
+   449→
+   450→model Fee {
+   451→  id           String   @id @default(cuid())
+   452→  feeNo        String   @unique
+   453→  memberId     String
+   454→  member       Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+   455→  branchId     String
+   456→  branch       Branch   @relation(fields: [branchId], references: [id])
+   457→  billingPeriodStart DateTime
+   458→  billingPeriodEnd   DateTime
+   459→  amount       Float
+   460→  discount     Float    @default(0)
+   461→  paidAmount   Float    @default(0)
+   462→  balance      Float    @default(0)
+   463→  dueDate      DateTime
+   464→  status       String   @default("Unpaid")
+   465→  paymentMethod String?
+   466→  paymentAccountId String?
+   467→  paymentDate  DateTime?
+   468→  reference    String?
+   469→  voucherId    String?
+   470→  voucher      Voucher? @relation("FeeVoucher", fields: [voucherId], references: [id])
+   471→  createdAt    DateTime @default(now())
+   472→  updatedAt    DateTime @updatedAt
+   473→
+   474→  payments     FeePayment[]
+   475→
+   476→  @@index([memberId])
+   477→  @@index([branchId])
+   478→  @@index([status])
+   479→  @@index([dueDate])
+   480→}
+   481→
+   482→model FeePayment {
+   483→  id         String   @id @default(cuid())
+   484→  feeId      String
+   485→  fee        Fee       @relation(fields: [feeId], references: [id], onDelete: Cascade)
+   486→  voucherId  String
+   487→  voucher    Voucher   @relation(fields: [voucherId], references: [id])
+   488→  amount     Float
+   489→  method     String
+   490→  accountId  String
+   491→  createdAt  DateTime @default(now())
+   492→
+   493→  @@index([feeId])
+   494→}
+   495→
+   496→model Prospect {
+   497→  id         String   @id @default(cuid())
+   498→  prospectId String   @unique
+   499→  name       String
+   500→  phone      String?
+   501→  whatsapp   String?
+   502→  gender     String?
+   503→  age        Int?
+   504→  dob        DateTime?
+   505→  interestedMembership String?
+   506→  preferredBranchId String?
+   507→  preferredBranch  Branch? @relation(fields: [preferredBranchId], references: [id])
+   508→  source     String
+   509→  status     String   @default("New")
+   510→  inquiryDate DateTime @default(now())
+   511→  followUpDate DateTime?
+   512→  assignedTo String?
+   513→  notes      String?
+   514→  convertedMemberId String?
+   515→  createdAt  DateTime @default(now())
+   516→  updatedAt  DateTime @updatedAt
+   517→
+   518→  @@index([status])
+   519→  @@index([source])
+   520→}
+   521→
+   522→model MembershipFreeze {
+   523→  id         String   @id @default(cuid())
+   524→  memberId   String
+   525→  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+   526→  branchId   String
+   527→  branch     Branch   @relation(fields: [branchId], references: [id])
+   528→  freezeFrom DateTime
+   529→  freezeTo   DateTime
+   530→  days       Int
+   531→  reason     String?
+   532→  approvedBy String?
+   533→  status     String   @default("Active")
+   534→  createdAt  DateTime @default(now())
+   535→  updatedAt  DateTime @updatedAt
+   536→
+   537→  @@index([memberId])
+   538→}
+   539→
+   540→model FollowUp {
+   541→  id         String   @id @default(cuid())
+   542→  memberId   String?
+   543→  member     Member?  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+   544→  prospectId String?
+   545→  branchId   String?
+   546→  branch     Branch?  @relation(fields: [branchId], references: [id])
+   547→  date       DateTime @default(now())
+   548→  type       String
+   549→  userId     String?
+   550→  notes      String?
+   551→  outcome    String?
+   552→  nextFollowUpDate DateTime?
+   553→  createdAt  DateTime @default(now())
+   554→
+   555→  @@index([memberId])
+   556→  @@index([prospectId])
+   557→}
+   558→
+   559→// =================================================================
+   560→// GYM MASTERS
+   561→// =================================================================
+   562→
+   563→model Exercise {
+   564→  id         String   @id @default(cuid())
+   565→  code       String
+   566→  name       String
+   567→  category   String?
+   568→  muscleGroup String?
+   569→  instructions String?
+   570→  sets       Int?
+   571→  reps       String?
+   572→  duration   String?
+   573→  rest       String?
+   574→  equipment  String?
+   575→  image      String?
+   576→  branchId   String?
+   577→  branch     Branch?  @relation(fields: [branchId], references: [id])
+   578→  status     String   @default("Active")
+   579→  createdAt  DateTime @default(now())
+   580→  updatedAt  DateTime @updatedAt
+   581→
+   582→  dayExercises WorkoutDayExercise[]
+   583→}
+   584→
+   585→model WorkoutPlan {
+   586→  id         String   @id @default(cuid())
+   587→  name       String
+   588→  description String?
+   589→  isGeneral  Boolean  @default(true)
+   590→  branchId   String?
+   591→  branch     Branch?  @relation(fields: [branchId], references: [id])
+   592→  isActive   Boolean  @default(true)
+   593→  createdAt  DateTime @default(now())
+   594→  updatedAt  DateTime @updatedAt
+   595→
+   596→  days       WorkoutDay[]
+   597→  assignments WorkoutAssignment[]
+   598→}
+   599→
+   600→model WorkoutDay {
+   601→  id         String   @id @default(cuid())
+   602→  planId     String
+   603→  plan       WorkoutPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+   604→  dayName    String
+   605→  notes      String?
+   606→  exercises  WorkoutDayExercise[]
+   607→}
+   608→
+   609→model WorkoutDayExercise {
+   610→  id          String  @id @default(cuid())
+   611→  dayId       String
+   612→  day         WorkoutDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
+   613→  exerciseId  String
+   614→  exercise    Exercise @relation(fields: [exerciseId], references: [id])
+   615→  sets        Int?
+   616→  reps        String?
+   617→  duration    String?
+   618→  rest        String?
+   619→  notes       String?
+   620→}
+   621→
+   622→model WorkoutAssignment {
+   623→  id         String   @id @default(cuid())
+   624→  memberId   String
+   625→  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+   626→  planId     String?
+   627→  plan       WorkoutPlan? @relation(fields: [planId], references: [id])
+   628→  trainerId  String?
+   629→  startDate  DateTime @default(now())
+   630→  endDate    DateTime?
+   631→  notes      String?
+   632→  createdAt  DateTime @default(now())
+   633→
+   634→  @@index([memberId])
+   635→}
+   636→
+   637→model DietPlan {
+   638→  id         String   @id @default(cuid())
+   639→  name       String
+   640→  description String?
+   641→  branchId   String?
+   642→  branch     Branch?  @relation(fields: [branchId], references: [id])
+   643→  isActive   Boolean  @default(true)
+   644→  createdAt  DateTime @default(now())
+   645→  updatedAt  DateTime @updatedAt
+   646→
+   647→  meals      DietMeal[]
+   648→  assignments DietAssignment[]
+   649→}
+   650→
+   651→model DietMeal {
+   652→  id         String   @id @default(cuid())
+   653→  planId     String
+   654→  plan       DietPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+   655→  timing     String
+   656→  foods      String?
+   657→  quantity   String?
+   658→  calories   Float?
+   659→  protein    Float?
+   660→  carbs      Float?
+   661→  fat        Float?
+   662→  notes      String?
+   663→}
+   664→
+   665→model DietAssignment {
+   666→  id         String   @id @default(cuid())
+   667→  memberId   String
+   668→  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+   669→  planId     String
+   670→  plan       DietPlan @relation(fields: [planId], references: [id])
+   671→  startDate  DateTime @default(now())
+   672→  endDate    DateTime?
+   673→  notes      String?
+   674→  createdAt  DateTime @default(now())
+   675→
+   676→  @@index([memberId])
+   677→}
+   678→
+   679→model ProgressEntry {
+   680→  id         String   @id @default(cuid())
+   681→  memberId   String
+   682→  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+   683→  date       DateTime @default(now())
+   684→  weight     Float?
+   685→  chest      Float?
+   686→  waist      Float?
+   687→  hips       Float?
+   688→  biceps     Float?
+   689→  thighs     Float?
+   690→  notes      String?
+   691→  photo      String?
+   692→  createdAt  DateTime @default(now())
+   693→
+   694→  @@index([memberId, date])
+   695→}
+   696→
+   697→// =================================================================
+   698→// EQUIPMENT + INVENTORY
+   699→// =================================================================
+   700→
+   701→model Equipment {
+   702→  id           String   @id @default(cuid())
+   703→  code         String
+   704→  name         String
+   705→  category     String
+   706→  description  String?
+   707→  purchaseDate DateTime?
+   708→  purchasePrice Float?
+   709→  quantity     Int      @default(1)
+   710→  condition    String   @default("Working")
+   711→  status       String   @default("Active")
+   712→  branchId     String
+   713→  branch       Branch   @relation(fields: [branchId], references: [id])
+   714→  billReference String?
+   715→  billImage    String?
+   716→  image        String?
+   717→  createdAt    DateTime @default(now())
+   718→  updatedAt    DateTime @updatedAt
+   719→
+   720→  maintenance EquipmentMaintenance[]
+   721→}
+   722→
+   723→model EquipmentMaintenance {
+   724→  id         String   @id @default(cuid())
+   725→  equipmentId String
+   726→  equipment  Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+   727→  date       DateTime @default(now())
+   728→  type       String
+   729→  description String?
+   730→  cost       Float    @default(0)
+   731→  vendor     String?
+   732→  notes      String?
+   733→  attachment String?
+   734→  createdAt  DateTime @default(now())
+   735→
+   736→  @@index([equipmentId])
+   737→}
+   738→
+   739→model InventoryItem {
+   740→  id           String   @id @default(cuid())
+   741→  code         String
+   742→  name         String
+   743→  category     String?
+   744→  description  String?
+   745→  unit         String?
+   746→  quantity     Int      @default(0)
+   747→  reorderLevel Int      @default(0)
+   748→  purchasePrice Float?
+   749→  salePrice    Float?
+   750→  branchId     String
+   751→  branch       Branch   @relation(fields: [branchId], references: [id])
+   752→  status       String   @default("Active")
+   753→  createdAt    DateTime @default(now())
+   754→  updatedAt    DateTime @updatedAt
+   755→
+   756→  posLines PosSaleLine[]
+   757→}
+   758→
+   759→// =================================================================
+   760→// POS
+   761→// =================================================================
+   762→
+   763→model PosSale {
+   764→  id         String   @id @default(cuid())
+   765→  saleNo     String   @unique
+   766→  date       DateTime @default(now())
+   767→  branchId   String
+   768→  branch     Branch   @relation(fields: [branchId], references: [id])
+   769→  cashierId  String?
+   770→  total      Float
+   771→  paymentMethod String
+   772→  paymentAccountId String?
+   773→  voucherId  String?
+   774→  status     String   @default("Completed")
+   775→  notes      String?
+   776→  createdAt  DateTime @default(now())
+   777→  updatedAt  DateTime @updatedAt
+   778→
+   779→  lines      PosSaleLine[]
+   780→}
+   781→
+   782→model PosSaleLine {
+   783→  id         String   @id @default(cuid())
+   784→  saleId     String
+   785→  sale       PosSale  @relation(fields: [saleId], references: [id], onDelete: Cascade)
+   786→  inventoryItemId String
+   787→  inventoryItem  InventoryItem @relation(fields: [inventoryItemId], references: [id])
+   788→  quantity   Int
+   789→  unitPrice  Float
+   790→  amount     Float
+   791→}
+   792→
+   793→// =================================================================
+   794→// STAFF + PAYROLL
+   795→// =================================================================
+   796→
+   797→model Staff {
+   798→  id          String   @id @default(cuid())
+   799→  employeeId  String   @unique
+   800→  firstName   String
+   801→  lastName    String?
+   802→  fatherGuardian String?
+   803→  cnic        String?
+   804→  photo       String?
+   805→  address     String?
+   806→  emergencyContact String?
+   807→  emergencyContactNo String?
+   808→  phone       String?
+   809→  whatsapp    String?
+   810→  telephone   String?
+   811→  fax         String?
+   812→  email       String?
+   813→  joiningDate DateTime @default(now())
+   814→  department  String?
+   815→  designation String?
+   816→  isTrainer   Boolean  @default(false)
+   817→  branchId    String
+   818→  branch      Branch   @relation(fields: [branchId], references: [id])
+   819→  shiftId     String?
+   820→  shift       Shift?   @relation(fields: [shiftId], references: [id])
+   821→  basicSalary Float    @default(0)
+   822→  fuelAllowance Float  @default(0)
+   823→  rentAllowance Float  @default(0)
+   824→  houseAllowance Float @default(0)
+   825→  otherAllowance Float @default(0)
+   826→  sessi       Float    @default(0)
+   827→  eobi        Float    @default(0)
+   828→  fbrTaxNumber String?
+   829→  overtimeAllowed Boolean @default(false)
+   830→  overtimeRate Float   @default(0)
+   831→  isActive    Boolean  @default(true)
+   832→  createdAt   DateTime @default(now())
+   833→  updatedAt   DateTime @updatedAt
+   834→  isDeleted   Boolean  @default(false)
+   835→
+   836→  overtimes   Overtime[]
+   837→  leaves      Leave[]
+   838→  payrolls    Payroll[]
+   839→}
+   840→
+   841→model Shift {
+   842→  id         String   @id @default(cuid())
+   843→  name       String
+   844→  timeIn     String
+   845→  timeOut    String
+   846→  workingDays String
+   847→  branchId   String?
+   848→  branch     Branch?  @relation(fields: [branchId], references: [id])
+   849→  isActive   Boolean  @default(true)
+   850→  createdAt  DateTime @default(now())
+   851→  updatedAt  DateTime @updatedAt
+   852→
+   853→  staff Staff[]
+   854→}
+   855→
+   856→model CalendarDay {
+   857→  id         String   @id @default(cuid())
+   858→  date       DateTime @unique
+   859→  branchId   String?
+   860→  branch     Branch?  @relation(fields: [branchId], references: [id])
+   861→  dayType    String
+   862→  notes      String?
+   863→  createdAt  DateTime @default(now())
+   864→  updatedAt  DateTime @updatedAt
+   865→}
+   866→
+   867→model Leave {
+   868→  id         String   @id @default(cuid())
+   869→  staffId    String
+   870→  staff      Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+   871→  leaveType  String
+   872→  fromDate   DateTime
+   873→  toDate     DateTime
+   874→  days       Int
+   875→  reason     String?
+   876→  status     String   @default("Pending")
+   877→  approvedBy String?
+   878→  approvedAt DateTime?
+   879→  createdAt  DateTime @default(now())
+   880→  updatedAt  DateTime @updatedAt
+   881→
+   882→  @@index([staffId])
+   883→  @@index([status])
+   884→}
+   885→
+   886→model Overtime {
+   887→  id         String   @id @default(cuid())
+   888→  staffId    String
+   889→  staff      Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+   890→  date       DateTime
+   891→  hours      Float
+   892→  rate       Float
+   893→  amount     Float
+   894→  status     String   @default("Pending")
+   895→  approvedBy String?
+   896→  approvedAt DateTime?
+   897→  notes      String?
+   898→  createdAt  DateTime @default(now())
+   899→  updatedAt  DateTime @updatedAt
+   900→
+   901→  @@index([staffId])
+   902→  @@index([status])
+   903→}
+   904→
+   905→model Payroll {
+   906→  id         String   @id @default(cuid())
+   907→  payrollNo  String   @unique
+   908→  staffId    String
+   909→  staff      Staff    @relation(fields: [staffId], references: [id])
+   910→  branchId   String
+   911→  branch     Branch   @relation(fields: [branchId], references: [id])
+   912→  month      Int
+   913→  year       Int
+   914→  basicSalary Float
+   915→  totalAllowances Float
+   916→  overtimeAmount Float
+   917→  totalEarnings Float
+   918→  totalDeductions Float
+   919→  netPay     Float
+   920→  status     String   @default("Draft")
+   921→  voucherId  String?
+   922→  voucher    Voucher? @relation(fields: [voucherId], references: [id])
+   923→  createdAt  DateTime @default(now())
+   924→  updatedAt  DateTime @updatedAt
+   925→
+   926→  @@unique([staffId, month, year])
+   927→  @@index([branchId])
+   928→}
+   929→
+   930→model LeaveType {
+   931→  id         String   @id @default(cuid())
+   932→  name       String   @unique
+   933→  allowedDays Int
+   934→  isPaid     Boolean  @default(false)
+   935→  createdAt  DateTime @default(now())
+   936→}
+   937→
+   938→model Allowance {
+   939→  id         String   @id @default(cuid())
+   940→  name       String   @unique
+   941→  description String?
+   942→  isStatutory Boolean @default(false)
+   943→  createdAt  DateTime @default(now())
+   944→}
+   945→
+   946→// =================================================================
+   947→// KNOCK OFF / BILLWISE
+   948→// =================================================================
+   949→
+   950→model KnockOffBill {
+   951→  id            String   @id @default(cuid())
+   952→  billId        String   @unique  // OTB/BranchID/000001
+   953→  accountId     String   // The Customer/Supplier account from COA
+   954→  account       Account  @relation("KnockOffAccount", fields: [accountId], references: [id])
+   955→  branchId      String
+   956→  branch        Branch   @relation("KnockOffBranch", fields: [branchId], references: [id])
+   957→  billNumber    String   // mandatory, user entered
+   958→  referenceNumber String? // optional
+   959→  billType      String   // Sales Bill, Purchase Bill, Credit Note, etc.
+   960→  amount        Float    // mandatory
+   961→  referenceDate DateTime?
+   962→  dueDate       DateTime?
+   963→  description   String?    // max 20 chars — handled in app since SQLite doesn't enforce
+   964→  isDebit       Boolean  // auto-determined by billType
+   965→  outstandingAmount Float @default(0)
+   966→  adjustedAmount Float   @default(0)
+   967→  status        String   @default("Open") // Open, Settled, Partial
+   968→  createdAt     DateTime @default(now())
+   969→  updatedAt     DateTime @updatedAt
+   970→
+   971→  @@index([accountId])
+   972→  @@index([branchId])
+   973→}
+   974→
+   975→// =================================================================
+   976→// GYM MASTER FILE
+   977→// =================================================================
+   978→
+   979→model GymMasterFile {
+   980→  id            String   @id @default(cuid())
+   981→  masterType    String   // Exercise, Equipment, ExerciseType, etc.
+   982→  masterId      String   // e.g. "001" for Exercise master
+   983→  code          String   // e.g. "0010001" for individual record
+   984→  name          String
+   985→  description   String?
+   986→  branchId     String?  // for branchwise equipment
+   987→  branch        Branch?  @relation("GymMasterBranch", fields: [branchId], references: [id])
+   988→  isActive      Boolean  @default(true)
+   989→  extra         String?  // JSON for additional fields
+   990→  createdAt     DateTime @default(now())
+   991→  updatedAt     DateTime @updatedAt
+   992→
+   993→  @@unique([masterType, code])
+   994→  @@index([masterType])
+   995→  @@index([branchId])
+   996→}
+   997→
+   998→// =================================================================
+   999→// PAYROLL MASTER FILE
+  1000→// =================================================================
+  1001→
+  1002→model PayrollMasterFile {
+  1003→  id            String   @id @default(cuid())
+  1004→  masterType    String   // Education, Designation, Country, Department, Shirt, etc.
+  1005→  code          String
+  1006→  name          String
+  1007→  description   String?
+  1008→  isActive      Boolean  @default(true)
+  1009→  extra         String?
+  1010→  createdAt     DateTime @default(now())
+  1011→  updatedAt     DateTime @updatedAt
+  1012→
+  1013→  @@unique([masterType, code])
+  1014→  @@index([masterType])
+  1015→}
+  1016→

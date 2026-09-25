@@ -1,0 +1,2002 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState, useCallback, type ReactNode } from 'react'
+     4→import { Button } from '@/components/ui/button'
+     5→import { Input } from '@/components/ui/input'
+     6→import { Label } from '@/components/ui/label'
+     7→import { Card, CardContent } from '@/components/ui/card'
+     8→import {
+     9→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+    10→} from '@/components/ui/dialog'
+    11→import {
+    12→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    13→} from '@/components/ui/select'
+    14→import { Badge } from '@/components/ui/badge'
+    15→import { Textarea } from '@/components/ui/textarea'
+    16→import { Switch } from '@/components/ui/switch'
+    17→import { Checkbox } from '@/components/ui/checkbox'
+    18→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    19→import { toast } from 'sonner'
+    20→import { Plus, Search, Edit, Trash2, Eye, X, Save, ChevronDown, ChevronRight, Download, Printer, Banknote, AlertCircle, CheckCircle2, Copy } from 'lucide-react'
+    21→import {
+    22→  useApp, useFetch, apiPost, apiPatch, apiDelete,
+    23→  fmtMoney, fmtDateStr, fmtDateTime, PageHeader, SearchInput, EmptyState,
+    24→  StatusBadge, Modal, FormRow, Toolbar, DataTable, ConfirmModal,
+    25→} from './modules'
+    26→
+    27→// =================================================================
+    28→// CHART OF ACCOUNTS
+    29→// =================================================================
+    30→export function CoaModule() {
+    31→  const { session, has } = useApp()
+    32→  const [search, setSearch] = useState('')
+    33→  const [type, setType] = useState('all')
+    34→  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+    35→  const [open, setOpen] = useState(false)
+    36→  const [form, setForm] = useState<any>({})
+    37→  const { data, reload } = useFetch<any>(`/api/accounts?accountType=${type !== 'all' ? type : ''}`)
+    38→
+    39→  const accounts = data?.accounts || []
+    40→  const byId = new Map(accounts.map((a: any) => [a.id, a]))
+    41→  const roots = accounts.filter(a => !a.parentId)
+    42→  const matches = (a: any) => !search || a.name.toLowerCase().includes(search.toLowerCase()) || a.code.includes(search)
+    43→  const visible = (a: any, ancestors: any[] = []) => {
+    44→    if (matches(a)) return true
+    45→    return ancestors.some(matches)
+    46→  }
+    47→
+    48→  const toggle = (id: string) => {
+    49→    setExpanded(prev => {
+    50→      const n = new Set(prev)
+    51→      if (n.has(id)) n.delete(id); else n.add(id)
+    52→      return n
+    53→    })
+    54→  }
+    55→  const expandAll = () => setExpanded(new Set(accounts.map((a: any) => a.id)))
+    56→  const collapseAll = () => setExpanded(new Set())
+    57→
+    58→  const renderNode = (a: any, depth = 0): ReactNode => {
+    59→    const children = accounts.filter((c: any) => c.parentId === a.id)
+    60→    const isExpanded = expanded.has(a.id)
+    61→    return (
+    62→      <div key={a.id}>
+    63→        <div
+    64→          className={`flex items-center gap-2 px-2 py-1.5 hover:bg-muted/40 cursor-pointer ${matches(a) ? '' : 'opacity-60'}`}
+    65→          style={{ paddingLeft: `${depth * 20 + 8}px` }}
+    66→          onClick={() => children.length ? toggle(a.id) : null}
+    67→        >
+    68→          {children.length ? (
+    69→            isExpanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />
+    70→          ) : <div className="w-3" />}
+    71→          <span className="font-mono text-xs text-muted-foreground w-20">{a.code}</span>
+    72→          <span className="flex-1 text-sm">{a.name}</span>
+    73→          <Badge variant="outline" className="text-xs">{a.accountType}</Badge>
+    74→          {a.bookType && <Badge variant="secondary" className="text-xs">{a.bookType}</Badge>}
+    75→          {a.isControl && <Badge className="text-xs">Control</Badge>}
+    76→          {a.accountTag && <Badge variant="secondary" className="text-xs">{a.accountTag}</Badge>}
+    77→          {has('finance.coa') && (
+    78→            <button onClick={(e) => { e.stopPropagation(); setForm({ parentId: a.id, accountType: a.accountType }); setOpen(true) }} className="text-xs text-primary hover:underline">
+    79→              Add child
+    80→            </button>
+    81→          )}
+    82→        </div>
+    83→        {isExpanded && children.map((c: any) => renderNode(c, depth + 1))}
+    84→      </div>
+    85→    )
+    86→  }
+    87→
+    88→  return (
+    89→    <div>
+    90→      <PageHeader title="Chart of Accounts"
+    91→        action={has('finance.coa') ? () => { setForm({}); setOpen(true) } : undefined}
+    92→        actionLabel="Add Account" />
+    93→      <Toolbar>
+    94→        <SearchInput value={search} onChange={setSearch} placeholder="Search by name or code…" />
+    95→        <Select value={type} onValueChange={setType}>
+    96→          <SelectTrigger className="w-40"><SelectValue placeholder="Type" /></SelectTrigger>
+    97→          <SelectContent>
+    98→            <SelectItem value="all">All types</SelectItem>
+    99→            <SelectItem value="Asset">Asset</SelectItem>
+   100→            <SelectItem value="Liability">Liability</SelectItem>
+   101→            <SelectItem value="Equity">Capital / Equity</SelectItem>
+   102→            <SelectItem value="Revenue">Revenue</SelectItem>
+   103→            <SelectItem value="Expense">Expense</SelectItem>
+   104→          </SelectContent>
+   105→        </Select>
+   106→        <Button variant="outline" size="sm" onClick={expandAll}>Expand All</Button>
+   107→        <Button variant="outline" size="sm" onClick={collapseAll}>Collapse All</Button>
+   108→        <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+   109→      </Toolbar>
+   110→      <Card>
+   111→        <CardContent className="p-0">
+   112→          {accounts.length === 0 ? <EmptyState message="No accounts" /> : roots.map((a: any) => renderNode(a, 0))}
+   113→        </CardContent>
+   114→      </Card>
+   115→
+   116→      <AccountFormModal open={open} onClose={() => setOpen(false)} form={form} setForm={setForm}
+   117→        onSaved={() => { setOpen(false); reload() }} accounts={accounts} />
+   118→    </div>
+   119→  )
+   120→}
+   121→
+   122→function AccountFormModal({ open, onClose, form, setForm, onSaved, accounts }: any) {
+   123→  const parent = form.parentId ? accounts.find((a: any) => a.id === form.parentId) : null
+   124→  return (
+   125→    <Modal open={open} onClose={onClose} title="Add Account"
+   126→      footer={<>
+   127→        <Button variant="outline" onClick={onClose}>Cancel</Button>
+   128→        <Button onClick={async () => {
+   129→          try { await apiPost('/api/accounts', form); toast.success('Account created'); onSaved() }
+   130→          catch (e: any) { toast.error(e.message) }
+   131→        }}><Save className="h-4 w-4 mr-1" />Save</Button>
+   132→      </>}>
+   133→      <div className="grid grid-cols-2 gap-3">
+   134→        <FormRow label="Account Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
+   135→        <FormRow label="Parent Account">
+   136→          <Select value={form.parentId || ''} onValueChange={v => setForm({ ...form, parentId: v || null })}>
+   137→            <SelectTrigger><SelectValue placeholder="Root (no parent)" /></SelectTrigger>
+   138→            <SelectContent>
+   139→              <SelectItem value="">Root (no parent)</SelectItem>
+   140→              {accounts.filter((a: any) => !a.isDetail).map((a: any) => (
+   141→                <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>
+   142→              ))}
+   143→            </SelectContent>
+   144→          </Select>
+   145→        </FormRow>
+   146→        <FormRow label="Account Type" required>
+   147→          <Select value={form.accountType || ''} onValueChange={v => setForm({ ...form, accountType: v })}>
+   148→            <SelectTrigger><SelectValue placeholder="Type" /></SelectTrigger>
+   149→            <SelectContent>
+   150→              <SelectItem value="Asset">Asset</SelectItem>
+   151→              <SelectItem value="Liability">Liability</SelectItem>
+   152→              <SelectItem value="Equity">Capital / Equity</SelectItem>
+   153→              <SelectItem value="Revenue">Revenue</SelectItem>
+   154→              <SelectItem value="Expense">Expense</SelectItem>
+   155→            </SelectContent>
+   156→          </Select>
+   157→        </FormRow>
+   158→        <FormRow label="Book Type">
+   159→          <Select value={form.bookType || ''} onValueChange={v => setForm({ ...form, bookType: v || null })}>
+   160→            <SelectTrigger><SelectValue placeholder="General" /></SelectTrigger>
+   161→            <SelectContent>
+   162→              <SelectItem value="">General</SelectItem>
+   163→              <SelectItem value="Cash">Cash</SelectItem>
+   164→              <SelectItem value="Bank">Bank</SelectItem>
+   165→            </SelectContent>
+   166→          </Select>
+   167→        </FormRow>
+   168→        <FormRow label="Account Tag">
+   169→          <Select value={form.accountTag || ''} onValueChange={v => setForm({ ...form, accountTag: v || null })}>
+   170→            <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+   171→            <SelectContent>
+   172→              <SelectItem value="">None</SelectItem>
+   173→              <SelectItem value="Customer">Customer</SelectItem>
+   174→              <SelectItem value="Vendor">Vendor</SelectItem>
+   175→              <SelectItem value="Bank">Bank</SelectItem>
+   176→              <SelectItem value="Cash">Cash</SelectItem>
+   177→            </SelectContent>
+   178→          </Select>
+   179→        </FormRow>
+   180→        <FormRow label="Control / Detail">
+   181→          <Select value={form.isControl ? 'Control' : 'Detail'} onValueChange={v => setForm({ ...form, isControl: v === 'Control' })}>
+   182→            <SelectTrigger><SelectValue /></SelectTrigger>
+   183→            <SelectContent>
+   184→              <SelectItem value="Control">Control Account</SelectItem>
+   185→              <SelectItem value="Detail">Detail Account</SelectItem>
+   186→            </SelectContent>
+   187→          </Select>
+   188→        </FormRow>
+   189→        <FormRow label="Status">
+   190→          <Select value={form.isActive === false ? 'Inactive' : 'Active'} onValueChange={v => setForm({ ...form, isActive: v === 'Active' })}>
+   191→            <SelectTrigger><SelectValue /></SelectTrigger>
+   192→            <SelectContent>
+   193→              <SelectItem value="Active">Active</SelectItem>
+   194→              <SelectItem value="Inactive">Inactive</SelectItem>
+   195→            </SelectContent>
+   196→          </Select>
+   197→        </FormRow>
+   198→        <FormRow label="Code (auto-generated)"><Input value={form.code || 'auto'} disabled className="bg-muted/40" /></FormRow>
+   199→        <FormRow label="Contact Name"><Input value={form.contactName || ''} onChange={e => setForm({ ...form, contactName: e.target.value })} /></FormRow>
+   200→        <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
+   201→        <FormRow label="Email"><Input value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
+   202→        <FormRow label="CNIC"><Input value={form.cnic || ''} onChange={e => setForm({ ...form, cnic: e.target.value })} /></FormRow>
+   203→        <FormRow label="NTN"><Input value={form.ntn || ''} onChange={e => setForm({ ...form, ntn: e.target.value })} /></FormRow>
+   204→        <FormRow label="Bank Name"><Input value={form.bankName || ''} onChange={e => setForm({ ...form, bankName: e.target.value })} /></FormRow>
+   205→        <FormRow label="Bank A/C #"><Input value={form.bankAccountNo || ''} onChange={e => setForm({ ...form, bankAccountNo: e.target.value })} /></FormRow>
+   206→        <FormRow label="Opening Balance"><Input type="number" value={form.openingBalance || 0} onChange={e => setForm({ ...form, openingBalance: Number(e.target.value) })} /></FormRow>
+   207→        <FormRow label="Opening Type">
+   208→          <Select value={form.openingBalanceType || 'Dr'} onValueChange={v => setForm({ ...form, openingBalanceType: v })}>
+   209→            <SelectTrigger><SelectValue /></SelectTrigger>
+   210→            <SelectContent><SelectItem value="Dr">Debit</SelectItem><SelectItem value="Cr">Credit</SelectItem></SelectContent>
+   211→          </Select>
+   212→        </FormRow>
+   213→        <div className="col-span-2"><FormRow label="Description"><Textarea rows={2} value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow></div>
+   214→      </div>
+   215→      {parent && <div className="mt-3 text-xs text-muted-foreground">Parent: <code>{parent.code} — {parent.name}</code>. Code will be auto-generated under this parent.</div>}
+   216→    </Modal>
+   217→  )
+   218→}
+   219→
+   220→// =================================================================
+   221→// VOUCHERS
+   222→// =================================================================
+   223→export function VouchersModule({ presetType, presetTitle }: { presetType?: string, presetTitle?: string } = {}) {
+   224→  const { session, has, selectedBranchIds } = useApp()
+   225→  const [type, setType] = useState(presetType || 'all')
+   226→  const [status, setStatus] = useState('all')
+   227→  const [search, setSearch] = useState('')
+   228→  const [open, setOpen] = useState(false)
+   229→  const [viewOpen, setViewOpen] = useState(false)
+   230→  const [viewing, setViewing] = useState<any>(null)
+   231→  const [reverseTarget, setReverseTarget] = useState<any>(null)
+   232→  const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
+   233→  const { data, reload } = useFetch<any>(`/api/vouchers?voucherType=${type !== 'all' ? type : ''}&status=${status !== 'all' ? status : ''}${branchesParam}`)
+   234→
+   235→  const vouchers = (data?.vouchers || []).filter((v: any) =>
+   236→    !search || v.voucherNo.toLowerCase().includes(search.toLowerCase()) || v.description?.toLowerCase().includes(search.toLowerCase()))
+   237→
+   238→  return (
+   239→    <div>
+   240→      <PageHeader title={presetTitle || 'Vouchers'}
+   241→        action={has('vouchers.add') ? () => setOpen(true) : undefined}
+   242→        actionLabel="New Voucher" />
+   243→      <Toolbar>
+   244→        <SearchInput value={search} onChange={setSearch} placeholder="Search voucher no, description…" />
+   245→        {!presetType && (
+   246→          <Select value={type} onValueChange={setType}>
+   247→            <SelectTrigger className="w-40"><SelectValue placeholder="Type" /></SelectTrigger>
+   248→            <SelectContent>
+   249→              <SelectItem value="all">All types</SelectItem>
+   250→              <SelectItem value="CRV">CRV — Cash Receipt</SelectItem>
+   251→              <SelectItem value="CPV">CPV — Cash Payment</SelectItem>
+   252→              <SelectItem value="BRV">BRV — Bank Receipt</SelectItem>
+   253→              <SelectItem value="BPV">BPV — Bank Payment</SelectItem>
+   254→              <SelectItem value="JV">JV — Journal</SelectItem>
+   255→            </SelectContent>
+   256→          </Select>
+   257→        )}
+   258→        <Select value={status} onValueChange={setStatus}>
+   259→          <SelectTrigger className="w-32"><SelectValue placeholder="Status" /></SelectTrigger>
+   260→          <SelectContent>
+   261→            <SelectItem value="all">All</SelectItem>
+   262→            <SelectItem value="Draft">Draft</SelectItem>
+   263→            <SelectItem value="Posted">Posted</SelectItem>
+   264→            <SelectItem value="Reversed">Reversed</SelectItem>
+   265→          </SelectContent>
+   266→        </Select>
+   267→        <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+   268→      </Toolbar>
+   269→      <DataTable
+   270→        columns={[
+   271→          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
+   272→            <div className="flex gap-0.5">
+   273→              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setViewing(r); setViewOpen(true) }} title="View"><Eye className="h-3.5 w-3.5" /></Button>
+   274→              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); window.print() }} title="Print"><Printer className="h-3.5 w-3.5" /></Button>
+   275→              {r.status === 'Posted' && has('vouchers.reverse') && (
+   276→                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setReverseTarget(r) }} title="Reverse"><X className="h-3.5 w-3.5 text-amber-600" /></Button>
+   277→              )}
+   278→            </div>
+   279→          ) },
+   280→          { key: 'voucherNo', label: 'Voucher #', mono: true },
+   281→          { key: 'voucherType', label: 'Type' },
+   282→          { key: 'voucherDate', label: 'Date', render: (r: any) => fmtDateStr(r.voucherDate) },
+   283→          { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
+   284→          { key: 'description', label: 'Description' },
+   285→          { key: 'totalDebit', label: 'Debit', align: 'right', mono: true, render: (r: any) => fmtMoney(r.totalDebit) },
+   286→          { key: 'totalCredit', label: 'Credit', align: 'right', mono: true, render: (r: any) => fmtMoney(r.totalCredit) },
+   287→          { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
+   288→        ]}
+   289→        rows={vouchers}
+   290→        onRowClick={(r: any) => { setViewing(r); setViewOpen(true) }}
+   291→      />
+   292→
+   293→      <VoucherFormModal open={open} onClose={() => setOpen(false)} defaultType={presetType || (type !== 'all' ? type : 'CRV')} onSaved={() => { setOpen(false); reload() }} />
+   294→      <VoucherViewModal open={viewOpen} voucher={viewing} onClose={() => setViewOpen(false)} />
+   295→      <ReverseModal open={!!reverseTarget} voucher={reverseTarget} onClose={() => setReverseTarget(null)} onDone={() => { setReverseTarget(null); reload() }} />
+   296→    </div>
+   297→  )
+   298→}
+   299→
+   300→function VoucherFormModal({ open, onClose, defaultType, onSaved }: any) {
+   301→  const { session, branches } = useApp()
+   302→  const { data: accountsData } = useFetch<any>('/api/accounts')
+   303→  const { data: taxHeadsData } = useFetch<any>('/api/tax-heads')
+   304→  const accounts = accountsData?.accounts || []
+   305→  const taxHeads = taxHeadsData?.taxHeads || []
+   306→  const isJV = defaultType === 'JV'
+   307→  const isCashType = defaultType === 'CRV' || defaultType === 'CPV'
+   308→  const isBankType = defaultType === 'BRV' || defaultType === 'BPV'
+   309→  const bookAccounts = accounts.filter((a: any) =>
+   310→    a.isActive && (isCashType ? a.bookType === 'Cash' : isBankType ? a.bookType === 'Bank' : false)
+   311→  )
+   312→  const detailAccounts = accounts.filter((a: any) => a.isDetail && a.isActive)
+   313→
+   314→  const emptyLine = () => ({
+   315→    accountId: '', lineDescription: '', amount: 0, debit: 0, credit: 0,
+   316→    taxAccountId: '', taxRate: 0, taxAmount: 0,
+   317→    chequeNo: '', chequeAmount: 0, chequeBankName: '', chequeStatus: '',
+   318→    status: 'Active',
+   319→  })
+   320→
+   321→  const [form, setForm] = useState<any>({
+   322→    voucherDate: new Date().toISOString().slice(0, 10),
+   323→    reference: '', bookAccountId: '', branchId: session?.branchId || branches[0]?.id || '',
+   324→    description: '', lines: [emptyLine()],
+   325→  })
+   326→
+   327→  useEffect(() => {
+   328→    if (open) {
+   329→      setForm({
+   330→        voucherDate: new Date().toISOString().slice(0, 10),
+   331→        reference: '', bookAccountId: '', branchId: session?.branchId || branches[0]?.id || '',
+   332→        description: '', lines: [emptyLine()],
+   333→      })
+   334→    }
+   335→  }, [open])
+   336→
+   337→  // Tax calc: when amount or taxRate changes, auto-calc taxAmount = amount * taxRate / 100
+   338→  const onLineAmountChange = (i: number, amt: number) => {
+   339→    setForm((f: any) => ({
+   340→      ...f,
+   341→      lines: f.lines.map((l: any, idx: number) => {
+   342→        if (idx !== i) return l
+   343→        const taxRate = Number(l.taxRate) || 0
+   344→        const taxAmount = l.taxAccountId ? Math.round(amt * taxRate) / 100 : 0
+   345→        return { ...l, amount: amt, taxAmount }
+   346→      }),
+   347→    }))
+   348→  }
+   349→  const onLineTaxAccountChange = (i: number, taxAccountId: string) => {
+   350→    setForm((f: any) => ({
+   351→      ...f,
+   352→      lines: f.lines.map((l: any, idx: number) => {
+   353→        if (idx !== i) return l
+   354→        const th = taxHeads.find((t: any) => t.id === taxAccountId)
+   355→        const taxRate = th?.rate || 0
+   356→        const amt = Number(l.amount) || 0
+   357→        return { ...l, taxAccountId, taxRate, taxAmount: taxAccountId ? Math.round(amt * taxRate) / 100 : 0 }
+   358→      }),
+   359→    }))
+   360→  }
+   361→  const onLineTaxRateChange = (i: number, taxRate: number) => {
+   362→    setForm((f: any) => ({
+   363→      ...f,
+   364→      lines: f.lines.map((l: any, idx: number) => {
+   365→        if (idx !== i) return l
+   366→        const amt = Number(l.amount) || 0
+   367→        return { ...l, taxRate, taxAmount: l.taxAccountId ? Math.round(amt * taxRate) / 100 : 0 }
+   368→      }),
+   369→    }))
+   370→  }
+   371→
+   372→  const setLine = (i: number, patch: any) => {
+   373→    setForm((f: any) => ({ ...f, lines: f.lines.map((l: any, idx: number) => idx === i ? { ...l, ...patch } : l) }))
+   374→  }
+   375→  const addLine = () => setForm((f: any) => ({ ...f, lines: [...f.lines, emptyLine()] }))
+   376→  const removeLine = (i: number) => setForm((f: any) => ({ ...f, lines: f.lines.filter((_: any, idx: number) => idx !== i) }))
+   377→
+   378→  // Totals
+   379→  const totalDetailAmount = form.lines.reduce((s: number, l: any) => s + (Number(l.amount) || 0), 0)
+   380→  const totalTaxAmount = form.lines.reduce((s: number, l: any) => s + (Number(l.taxAmount) || 0), 0)
+   381→  const grandTotal = totalDetailAmount + totalTaxAmount
+   382→  const totalDebitJV = form.lines.reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0)
+   383→  const totalCreditJV = form.lines.reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0)
+   384→  const balancedJV = Math.abs(totalDebitJV - totalCreditJV) < 0.01
+   385→  const canSave = isJV ? balancedJV : (form.bookAccountId && form.lines.length > 0 && form.lines.every((l: any) => l.accountId) && totalDetailAmount > 0)
+   386→
+   387→  const save = async () => {
+   388→    if (!form.voucherDate || !form.branchId) { toast.error('Date and branch are required'); return }
+   389→    if (!isJV && !form.bookAccountId) { toast.error('Book Account is required'); return }
+   390→    if (isJV && !balancedJV) { toast.error(`JV not balanced: Dr ${totalDebitJV} vs Cr ${totalCreditJV}`); return }
+   391→    try {
+   392→      const payload: any = {
+   393→        voucherType: defaultType,
+   394→        voucherDate: form.voucherDate,
+   395→        branchId: form.branchId,
+   396→        bookAccountId: isJV ? null : form.bookAccountId,
+   397→        description: form.description,
+   398→        reference: form.reference,
+   399→        status: 'Posted',
+   400→        lines: form.lines.map((l: any) => ({
+   401→          accountId: l.accountId,
+   402→          amount: Number(l.amount) || 0,
+   403→          debit: isJV ? (Number(l.debit) || 0) : 0,
+   404→          credit: isJV ? (Number(l.credit) || 0) : 0,
+   405→          lineDescription: l.lineDescription,
+   406→          taxAccountId: l.taxAccountId || null,
+   407→          taxRate: Number(l.taxRate) || 0,
+   408→          taxAmount: Number(l.taxAmount) || 0,
+   409→          chequeNo: l.chequeNo || null,
+   410→          chequeAmount: l.chequeAmount ? Number(l.chequeAmount) : null,
+   411→          chequeBankName: l.chequeBankName || null,
+   412→          chequeStatus: l.chequeStatus || null,
+   413→          status: l.status || 'Active',
+   414→        })),
+   415→      }
+   416→      await apiPost('/api/vouchers', payload)
+   417→      toast.success('Voucher posted')
+   418→      onSaved()
+   419→    } catch (e: any) { toast.error(e.message) }
+   420→  }
+   421→
+   422→  const title = `New ${defaultType === 'CRV' ? 'Cash Receipt' : defaultType === 'CPV' ? 'Cash Payment' : defaultType === 'BRV' ? 'Bank Receipt' : defaultType === 'BPV' ? 'Bank Payment' : 'Journal'} Voucher`
+   423→
+   424→  return (
+   425→    <Modal open={open} onClose={onClose} title={title} size="xl"
+   426→      footer={<>
+   427→        <Button variant="outline" onClick={onClose}>Cancel</Button>
+   428→        <Button onClick={save} disabled={!canSave}>
+   429→          <Save className="h-4 w-4 mr-1" />
+   430→          {isJV ? (balancedJV ? 'Post Voucher' : `Out of balance: ${Math.abs(totalDebitJV - totalCreditJV).toFixed(2)}`)
+   431→                : (canSave ? 'Post Voucher' : 'Fill all required fields')}
+   432→        </Button>
+   433→      </>}>
+   434→      {/* HEADER: Date | Reference | Book Account | Branch */}
+   435→      <div className="grid grid-cols-2 sm:grid-cols-12 gap-3 items-end">
+   436→        <div className="sm:col-span-3"><FormRow label="Date" required><Input type="date" value={form.voucherDate} onChange={e => setForm({ ...form, voucherDate: e.target.value })} /></FormRow></div>
+   437→        <div className="sm:col-span-3"><FormRow label="Reference #"><Input value={form.reference || ''} onChange={e => setForm({ ...form, reference: e.target.value })} /></FormRow></div>
+   438→        <div className="sm:col-span-3">
+   439→          {isJV ? (
+   440→            <FormRow label="Book Account"><Input disabled value="— Not required for JV —" className="bg-muted/40 text-xs" /></FormRow>
+   441→          ) : (
+   442→            <FormRow label="Book Account" required>
+   443→              <Select value={form.bookAccountId || '__none__'} onValueChange={v => setForm({ ...form, bookAccountId: v === '__none__' ? '' : v })}>
+   444→                <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+   445→                <SelectContent>
+   446→                  <SelectItem value="__none__">— Select —</SelectItem>
+   447→                  {bookAccounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}
+   448→                </SelectContent>
+   449→              </Select>
+   450→            </FormRow>
+   451→          )}
+   452→        </div>
+   453→        <div className="sm:col-span-3">
+   454→          <FormRow label="Branch" required>
+   455→            <Select value={form.branchId || '__none__'} onValueChange={v => setForm({ ...form, branchId: v === '__none__' ? '' : v })}>
+   456→              <SelectTrigger><SelectValue placeholder="Select branch" /></SelectTrigger>
+   457→              <SelectContent>
+   458→                <SelectItem value="__none__">— Select —</SelectItem>
+   459→                {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+   460→              </SelectContent>
+   461→            </Select>
+   462→          </FormRow>
+   463→        </div>
+   464→        <div className="sm:col-span-12"><FormRow label="Description"><Input value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow></div>
+   465→      </div>
+   466→
+   467→      <div className="mt-4 border rounded">
+   468→        <div className="px-3 py-2 bg-muted/40 border-b font-medium text-sm flex items-center justify-between">
+   469→          <span>Detail Lines {isJV ? '(manual Debit / Credit)' : `(${defaultType === 'CRV' || defaultType === 'BRV' ? 'Credit side' : 'Debit side'} — Book Account auto-${defaultType === 'CRV' || defaultType === 'BRV' ? 'Debited' : 'Credited'})`}</span>
+   470→          <span className="text-xs text-muted-foreground">
+   471→            {isJV ? `Dr: ${fmtMoney(totalDebitJV)} · Cr: ${fmtMoney(totalCreditJV)} · ${balancedJV ? 'Balanced' : 'Not balanced'}`
+   472→                  : `Base: ${fmtMoney(totalDetailAmount)} · Tax: ${fmtMoney(totalTaxAmount)} · Total: ${fmtMoney(grandTotal)}`}
+   473→          </span>
+   474→        </div>
+   475→        <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+   476→          <table className="w-full text-xs">
+   477→            <thead className="bg-muted/30 border-b sticky top-0">
+   478→              <tr>
+   479→                <th className="px-2 py-1.5 text-left">Account</th>
+   480→                <th className="px-2 py-1.5 text-left">Description</th>
+   481→                {isJV ? (
+   482→                  <><th className="px-2 py-1.5 text-right">Debit</th><th className="px-2 py-1.5 text-right">Credit</th></>
+   483→                ) : (
+   484→                  <th className="px-2 py-1.5 text-right">Amount</th>
+   485→                )}
+   486→                <th className="px-2 py-1.5 text-left">Tax Account</th>
+   487→                <th className="px-2 py-1.5 text-right">Tax %</th>
+   488→                <th className="px-2 py-1.5 text-right">Tax Amount</th>
+   489→                {isBankType && <><th className="px-2 py-1.5 text-left">Cheque #</th><th className="px-2 py-1.5 text-right">Cheque Amt</th><th className="px-2 py-1.5 text-left">Bank Name</th><th className="px-2 py-1.5 text-left">Cheque Status</th></>}
+   490→                <th className="px-2 py-1.5"></th>
+   491→              </tr>
+   492→            </thead>
+   493→            <tbody>
+   494→              {form.lines.map((l: any, i: number) => (
+   495→                <tr key={i} className="border-b last:border-0 align-top">
+   496→                  <td className="px-2 py-1.5 min-w-[180px]">
+   497→                    <Select value={l.accountId || '__none__'} onValueChange={v => setLine(i, { accountId: v === '__none__' ? '' : v })}>
+   498→                      <SelectTrigger className="h-7"><SelectValue placeholder="Account" /></SelectTrigger>
+   499→                      <SelectContent>
+   500→                        <SelectItem value="__none__">—</SelectItem>
+   501→                        {detailAccounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}
+   502→                      </SelectContent>
+   503→                    </Select>
+   504→                  </td>
+   505→                  <td className="px-2 py-1.5 min-w-[140px]"><Input value={l.lineDescription || ''} onChange={e => setLine(i, { lineDescription: e.target.value })} className="h-7" /></td>
+   506→                  {isJV ? (
+   507→                    <>
+   508→                      <td className="px-2 py-1.5 w-24"><Input type="number" value={l.debit || 0} onChange={e => setLine(i, { debit: Number(e.target.value), credit: 0, amount: Number(e.target.value) })} className="h-7 text-right" /></td>
+   509→                      <td className="px-2 py-1.5 w-24"><Input type="number" value={l.credit || 0} onChange={e => setLine(i, { credit: Number(e.target.value), debit: 0, amount: Number(e.target.value) })} className="h-7 text-right" /></td>
+   510→                    </>
+   511→                  ) : (
+   512→                    <td className="px-2 py-1.5 w-28"><Input type="number" value={l.amount || 0} onChange={e => onLineAmountChange(i, Number(e.target.value))} className="h-7 text-right" /></td>
+   513→                  )}
+   514→                  <td className="px-2 py-1.5 min-w-[160px]">
+   515→                    <Select value={l.taxAccountId || '__none__'} onValueChange={v => onLineTaxAccountChange(i, v === '__none__' ? '' : v)}>
+   516→                      <SelectTrigger className="h-7"><SelectValue placeholder="None" /></SelectTrigger>
+   517→                      <SelectContent>
+   518→                        <SelectItem value="__none__">None</SelectItem>
+   519→                        {taxHeads.filter((t: any) => t.isActive).map((t: any) => <SelectItem key={t.id} value={t.id}>{t.code} — {t.shortName} ({t.rate}%)</SelectItem>)}
+   520→                      </SelectContent>
+   521→                    </Select>
+   522→                  </td>
+   523→                  <td className="px-2 py-1.5 w-20"><Input type="number" step="0.01" value={l.taxRate || 0} onChange={e => onLineTaxRateChange(i, Number(e.target.value))} className="h-7 text-right" /></td>
+   524→                  <td className="px-2 py-1.5 w-24"><Input type="number" value={l.taxAmount || 0} readOnly className="h-7 text-right bg-muted/30" /></td>
+   525→                  {isBankType && (
+   526→                    <>
+   527→                      <td className="px-2 py-1.5 min-w-[120px]"><Input value={l.chequeNo || ''} onChange={e => setLine(i, { chequeNo: e.target.value })} className="h-7" placeholder="Cheque #" /></td>
+   528→                      <td className="px-2 py-1.5 w-28"><Input type="number" value={l.amount || 0} readOnly className="h-7 text-right bg-muted/30" title="Linked to Amount" /></td>
+   529→                      <td className="px-2 py-1.5 min-w-[120px]"><Input value={l.chequeBankName || ''} onChange={e => setLine(i, { chequeBankName: e.target.value })} className="h-7" placeholder="Bank name" /></td>
+   530→                      <td className="px-2 py-1.5 min-w-[120px]">
+   531→                        <Select value={l.chequeStatus || '__none__'} onValueChange={v => setLine(i, { chequeStatus: v === '__none__' ? '' : v })}>
+   532→                          <SelectTrigger className="h-7"><SelectValue placeholder="—" /></SelectTrigger>
+   533→                          <SelectContent>
+   534→                            <SelectItem value="__none__">—</SelectItem>
+   535→                            <SelectItem value="Hold">Hold</SelectItem>
+   536→                            <SelectItem value="Clear">Clear</SelectItem>
+   537→                            <SelectItem value="Bounced">Bounced</SelectItem>
+   538→                            <SelectItem value="Deposited">Deposited</SelectItem>
+   539→                          </SelectContent>
+   540→                        </Select>
+   541→                      </td>
+   542→                    </>
+   543→                  )}
+   544→                  <td className="px-2 py-1.5"><Button size="sm" variant="ghost" onClick={() => removeLine(i)} disabled={form.lines.length === 1}><Trash2 className="h-3 w-3" /></Button></td>
+   545→                </tr>
+   546→              ))}
+   547→            </tbody>
+   548→          </table>
+   549→        </div>
+   550→        <div className="p-2 border-t"><Button size="sm" variant="outline" onClick={addLine}><Plus className="h-3 w-3 mr-1" />Add Line</Button></div>
+   551→      </div>
+   552→      <div className="mt-2 text-xs text-muted-foreground">
+   553→        {defaultType === 'CRV' && 'CRV: Book Account (cash) is auto-DEBITED. Detail lines are credited. Tax Amount is auto-calculated.'}
+   554→        {defaultType === 'CPV' && 'CPV: Book Account (cash) is auto-CREDITED. Detail lines are debited. Tax Amount is auto-calculated.'}
+   555→        {defaultType === 'BRV' && 'BRV: Book Account (bank) is auto-DEBITED. Detail lines are credited. Tax Amount is auto-calculated.'}
+   556→        {defaultType === 'BPV' && 'BPV: Book Account (bank) is auto-CREDITED. Detail lines are debited. Tax Amount is auto-calculated. Cheque Amount is linked to line Amount.'}
+   557→        {defaultType === 'JV' && 'JV: Manual Debit and Credit entry. Total Debit must equal Total Credit.'}
+   558→      </div>
+   559→    </Modal>
+   560→  )
+   561→}
+   562→
+   563→function VoucherViewModal({ open, voucher, onClose }: any) {
+   564→  if (!voucher) return null
+   565→  return (
+   566→    <Modal open={open} onClose={onClose} title={`Voucher ${voucher.voucherNo}`} size="lg">
+   567→      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+   568→        <div><div className="text-xs text-muted-foreground">Type</div><div className="font-medium">{voucher.voucherType}</div></div>
+   569→        <div><div className="text-xs text-muted-foreground">Date</div><div className="font-medium">{fmtDateStr(voucher.voucherDate)}</div></div>
+   570→        <div><div className="text-xs text-muted-foreground">Status</div><div><StatusBadge status={voucher.status} /></div></div>
+   571→        <div><div className="text-xs text-muted-foreground">Branch</div><div className="font-medium">{voucher.branch?.name}</div></div>
+   572→        <div><div className="text-xs text-muted-foreground">Book Account</div><div className="font-medium">{voucher.bookAccount?.name || '—'}</div></div>
+   573→        <div><div className="text-xs text-muted-foreground">Reference</div><div className="font-medium">{voucher.reference || '—'}</div></div>
+   574→        <div className="col-span-3"><div className="text-xs text-muted-foreground">Description</div><div>{voucher.description || '—'}</div></div>
+   575→      </div>
+   576→      <div className="mt-4 border rounded overflow-x-auto">
+   577→        <table className="w-full text-sm">
+   578→          <thead className="bg-muted/40 border-b">
+   579→            <tr>
+   580→              <th className="px-3 py-2 text-left">Account</th>
+   581→              <th className="px-3 py-2 text-left">Description</th>
+   582→              <th className="px-3 py-2 text-right">Debit</th>
+   583→              <th className="px-3 py-2 text-right">Credit</th>
+   584→            </tr>
+   585→          </thead>
+   586→          <tbody>
+   587→            {voucher.lines?.map((l: any) => (
+   588→              <tr key={l.id} className="border-b last:border-0">
+   589→                <td className="px-3 py-2"><span className="font-mono text-xs">{l.account?.code}</span> · {l.account?.name}</td>
+   590→                <td className="px-3 py-2">{l.lineDescription || '—'}</td>
+   591→                <td className="px-3 py-2 text-right font-mono">{fmtMoney(l.debit)}</td>
+   592→                <td className="px-3 py-2 text-right font-mono">{fmtMoney(l.credit)}</td>
+   593→              </tr>
+   594→            ))}
+   595→          </tbody>
+   596→          <tfoot className="bg-muted/30 border-t font-medium">
+   597→            <tr>
+   598→              <td colSpan={2} className="px-3 py-2 text-right">Total</td>
+   599→              <td className="px-3 py-2 text-right font-mono">{fmtMoney(voucher.totalDebit)}</td>
+   600→              <td className="px-3 py-2 text-right font-mono">{fmtMoney(voucher.totalCredit)}</td>
+   601→            </tr>
+   602→          </tfoot>
+   603→        </table>
+   604→      </div>
+   605→      {voucher.cheques?.length > 0 && (
+   606→        <div className="mt-3">
+   607→          <div className="text-xs text-muted-foreground mb-1">Cheques</div>
+   608→          <div className="space-y-1">
+   609→            {voucher.cheques.map((c: any) => (
+   610→              <div key={c.id} className="flex items-center gap-2 text-sm">
+   611→                <span className="font-mono">{c.chequeNo}</span>
+   612→                <span className="text-muted-foreground">{fmtDateStr(c.chequeDate)}</span>
+   613→                <span className="font-mono">{fmtMoney(c.amount)}</span>
+   614→                <StatusBadge status={c.status} />
+   615→              </div>
+   616→            ))}
+   617→          </div>
+   618→        </div>
+   619→      )}
+   620→    </Modal>
+   621→  )
+   622→}
+   623→
+   624→function ReverseModal({ open, voucher, onClose, onDone }: any) {
+   625→  const [reason, setReason] = useState('')
+   626→  if (!voucher) return null
+   627→  return (
+   628→    <Modal open={open} onClose={onClose} title={`Reverse ${voucher.voucherNo}`} size="sm"
+   629→      footer={<>
+   630→        <Button variant="outline" onClick={onClose}>Cancel</Button>
+   631→        <Button variant="destructive" onClick={async () => {
+   632→          try { await apiPatch(`/api/vouchers/${voucher.id}`, { action: 'reverse', reason }); toast.success('Voucher reversed'); onDone() }
+   633→          catch (e: any) { toast.error(e.message) }
+   634→        }}>Reverse</Button>
+   635→      </>}>
+   636→      <p className="text-sm mb-2">This will create a reversal voucher swapping debit and credit sides. The original voucher will be marked as reversed.</p>
+   637→      <FormRow label="Reason"><Textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} /></FormRow>
+   638→    </Modal>
+   639→  )
+   640→}
+   641→
+   642→// =================================================================
+   643→// TAX HEADS
+   644→// =================================================================
+   645→export function TaxHeadsModule() {
+   646→  const { has } = useApp()
+   647→  const [open, setOpen] = useState(false)
+   648→  const [form, setForm] = useState<any>({})
+   649→  const { data, reload } = useFetch<any>('/api/tax-heads')
+   650→  const taxHeads = data?.taxHeads || []
+   651→  return (
+   652→    <div>
+   653→      <PageHeader title="Tax Heads"
+   654→        action={has('tax.add') ? () => { setForm({}); setOpen(true) } : undefined}
+   655→        actionLabel="Add Tax Head" />
+   656→      <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
+   657→      <DataTable
+   658→        columns={[
+   659→          { key: 'code', label: 'Code', mono: true },
+   660→          { key: 'shortName', label: 'Short Name' },
+   661→          { key: 'name', label: 'Name' },
+   662→          { key: 'taxType', label: 'Type' },
+   663→          { key: 'rate', label: 'Rate', align: 'right', render: (r: any) => `${r.rate}%` },
+   664→          { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
+   665→        ]}
+   666→        rows={taxHeads}
+   667→      />
+   668→      <Modal open={open} onClose={() => setOpen(false)} title="Add Tax Head"
+   669→        footer={<>
+   670→          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+   671→          <Button onClick={async () => {
+   672→            try { await apiPost('/api/tax-heads', form); toast.success('Tax head created'); setOpen(false); reload() }
+   673→            catch (e: any) { toast.error(e.message) }
+   674→          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+   675→        </>}>
+   676→        <div className="grid grid-cols-2 gap-3">
+   677→          <FormRow label="Code (auto-generated 001, 002…)"><Input disabled value="auto" className="bg-muted/40" /></FormRow>
+   678→          <FormRow label="Short Name" required><Input value={form.shortName || ''} onChange={e => setForm({ ...form, shortName: e.target.value })} placeholder="ST-18" /></FormRow>
+   679→          <FormRow label="Tax Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Sales Tax 18%" /></FormRow>
+   680→          <FormRow label="Tax Type">
+   681→            <Select value={form.taxType || 'Sales'} onValueChange={v => setForm({ ...form, taxType: v })}>
+   682→              <SelectTrigger><SelectValue /></SelectTrigger>
+   683→              <SelectContent>
+   684→                <SelectItem value="Sales">Sales</SelectItem>
+   685→                <SelectItem value="Withholding">Withholding</SelectItem>
+   686→                <SelectItem value="Income">Income</SelectItem>
+   687→                <SelectItem value="Other">Other</SelectItem>
+   688→              </SelectContent>
+   689→            </Select>
+   690→          </FormRow>
+   691→          <FormRow label="Rate %"><Input type="number" value={form.rate || 0} onChange={e => setForm({ ...form, rate: Number(e.target.value) })} /></FormRow>
+   692→          <FormRow label="Active"><Switch checked={form.isActive !== false} onCheckedChange={v => setForm({ ...form, isActive: v })} /></FormRow>
+   693→        </div>
+   694→        <div className="mt-3 text-xs text-muted-foreground">Code is auto-generated as a 3-digit sequence per branch (001, 002, 003…).</div>
+   695→      </Modal>
+   696→    </div>
+   697→  )
+   698→}
+   699→
+   700→// =================================================================
+   701→// CHEQUES
+   702→// =================================================================
+   703→export function ChequesModule() {
+   704→  const { has, selectedBranchIds } = useApp()
+   705→  const [status, setStatus] = useState('all')
+   706→  const [selected, setSelected] = useState<Set<string>>(new Set())
+   707→  const [bulkStatus, setBulkStatus] = useState('Clear')
+   708→  const branchesParam = selectedBranchIds.length ? `&branchId=${selectedBranchIds.join(',')}` : ''
+   709→  const { data, reload } = useFetch<any>(`/api/cheques?status=${status !== 'all' ? status : ''}${branchesParam}`)
+   710→  const cheques = data?.cheques || []
+   711→
+   712→  const toggleAll = () => {
+   713→    if (selected.size === cheques.length) setSelected(new Set())
+   714→    else setSelected(new Set(cheques.map((c: any) => c.id)))
+   715→  }
+   716→  const toggle = (id: string) => {
+   717→    const n = new Set(selected)
+   718→    if (n.has(id)) n.delete(id); else n.add(id)
+   719→    setSelected(n)
+   720→  }
+   721→  const bulkUpdate = async () => {
+   722→    if (selected.size === 0) { toast.error('Select at least one cheque'); return }
+   723→    try {
+   724→      await apiPatch('/api/cheques', { ids: Array.from(selected), status: bulkStatus })
+   725→      toast.success(`${selected.size} cheque(s) updated to ${bulkStatus}`)
+   726→      setSelected(new Set())
+   727→      reload()
+   728→    } catch (e: any) { toast.error(e.message) }
+   729→  }
+   730→
+   731→  return (
+   732→    <div>
+   733→      <PageHeader title="Update Cheque Status" />
+   734→      <Toolbar>
+   735→        <Select value={status} onValueChange={setStatus}>
+   736→          <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
+   737→          <SelectContent>
+   738→            <SelectItem value="all">All statuses</SelectItem>
+   739→            <SelectItem value="Hold">Hold</SelectItem>
+   740→            <SelectItem value="Clear">Clear</SelectItem>
+   741→            <SelectItem value="Bounced">Bounced</SelectItem>
+   742→            <SelectItem value="Deposited">Deposited</SelectItem>
+   743→          </SelectContent>
+   744→        </Select>
+   745→        <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+   746→        <div className="flex-1" />
+   747→        {has('cheques.status') && selected.size > 0 && (
+   748→          <div className="flex items-center gap-2">
+   749→            <Select value={bulkStatus} onValueChange={setBulkStatus}>
+   750→              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+   751→              <SelectContent>
+   752→                <SelectItem value="Hold">Hold</SelectItem>
+   753→                <SelectItem value="Clear">Clear</SelectItem>
+   754→                <SelectItem value="Bounced">Bounced</SelectItem>
+   755→                <SelectItem value="Deposited">Deposited</SelectItem>
+   756→              </SelectContent>
+   757→            </Select>
+   758→            <Button size="sm" onClick={bulkUpdate}>Update {selected.size} selected</Button>
+   759→          </div>
+   760→        )}
+   761→      </Toolbar>
+   762→      <DataTable
+   763→        columns={[
+   764→          { key: 'select', label: '', render: (r: any) => (
+   765→            <Checkbox checked={selected.has(r.id)} onCheckedChange={() => toggle(r.id)} onClick={(e: any) => e.stopPropagation()} />
+   766→          ) },
+   767→          { key: 'chequeNo', label: 'Cheque #', mono: true },
+   768→          { key: 'chequeDate', label: 'Date', render: (r: any) => fmtDateStr(r.chequeDate) },
+   769→          { key: 'bankName', label: 'Bank' },
+   770→          { key: 'amount', label: 'Amount', align: 'right', mono: true, render: (r: any) => fmtMoney(r.amount) },
+   771→          { key: 'voucher', label: 'Voucher', render: (r: any) => r.voucher?.voucherNo || '—' },
+   772→          { key: 'voucher', label: 'Branch', render: (r: any) => r.voucher?.branch?.name || '—' },
+   773→          { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
+   774→        ]}
+   775→        rows={cheques}
+   776→      />
+   777→    </div>
+   778→  )
+   779→}
+   780→
+   781→// =================================================================
+   782→// MEMBERS
+   783→// =================================================================
+   784→export function MembersModule() {
+   785→  const { has, selectedBranchIds } = useApp()
+   786→  const [search, setSearch] = useState('')
+   787→  const [status, setStatus] = useState('all')
+   788→  const [open, setOpen] = useState(false)
+   789→  const [editing, setEditing] = useState<any>(null)
+   790→  const [viewing, setViewing] = useState<any>(null)
+   791→  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+   792→  const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
+   793→  const { data, reload } = useFetch<any>(`/api/members?status=${status !== 'all' ? status : ''}${branchesParam}`)
+   794→  const { data: plansData } = useFetch<any>('/api/memberships')
+   795→  const plans = plansData?.plans || []
+   796→  const members = (data?.members || []).filter((m: any) =>
+   797→    !search || m.memberId.toLowerCase().includes(search.toLowerCase()) || (m.firstName + ' ' + (m.lastName || '')).toLowerCase().includes(search.toLowerCase()) || m.phone?.includes(search))
+   798→
+   799→  const doDelete = async () => {
+   800→    if (!deleteTarget) return
+   801→    try {
+   802→      await apiDelete(`/api/members/${deleteTarget.id}`)
+   803→      toast.success('Member deleted (soft delete)')
+   804→      setDeleteTarget(null); reload()
+   805→    } catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+   806→  }
+   807→
+   808→  return (
+   809→    <div>
+   810→      <PageHeader title="Members"
+   811→        action={has('members.add') ? () => { setEditing(null); setOpen(true) } : undefined}
+   812→        actionLabel="Add Member" />
+   813→      <Toolbar>
+   814→        <SearchInput value={search} onChange={setSearch} placeholder="Search by ID, name, phone…" />
+   815→        <Select value={status} onValueChange={setStatus}>
+   816→          <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
+   817→          <SelectContent>
+   818→            <SelectItem value="all">All</SelectItem>
+   819→            <SelectItem value="Active">Active</SelectItem>
+   820→            <SelectItem value="Inactive">Inactive</SelectItem>
+   821→            <SelectItem value="Cancelled">Cancelled</SelectItem>
+   822→            <SelectItem value="Suspended">Suspended</SelectItem>
+   823→          </SelectContent>
+   824→        </Select>
+   825→        <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+   826→      </Toolbar>
+   827→      <DataTable
+   828→        columns={[
+   829→          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
+   830→            <div className="flex gap-0.5">
+   831→              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setViewing(r) }} title="View"><Eye className="h-3.5 w-3.5" /></Button>
+   832→              {has('members.edit') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditing(r); setOpen(true) }} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>}
+   833→              {has('members.delete') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r) }} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+   834→            </div>
+   835→          ) },
+   836→          { key: 'memberId', label: 'ID', mono: true },
+   837→          { key: 'name', label: 'Name', render: (r: any) => `${r.firstName} ${r.lastName || ''}` },
+   838→          { key: 'phone', label: 'Phone' },
+   839→          { key: 'gender', label: 'Gender' },
+   840→          { key: 'joiningDate', label: 'Joined', render: (r: any) => fmtDateStr(r.joiningDate) },
+   841→          { key: 'membershipPlan', label: 'Plan', render: (r: any) => r.membershipPlan?.name || '—' },
+   842→          { key: 'feeRelaxationDays', label: 'Grace', align: 'right', render: (r: any) => `${r.feeRelaxationDays}d` },
+   843→          { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
+   844→        ]}
+   845→        rows={members}
+   846→        onRowClick={(r: any) => setViewing(r)}
+   847→      />
+   848→      <MemberFormModal open={open} onClose={() => setOpen(false)} editing={editing} plans={plans} onSaved={() => { setOpen(false); reload() }} />
+   849→      <MemberViewModal open={!!viewing} member={viewing} onClose={() => setViewing(null)} onEdit={() => { setEditing(viewing); setViewing(null); setOpen(true) }} />
+   850→      <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={doDelete} title="Delete Member" message={deleteTarget ? `Soft-delete member "${deleteTarget.firstName} ${deleteTarget.lastName || ''}"? The record will remain in the database but disappear from the list.` : ''} />
+   851→    </div>
+   852→  )
+   853→}
+   854→
+   855→function MemberFormModal({ open, onClose, editing, plans, onSaved }: any) {
+   856→  const { session, branches } = useApp()
+   857→  const [form, setForm] = useState<any>({})
+   858→
+   859→  useEffect(() => {
+   860→    if (open) {
+   861→      setForm(editing ? { ...editing, joiningDate: editing.joiningDate?.slice(0, 10), billingStartDate: editing.billingStartDate?.slice(0, 10), dob: editing.dob?.slice(0, 10) } : {
+   862→        joiningDate: new Date().toISOString().slice(0, 10),
+   863→        billingStartDate: new Date().toISOString().slice(0, 10),
+   864→        branchId: session?.branchId || branches[0]?.id,
+   865→        feeRelaxationDays: 0,
+   866→        status: 'Active',
+   867→      })
+   868→    }
+   869→  }, [open, editing])
+   870→
+   871→  const save = async () => {
+   872→    try {
+   873→      if (editing) {
+   874→        await apiPatch(`/api/members/${editing.id}`, form)
+   875→        toast.success('Member updated')
+   876→      } else {
+   877→        await apiPost('/api/members', form)
+   878→        toast.success('Member created')
+   879→      }
+   880→      onSaved()
+   881→    } catch (e: any) { toast.error(e.message) }
+   882→  }
+   883→
+   884→  return (
+   885→    <Modal open={open} onClose={onClose} title={editing ? `Edit Member ${editing.memberId}` : 'New Member'} size="lg"
+   886→      footer={<>
+   887→        <Button variant="outline" onClick={onClose}>Cancel</Button>
+   888→        <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
+   889→      </>}>
+   890→      <Tabs defaultValue="basic">
+   891→        <TabsList className="grid grid-cols-3 mb-3">
+   892→          <TabsTrigger value="basic">Basic</TabsTrigger>
+   893→          <TabsTrigger value="contact">Contact</TabsTrigger>
+   894→          <TabsTrigger value="membership">Membership</TabsTrigger>
+   895→        </TabsList>
+   896→        <TabsContent value="basic" className="grid grid-cols-2 gap-3">
+   897→          <FormRow label="First Name" required><Input value={form.firstName || ''} onChange={e => setForm({ ...form, firstName: e.target.value })} /></FormRow>
+   898→          <FormRow label="Last Name"><Input value={form.lastName || ''} onChange={e => setForm({ ...form, lastName: e.target.value })} /></FormRow>
+   899→          <FormRow label="Gender">
+   900→            <Select value={form.gender || ''} onValueChange={v => setForm({ ...form, gender: v })}>
+   901→              <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+   902→              <SelectContent><SelectItem value="Male">Male</SelectItem><SelectItem value="Female">Female</SelectItem><SelectItem value="Other">Other</SelectItem></SelectContent>
+   903→            </Select>
+   904→          </FormRow>
+   905→          <FormRow label="Date of Birth"><Input type="date" value={form.dob || ''} onChange={e => setForm({ ...form, dob: e.target.value })} /></FormRow>
+   906→          <FormRow label="CNIC"><Input value={form.cnic || ''} onChange={e => setForm({ ...form, cnic: e.target.value })} /></FormRow>
+   907→          <FormRow label="Photo URL"><Input value={form.photo || ''} onChange={e => setForm({ ...form, photo: e.target.value })} /></FormRow>
+   908→          <FormRow label="Branch" required>
+   909→            <Select value={form.branchId || ''} onValueChange={v => setForm({ ...form, branchId: v })}>
+   910→              <SelectTrigger><SelectValue placeholder="Select branch" /></SelectTrigger>
+   911→              <SelectContent>{branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
+   912→            </Select>
+   913→          </FormRow>
+   914→        </TabsContent>
+   915→        <TabsContent value="contact" className="grid grid-cols-2 gap-3">
+   916→          <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
+   917→          <FormRow label="WhatsApp">
+   918→            <div className="flex gap-2 items-center">
+   919→              <Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} />
+   920→              <label className="flex items-center gap-1 text-xs whitespace-nowrap cursor-pointer">
+   921→                <input type="checkbox" checked={form.sameAsPhone || false} onChange={e => {
+   922→                  if (e.target.checked) setForm({ ...form, sameAsPhone: true, whatsapp: form.phone || '' })
+   923→                  else setForm({ ...form, sameAsPhone: false })
+   924→                }} />
+   925→                Same as Phone
+   926→              </label>
+   927→            </div>
+   928→          </FormRow>
+   929→          <FormRow label="Email"><Input value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
+   930→          <FormRow label="Emergency Contact"><Input value={form.emergencyContact || ''} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} /></FormRow>
+   931→          <FormRow label="Emergency #"><Input value={form.emergencyContactNo || ''} onChange={e => setForm({ ...form, emergencyContactNo: e.target.value })} /></FormRow>
+   932→          <div className="col-span-2"><FormRow label="Address"><Textarea rows={2} value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></FormRow></div>
+   933→        </TabsContent>
+   934→        <TabsContent value="membership" className="grid grid-cols-2 gap-3">
+   935→          <FormRow label="Joining Date" required><Input type="date" value={form.joiningDate || ''} onChange={e => setForm({ ...form, joiningDate: e.target.value })} /></FormRow>
+   936→          <FormRow label="Billing Start Date"><Input type="date" value={form.billingStartDate || ''} onChange={e => setForm({ ...form, billingStartDate: e.target.value })} /></FormRow>
+   937→          <FormRow label="Fee Relaxation Days (0–27)">
+   938→            <Input type="number" min={0} max={27} value={form.feeRelaxationDays || 0} onChange={e => setForm({ ...form, feeRelaxationDays: Math.max(0, Math.min(27, Number(e.target.value))) })} />
+   939→          </FormRow>
+   940→          <FormRow label="Membership Plan">
+   941→            <Select value={form.membershipPlanId || ''} onValueChange={v => setForm({ ...form, membershipPlanId: v })}>
+   942→              <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+   943→              <SelectContent>{plans.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name} — {fmtMoney(p.amount)}</SelectItem>)}</SelectContent>
+   944→            </Select>
+   945→          </FormRow>
+   946→          <FormRow label="Status">
+   947→            <Select value={form.status || 'Active'} onValueChange={v => setForm({ ...form, status: v })}>
+   948→              <SelectTrigger><SelectValue /></SelectTrigger>
+   949→              <SelectContent>
+   950→                <SelectItem value="Active">Active</SelectItem>
+   951→                <SelectItem value="Inactive">Inactive</SelectItem>
+   952→                <SelectItem value="Cancelled">Cancelled</SelectItem>
+   953→                <SelectItem value="Suspended">Suspended</SelectItem>
+   954→              </SelectContent>
+   955→            </Select>
+   956→          </FormRow>
+   957→          <div className="col-span-2"><FormRow label="Notes"><Textarea rows={2} value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></FormRow></div>
+   958→        </TabsContent>
+   959→      </Tabs>
+   960→    </Modal>
+   961→  )
+   962→}
+   963→
+   964→function MemberViewModal({ open, member, onClose, onEdit }: any) {
+   965→  const { data } = useFetch<any>(member ? `/api/members/${member.id}` : null)
+   966→  const m = data?.member
+   967→  if (!m) return null
+   968→  return (
+   969→    <Modal open={open} onClose={onClose} title={`${m.memberId} — ${m.firstName} ${m.lastName || ''}`} size="lg"
+   970→      footer={<><Button variant="outline" onClick={onClose}>Close</Button><Button onClick={onEdit}><Edit className="h-3.5 w-3.5 mr-1" />Edit</Button></>}>
+   971→      <Tabs defaultValue="profile">
+   972→        <TabsList className="grid grid-cols-5 mb-3">
+   973→          <TabsTrigger value="profile">Profile</TabsTrigger>
+   974→          <TabsTrigger value="fees">Fees</TabsTrigger>
+   975→          <TabsTrigger value="attendance">Attendance</TabsTrigger>
+   976→          <TabsTrigger value="freezes">Freezes</TabsTrigger>
+   977→          <TabsTrigger value="progress">Progress</TabsTrigger>
+   978→        </TabsList>
+   979→        <TabsContent value="profile">
+   980→          <div className="grid grid-cols-2 gap-3 text-sm">
+   981→            <div><div className="text-xs text-muted-foreground">Phone</div><div>{m.phone || '—'}</div></div>
+   982→            <div><div className="text-xs text-muted-foreground">WhatsApp</div><div>{m.whatsapp || '—'}</div></div>
+   983→            <div><div className="text-xs text-muted-foreground">CNIC</div><div>{m.cnic || '—'}</div></div>
+   984→            <div><div className="text-xs text-muted-foreground">Gender</div><div>{m.gender || '—'}</div></div>
+   985→            <div><div className="text-xs text-muted-foreground">Joining</div><div>{fmtDateStr(m.joiningDate)}</div></div>
+   986→            <div><div className="text-xs text-muted-foreground">Billing Start</div><div>{fmtDateStr(m.billingStartDate)}</div></div>
+   987→            <div><div className="text-xs text-muted-foreground">Fee Relaxation</div><div>{m.feeRelaxationDays} days</div></div>
+   988→            <div><div className="text-xs text-muted-foreground">Plan</div><div>{m.membershipPlan?.name || '—'}</div></div>
+   989→            <div><div className="text-xs text-muted-foreground">Branch</div><div>{m.branch?.name}</div></div>
+   990→            <div><div className="text-xs text-muted-foreground">Status</div><div><StatusBadge status={m.status} /></div></div>
+   991→            <div className="col-span-2"><div className="text-xs text-muted-foreground">Address</div><div>{m.address || '—'}</div></div>
+   992→          </div>
+   993→        </TabsContent>
+   994→        <TabsContent value="fees">
+   995→          <DataTable
+   996→            columns={[
+   997→              { key: 'feeNo', label: 'Fee #', mono: true },
+   998→              { key: 'dueDate', label: 'Due', render: (r: any) => fmtDateStr(r.dueDate) },
+   999→              { key: 'amount', label: 'Amount', align: 'right', mono: true, render: (r: any) => fmtMoney(r.amount) },
+  1000→              { key: 'paidAmount', label: 'Paid', align: 'right', mono: true, render: (r: any) => fmtMoney(r.paidAmount) },
+  1001→              { key: 'balance', label: 'Balance', align: 'right', mono: true, render: (r: any) => fmtMoney(r.balance) },
+  1002→              { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
+  1003→            ]}
+  1004→            rows={m.fees || []}
+  1005→            empty="No fees"
+  1006→          />
+  1007→        </TabsContent>
+  1008→        <TabsContent value="attendance">
+  1009→          <DataTable
+  1010→            columns={[
+  1011→              { key: 'date', label: 'Date', render: (r: any) => fmtDateStr(r.date) },
+  1012→              { key: 'checkIn', label: 'Check In', render: (r: any) => r.checkIn ? fmtDateTime(r.checkIn) : '—' },
+  1013→              { key: 'checkOut', label: 'Check Out', render: (r: any) => r.checkOut ? fmtDateTime(r.checkOut) : '—' },
+  1014→              { key: 'notes', label: 'Notes' },
+  1015→            ]}
+  1016→            rows={m.attendance || []}
+  1017→            empty="No attendance"
+  1018→          />
+  1019→        </TabsContent>
+  1020→        <TabsContent value="freezes">
+  1021→          <DataTable
+  1022→            columns={[
+  1023→              { key: 'freezeFrom', label: 'From', render: (r: any) => fmtDateStr(r.freezeFrom) },
+  1024→              { key: 'freezeTo', label: 'To', render: (r: any) => fmtDateStr(r.freezeTo) },
+  1025→              { key: 'days', label: 'Days', align: 'right' },
+  1026→              { key: 'reason', label: 'Reason' },
+  1027→              { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
+  1028→            ]}
+  1029→            rows={m.freezes || []}
+  1030→            empty="No freezes"
+  1031→          />
+  1032→        </TabsContent>
+  1033→        <TabsContent value="progress">
+  1034→          <DataTable
+  1035→            columns={[
+  1036→              { key: 'date', label: 'Date', render: (r: any) => fmtDateStr(r.date) },
+  1037→              { key: 'weight', label: 'Weight', align: 'right', render: (r: any) => r.weight || '—' },
+  1038→              { key: 'chest', label: 'Chest', align: 'right', render: (r: any) => r.chest || '—' },
+  1039→              { key: 'waist', label: 'Waist', align: 'right', render: (r: any) => r.waist || '—' },
+  1040→              { key: 'notes', label: 'Notes' },
+  1041→            ]}
+  1042→            rows={m.progress || []}
+  1043→            empty="No progress entries"
+  1044→          />
+  1045→        </TabsContent>
+  1046→      </Tabs>
+  1047→    </Modal>
+  1048→  )
+  1049→}
+  1050→
+  1051→// =================================================================
+  1052→// MEMBERSHIPS
+  1053→// =================================================================
+  1054→export function MembershipsModule() {
+  1055→  const { has } = useApp()
+  1056→  const [open, setOpen] = useState(false)
+  1057→  const [editing, setEditing] = useState<any>(null)
+  1058→  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  1059→  const [form, setForm] = useState<any>({})
+  1060→  const { data, reload } = useFetch<any>('/api/memberships')
+  1061→  const plans = data?.plans || []
+  1062→
+  1063→  const openAdd = () => { setEditing(null); setForm({ durationDays: 30, amount: 0, isActive: true }); setOpen(true) }
+  1064→  const openEdit = (p: any) => { setEditing(p); setForm({ ...p }); setOpen(true) }
+  1065→  const doDelete = async () => {
+  1066→    if (!deleteTarget) return
+  1067→    try { await apiDelete(`/api/memberships/${deleteTarget.id}`); toast.success('Plan deleted'); setDeleteTarget(null); reload() }
+  1068→    catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  1069→  }
+  1070→
+  1071→  return (
+  1072→    <div>
+  1073→      <PageHeader title="Membership Plans"
+  1074→        action={has('memberships.add') ? openAdd : undefined}
+  1075→        actionLabel="Add Plan" />
+  1076→      <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
+  1077→      <DataTable
+  1078→        columns={[
+  1079→          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
+  1080→            <div className="flex gap-0.5">
+  1081→              {has('memberships.edit') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(r) }} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>}
+  1082→              {has('memberships.delete') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r) }} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+  1083→            </div>
+  1084→          ) },
+  1085→          { key: 'code', label: 'Code', mono: true },
+  1086→          { key: 'name', label: 'Name' },
+  1087→          { key: 'durationDays', label: 'Duration', align: 'right', render: (r: any) => `${r.durationDays} days` },
+  1088→          { key: 'amount', label: 'Amount', align: 'right', mono: true, render: (r: any) => fmtMoney(r.amount) },
+  1089→          { key: 'description', label: 'Description' },
+  1090→          { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
+  1091→        ]}
+  1092→        rows={plans}
+  1093→      />
+  1094→      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Edit Plan' : 'Add Plan'}
+  1095→        footer={<>
+  1096→          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+  1097→          <Button onClick={async () => {
+  1098→            try {
+  1099→              if (editing) { await apiPatch(`/api/memberships/${editing.id}`, form); toast.success('Plan updated') }
+  1100→              else { await apiPost('/api/memberships', form); toast.success('Plan created') }
+  1101→              setOpen(false); reload()
+  1102→            } catch (e: any) { toast.error(e.message) }
+  1103→          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+  1104→        </>}>
+  1105→        <div className="grid grid-cols-2 gap-3">
+  1106→          <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
+  1107→          <FormRow label="Duration (days)" required><Input type="number" value={form.durationDays || 30} onChange={e => setForm({ ...form, durationDays: Number(e.target.value) })} /></FormRow>
+  1108→          <FormRow label="Amount" required><Input type="number" value={form.amount || 0} onChange={e => setForm({ ...form, amount: Number(e.target.value) })} /></FormRow>
+  1109→          <FormRow label="Active"><Switch checked={form.isActive !== false} onCheckedChange={v => setForm({ ...form, isActive: v })} /></FormRow>
+  1110→          <div className="col-span-2"><FormRow label="Description"><Textarea rows={2} value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow></div>
+  1111→        </div>
+  1112→      </Modal>
+  1113→      <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={doDelete} title="Delete Plan" message={deleteTarget ? `Delete plan "${deleteTarget.name}"?` : ''} />
+  1114→    </div>
+  1115→  )
+  1116→}
+  1117→
+  1118→// =================================================================
+  1119→// ATTENDANCE
+  1120→// =================================================================
+  1121→export function AttendanceModule() {
+  1122→  const { has, selectedBranchIds } = useApp()
+  1123→  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  1124→  const [open, setOpen] = useState(false)
+  1125→  const [form, setForm] = useState<any>({ memberId: '', checkIn: new Date().toISOString().slice(0, 16) })
+  1126→  const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
+  1127→  const { data, reload } = useFetch<any>(`/api/attendance?date=${date}${branchesParam}`)
+  1128→  const { data: membersData } = useFetch<any>('/api/members' + (branchesParam ? `?${branchesParam.slice(1)}` : ''))
+  1129→  const records = data?.records || []
+  1130→
+  1131→  // Date validation: only current day allowed
+  1132→  const validateDate = (d: string): string | null => {
+  1133→    const inputDate = new Date(d)
+  1134→    inputDate.setHours(0, 0, 0, 0)
+  1135→    const now = new Date()
+  1136→    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  1137→    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+  1138→    const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+  1139→    if (inputDate < firstDayOfMonth) return 'Cannot enter attendance for last month'
+  1140→    if (inputDate > lastDayOfMonth) return 'Cannot enter attendance for next month'
+  1141→    if (inputDate > today) return 'Cannot enter attendance for next day'
+  1142→    return null
+  1143→  }
+  1144→
+  1145→  const doCheckOut = async (r: any) => {
+  1146→    try {
+  1147→      await apiPatch('/api/attendance', { id: r.id, checkOut: new Date().toISOString() })
+  1148→      toast.success('Checked out')
+  1149→      reload()
+  1150→    } catch (e: any) { toast.error(e.message) }
+  1151→  }
+  1152→
+  1153→  return (
+  1154→    <div>
+  1155→      <PageHeader title="Attendance"
+  1156→        action={has('attendance.add') ? () => { setForm({ memberId: '', checkIn: new Date().toISOString().slice(0, 16) }); setOpen(true) } : undefined}
+  1157→        actionLabel="Check In" />
+  1158→      <Toolbar>
+  1159→        <FormRow label="Date"><Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-40" /></FormRow>
+  1160→        <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+  1161→      </Toolbar>
+  1162→      <DataTable
+  1163→        columns={[
+  1164→          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
+  1165→            has('attendance.edit') && !r.checkOut ? (
+  1166→              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); doCheckOut(r) }}>Check Out</Button>
+  1167→            ) : null
+  1168→          ) },
+  1169→          { key: 'member', label: 'Member', render: (r: any) => `${r.member?.firstName} ${r.member?.lastName || ''}` },
+  1170→          { key: 'member', label: 'Member ID', render: (r: any) => r.member?.memberId, mono: true },
+  1171→          { key: 'date', label: 'Date', render: (r: any) => fmtDateStr(r.date) },
+  1172→          { key: 'checkIn', label: 'Check In', render: (r: any) => r.checkIn ? fmtDateTime(r.checkIn) : '—' },
+  1173→          { key: 'checkOut', label: 'Check Out', render: (r: any) => r.checkOut ? fmtDateTime(r.checkOut) : '—' },
+  1174→          { key: 'notes', label: 'Notes' },
+  1175→        ]}
+  1176→        rows={records}
+  1177→      />
+  1178→      <Modal open={open} onClose={() => setOpen(false)} title="Manual Check In"
+  1179→        footer={<>
+  1180→          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+  1181→          <Button onClick={async () => {
+  1182→            const err = validateDate(form.checkIn.slice(0, 10))
+  1183→            if (err) { toast.error(err); return }
+  1184→            try { await apiPost('/api/attendance', { memberId: form.memberId, checkIn: form.checkIn }); toast.success('Checked in'); setOpen(false); reload() }
+  1185→            catch (e: any) { toast.error(e.message) }
+  1186→          }}><Save className="h-4 w-4 mr-1" />Check In</Button>
+  1187→        </>}>
+  1188→        <FormRow label="Member" required>
+  1189→          <Select value={form.memberId} onValueChange={v => setForm({ ...form, memberId: v })}>
+  1190→            <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
+  1191→            <SelectContent>{(membersData?.members || []).map((m: any) => <SelectItem key={m.id} value={m.id}>{m.memberId} — {m.firstName} {m.lastName || ''}</SelectItem>)}</SelectContent>
+  1192→          </Select>
+  1193→        </FormRow>
+  1194→        <FormRow label="Check In Time"><Input type="datetime-local" value={form.checkIn} onChange={e => setForm({ ...form, checkIn: e.target.value })} /></FormRow>
+  1195→      </Modal>
+  1196→    </div>
+  1197→  )
+  1198→}
+  1199→
+  1200→// =================================================================
+  1201→// FEES
+  1202→// =================================================================
+  1203→export function FeesModule() {
+  1204→  const { has, selectedBranchIds } = useApp()
+  1205→  const [status, setStatus] = useState('all')
+  1206→  const [search, setSearch] = useState('')
+  1207→  const [open, setOpen] = useState(false)
+  1208→  const [payOpen, setPayOpen] = useState(false)
+  1209→  const [payTarget, setPayTarget] = useState<any>(null)
+  1210→  const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
+  1211→  const { data, reload } = useFetch<any>(`/api/fees?status=${status !== 'all' ? status : ''}${branchesParam}`)
+  1212→  const { data: membersData } = useFetch<any>('/api/members' + (branchesParam ? `?${branchesParam.slice(1)}` : ''))
+  1213→  const { data: accountsData } = useFetch<any>('/api/accounts?bookType=Cash')
+  1214→  const { data: bankAccountsData } = useFetch<any>('/api/accounts?bookType=Bank')
+  1215→  const fees = (data?.fees || []).filter((f: any) =>
+  1216→    !search || f.feeNo.toLowerCase().includes(search.toLowerCase()) || f.member?.firstName?.toLowerCase().includes(search.toLowerCase()))
+  1217→
+  1218→  return (
+  1219→    <div>
+  1220→      <PageHeader title="Fees & Invoices"
+  1221→        action={has('fees.add') ? () => setOpen(true) : undefined}
+  1222→        actionLabel="Create Fee" />
+  1223→      <Toolbar>
+  1224→        <SearchInput value={search} onChange={setSearch} placeholder="Search by fee # or member…" />
+  1225→        <Select value={status} onValueChange={setStatus}>
+  1226→          <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
+  1227→          <SelectContent>
+  1228→            <SelectItem value="all">All</SelectItem>
+  1229→            <SelectItem value="Unpaid">Unpaid</SelectItem>
+  1230→            <SelectItem value="Partial">Partial</SelectItem>
+  1231→            <SelectItem value="Paid">Paid</SelectItem>
+  1232→            <SelectItem value="Late">Late</SelectItem>
+  1233→            <SelectItem value="Overdue">Overdue</SelectItem>
+  1234→          </SelectContent>
+  1235→        </Select>
+  1236→        <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+  1237→      </Toolbar>
+  1238→      <DataTable
+  1239→        columns={[
+  1240→          { key: 'feeNo', label: 'Fee #', mono: true },
+  1241→          { key: 'member', label: 'Member', render: (r: any) => `${r.member?.firstName} ${r.member?.lastName || ''}` },
+  1242→          { key: 'billingPeriodStart', label: 'Period', render: (r: any) => `${fmtDateStr(r.billingPeriodStart)} — ${fmtDateStr(r.billingPeriodEnd)}` },
+  1243→          { key: 'amount', label: 'Amount', align: 'right', mono: true, render: (r: any) => fmtMoney(r.amount) },
+  1244→          { key: 'paidAmount', label: 'Paid', align: 'right', mono: true, render: (r: any) => fmtMoney(r.paidAmount) },
+  1245→          { key: 'balance', label: 'Balance', align: 'right', mono: true, render: (r: any) => fmtMoney(r.balance) },
+  1246→          { key: 'dueDate', label: 'Due', render: (r: any) => fmtDateStr(r.dueDate) },
+  1247→          { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
+  1248→          { key: 'actions', label: '', align: 'right', render: (r: any) => (
+  1249→            r.status !== 'Paid' && has('fees.post') ? (
+  1250→              <Button size="sm" onClick={(e) => { e.stopPropagation(); setPayTarget(r); setPayOpen(true) }}>Collect</Button>
+  1251→            ) : null
+  1252→          ) },
+  1253→        ]}
+  1254→        rows={fees}
+  1255→      />
+  1256→      <FeeCreateModal open={open} onClose={() => setOpen(false)} members={membersData?.members || []} onSaved={() => { setOpen(false); reload() }} />
+  1257→      <FeePayModal open={payOpen} fee={payTarget} cashAccounts={accountsData?.accounts || []} bankAccounts={bankAccountsData?.accounts || []} onClose={() => setPayOpen(false)} onPaid={() => { setPayOpen(false); reload() }} />
+  1258→    </div>
+  1259→  )
+  1260→}
+  1261→
+  1262→function FeeCreateModal({ open, onClose, members, onSaved }: any) {
+  1263→  const { session, branches } = useApp()
+  1264→  const [form, setForm] = useState<any>({ amount: 0, dueDate: new Date().toISOString().slice(0, 10) })
+  1265→  return (
+  1266→    <Modal open={open} onClose={onClose} title="Create Fee"
+  1267→      footer={<>
+  1268→        <Button variant="outline" onClick={onClose}>Cancel</Button>
+  1269→        <Button onClick={async () => {
+  1270→          try { await apiPost('/api/fees', form); toast.success('Fee created'); onSaved() }
+  1271→          catch (e: any) { toast.error(e.message) }
+  1272→        }}><Save className="h-4 w-4 mr-1" />Create</Button>
+  1273→      </>}>
+  1274→      <FormRow label="Member" required>
+  1275→        <Select value={form.memberId || ''} onValueChange={v => {
+  1276→          const m = members.find((x: any) => x.id === v)
+  1277→          setForm({ ...form, memberId: v, amount: m?.membershipPlan?.amount || 0 })
+  1278→        }}>
+  1279→          <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
+  1280→          <SelectContent>{members.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.memberId} — {m.firstName} {m.lastName || ''}</SelectItem>)}</SelectContent>
+  1281→        </Select>
+  1282→      </FormRow>
+  1283→      <div className="grid grid-cols-2 gap-3 mt-3">
+  1284→        <FormRow label="Billing Start"><Input type="date" value={form.billingPeriodStart || ''} onChange={e => setForm({ ...form, billingPeriodStart: e.target.value })} /></FormRow>
+  1285→        <FormRow label="Billing End"><Input type="date" value={form.billingPeriodEnd || ''} onChange={e => setForm({ ...form, billingPeriodEnd: e.target.value })} /></FormRow>
+  1286→        <FormRow label="Amount"><Input type="number" value={form.amount || 0} onChange={e => setForm({ ...form, amount: Number(e.target.value) })} /></FormRow>
+  1287→        <FormRow label="Discount"><Input type="number" value={form.discount || 0} onChange={e => setForm({ ...form, discount: Number(e.target.value) })} /></FormRow>
+  1288→        <FormRow label="Due Date"><Input type="date" value={form.dueDate || ''} onChange={e => setForm({ ...form, dueDate: e.target.value })} /></FormRow>
+  1289→      </div>
+  1290→    </Modal>
+  1291→  )
+  1292→}
+  1293→
+  1294→function FeePayModal({ open, fee, cashAccounts, bankAccounts, onClose, onPaid }: any) {
+  1295→  const { session } = useApp()
+  1296→  const [form, setForm] = useState<any>({ amount: 0, method: 'Cash', accountId: '', reference: '', paymentDate: new Date().toISOString().slice(0, 10) })
+  1297→  useEffect(() => { if (fee) setForm({ amount: fee.balance || 0, method: 'Cash', accountId: '', reference: '', paymentDate: new Date().toISOString().slice(0, 10) }) }, [fee])
+  1298→
+  1299→  const accounts = form.method === 'Cash' ? cashAccounts : form.method === 'Bank' ? bankAccounts : [...cashAccounts, ...bankAccounts]
+  1300→
+  1301→  return (
+  1302→    <Modal open={open} onClose={onClose} title={`Collect Payment — ${fee?.feeNo || ''}`}
+  1303→      footer={<>
+  1304→        <Button variant="outline" onClick={onClose}>Cancel</Button>
+  1305→        <Button onClick={async () => {
+  1306→          try { await apiPost('/api/fees/pay', { feeId: fee.id, ...form }); toast.success('Payment recorded and voucher posted'); onPaid() }
+  1307→          catch (e: any) { toast.error(e.message) }
+  1308→        }}><Banknote className="h-4 w-4 mr-1" />Collect & Post</Button>
+  1309→      </>}>
+  1310→      {fee && (
+  1311→        <div className="mb-3 grid grid-cols-3 gap-3 text-sm border rounded p-3 bg-muted/30">
+  1312→          <div><div className="text-xs text-muted-foreground">Member</div><div className="font-medium">{fee.member?.firstName} {fee.member?.lastName || ''}</div></div>
+  1313→          <div><div className="text-xs text-muted-foreground">Total</div><div className="font-mono">{fmtMoney(fee.amount)}</div></div>
+  1314→          <div><div className="text-xs text-muted-foreground">Balance</div><div className="font-mono font-semibold">{fmtMoney(fee.balance)}</div></div>
+  1315→        </div>
+  1316→      )}
+  1317→      <div className="grid grid-cols-2 gap-3">
+  1318→        <FormRow label="Payment Method" required>
+  1319→          <Select value={form.method} onValueChange={v => setForm({ ...form, method: v, accountId: '' })}>
+  1320→            <SelectTrigger><SelectValue /></SelectTrigger>
+  1321→            <SelectContent>
+  1322→              <SelectItem value="Cash">Cash</SelectItem>
+  1323→              <SelectItem value="Bank">Bank</SelectItem>
+  1324→              <SelectItem value="Online">Online</SelectItem>
+  1325→            </SelectContent>
+  1326→          </Select>
+  1327→        </FormRow>
+  1328→        <FormRow label="Amount" required><Input type="number" value={form.amount || 0} onChange={e => setForm({ ...form, amount: Number(e.target.value) })} /></FormRow>
+  1329→        <FormRow label="Account" required>
+  1330→          <Select value={form.accountId} onValueChange={v => setForm({ ...form, accountId: v })}>
+  1331→            <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+  1332→            <SelectContent>{accounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}</SelectContent>
+  1333→          </Select>
+  1334→        </FormRow>
+  1335→        <FormRow label="Payment Date"><Input type="date" value={form.paymentDate} onChange={e => setForm({ ...form, paymentDate: e.target.value })} /></FormRow>
+  1336→        <div className="col-span-2"><FormRow label="Reference"><Input value={form.reference} onChange={e => setForm({ ...form, reference: e.target.value })} placeholder="Optional receipt/cheque no." /></FormRow></div>
+  1337→      </div>
+  1338→      <div className="mt-3 text-xs text-muted-foreground">
+  1339→        Collecting will automatically post a {form.method === 'Cash' ? 'Cash Receipt Voucher (CRV)' : 'Bank Receipt Voucher (BRV)'} to the books. No manual voucher needed.
+  1340→      </div>
+  1341→    </Modal>
+  1342→  )
+  1343→}
+  1344→
+  1345→// =================================================================
+  1346→// PROSPECTS
+  1347→// =================================================================
+  1348→export function ProspectsModule() {
+  1349→  const { has, selectedBranchIds } = useApp()
+  1350→  const [status, setStatus] = useState('all')
+  1351→  const [search, setSearch] = useState('')
+  1352→  const [open, setOpen] = useState(false)
+  1353→  const [editing, setEditing] = useState<any>(null)
+  1354→  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  1355→  const [form, setForm] = useState<any>({})
+  1356→  const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
+  1357→  const { data, reload } = useFetch<any>(`/api/prospects?status=${status !== 'all' ? status : ''}${branchesParam}`)
+  1358→  const prospects = (data?.prospects || []).filter((p: any) =>
+  1359→    !search || p.name?.toLowerCase().includes(search.toLowerCase()) || p.phone?.includes(search))
+  1360→
+  1361→  const openAdd = () => { setEditing(null); setForm({ source: 'WalkIn', status: 'New' }); setOpen(true) }
+  1362→  const openEdit = (p: any) => { setEditing(p); setForm({ ...p }); setOpen(true) }
+  1363→  const doDelete = async () => {
+  1364→    if (!deleteTarget) return
+  1365→    try { await apiDelete(`/api/prospects/${deleteTarget.id}`); toast.success('Prospect deleted'); setDeleteTarget(null); reload() }
+  1366→    catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  1367→  }
+  1368→
+  1369→  return (
+  1370→    <div>
+  1371→      <PageHeader title="Prospects / Inquiries"
+  1372→        action={has('prospects.add') ? openAdd : undefined}
+  1373→        actionLabel="Add Prospect" />
+  1374→      <Toolbar>
+  1375→        <SearchInput value={search} onChange={setSearch} placeholder="Search name or phone…" />
+  1376→        <Select value={status} onValueChange={setStatus}>
+  1377→          <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
+  1378→          <SelectContent>
+  1379→            <SelectItem value="all">All</SelectItem>
+  1380→            <SelectItem value="New">New</SelectItem>
+  1381→            <SelectItem value="Contacted">Contacted</SelectItem>
+  1382→            <SelectItem value="Interested">Interested</SelectItem>
+  1383→            <SelectItem value="TrialScheduled">Trial Scheduled</SelectItem>
+  1384→            <SelectItem value="FollowUp">Follow Up</SelectItem>
+  1385→            <SelectItem value="Converted">Converted</SelectItem>
+  1386→            <SelectItem value="Lost">Lost</SelectItem>
+  1387→          </SelectContent>
+  1388→        </Select>
+  1389→        <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+  1390→      </Toolbar>
+  1391→      <DataTable
+  1392→        columns={[
+  1393→          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
+  1394→            <div className="flex gap-0.5">
+  1395→              {has('prospects.edit') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(r) }} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>}
+  1396→              {has('prospects.delete') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r) }} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+  1397→              {r.status !== 'Converted' && has('prospects.convert') && (
+  1398→                <Button size="sm" variant="outline" onClick={async (e) => {
+  1399→                  e.stopPropagation()
+  1400→                  if (confirm(`Mark ${r.name} as converted?`)) {
+  1401→                    try { await apiPatch(`/api/prospects/${r.id}`, { action: 'convert', convertedMemberId: null }); toast.success('Marked as converted'); reload() }
+  1402→                    catch (e: any) { toast.error(e.message) }
+  1403→                  }
+  1404→                }}>Convert</Button>
+  1405→              )}
+  1406→            </div>
+  1407→          ) },
+  1408→          { key: 'prospectId', label: 'ID', mono: true },
+  1409→          { key: 'name', label: 'Name' },
+  1410→          { key: 'phone', label: 'Phone' },
+  1411→          { key: 'source', label: 'Source' },
+  1412→          { key: 'interestedMembership', label: 'Interested In' },
+  1413→          { key: 'inquiryDate', label: 'Inquiry', render: (r: any) => fmtDateStr(r.inquiryDate) },
+  1414→          { key: 'followUpDate', label: 'Follow Up', render: (r: any) => fmtDateStr(r.followUpDate) },
+  1415→          { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
+  1416→        ]}
+  1417→        rows={prospects}
+  1418→      />
+  1419→      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Edit Prospect' : 'Add Prospect'}
+  1420→        footer={<>
+  1421→          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+  1422→          <Button onClick={async () => {
+  1423→            try {
+  1424→              if (editing) { await apiPatch(`/api/prospects/${editing.id}`, form); toast.success('Prospect updated') }
+  1425→              else { await apiPost('/api/prospects', form); toast.success('Prospect added') }
+  1426→              setOpen(false); reload() }
+  1427→            catch (e: any) { toast.error(e.message) }
+  1428→          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+  1429→        </>}>
+  1430→        <div className="grid grid-cols-2 gap-3">
+  1431→          <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
+  1432→          <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
+  1433→          <FormRow label="WhatsApp">
+  1434→            <div className="flex gap-2 items-center">
+  1435→              <Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} />
+  1436→              <label className="flex items-center gap-1 text-xs whitespace-nowrap cursor-pointer">
+  1437→                <input type="checkbox" checked={form.sameAsPhone || false} onChange={e => {
+  1438→                  if (e.target.checked) setForm({ ...form, sameAsPhone: true, whatsapp: form.phone || '' })
+  1439→                  else setForm({ ...form, sameAsPhone: false })
+  1440→                }} />
+  1441→                Same as Phone
+  1442→              </label>
+  1443→            </div>
+  1444→          </FormRow>
+  1445→          <FormRow label="Gender">
+  1446→            <Select value={form.gender || ''} onValueChange={v => setForm({ ...form, gender: v })}>
+  1447→              <SelectTrigger><SelectValue /></SelectTrigger>
+  1448→              <SelectContent><SelectItem value="Male">Male</SelectItem><SelectItem value="Female">Female</SelectItem><SelectItem value="Other">Other</SelectItem></SelectContent>
+  1449→            </Select>
+  1450→          </FormRow>
+  1451→          <FormRow label="Age"><Input type="number" value={form.age || ''} onChange={e => setForm({ ...form, age: e.target.value })} /></FormRow>
+  1452→          <FormRow label="Source">
+  1453→            <Select value={form.source} onValueChange={v => setForm({ ...form, source: v })}>
+  1454→              <SelectTrigger><SelectValue /></SelectTrigger>
+  1455→              <SelectContent>
+  1456→                <SelectItem value="WalkIn">Walk In</SelectItem>
+  1457→                <SelectItem value="Phone">Phone</SelectItem>
+  1458→                <SelectItem value="WhatsApp">WhatsApp</SelectItem>
+  1459→                <SelectItem value="Website">Website</SelectItem>
+  1460→                <SelectItem value="Referral">Referral</SelectItem>
+  1461→                <SelectItem value="Other">Other</SelectItem>
+  1462→              </SelectContent>
+  1463→            </Select>
+  1464→          </FormRow>
+  1465→          <FormRow label="Interested In"><Input value={form.interestedMembership || ''} onChange={e => setForm({ ...form, interestedMembership: e.target.value })} /></FormRow>
+  1466→          <FormRow label="Status">
+  1467→            <Select value={form.status} onValueChange={v => setForm({ ...form, status: v })}>
+  1468→              <SelectTrigger><SelectValue /></SelectTrigger>
+  1469→              <SelectContent>
+  1470→                <SelectItem value="New">New</SelectItem>
+  1471→                <SelectItem value="Contacted">Contacted</SelectItem>
+  1472→                <SelectItem value="Interested">Interested</SelectItem>
+  1473→                <SelectItem value="TrialScheduled">Trial Scheduled</SelectItem>
+  1474→                <SelectItem value="FollowUp">Follow Up</SelectItem>
+  1475→              </SelectContent>
+  1476→            </Select>
+  1477→          </FormRow>
+  1478→          <FormRow label="Inquiry Date"><Input type="date" value={form.inquiryDate || new Date().toISOString().slice(0, 10)} onChange={e => setForm({ ...form, inquiryDate: e.target.value })} /></FormRow>
+  1479→          <FormRow label="Follow Up Date"><Input type="date" value={form.followUpDate || ''} onChange={e => setForm({ ...form, followUpDate: e.target.value })} /></FormRow>
+  1480→          <div className="col-span-2"><FormRow label="Notes"><Textarea rows={2} value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></FormRow></div>
+  1481→        </div>
+  1482→      </Modal>
+  1483→      <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={doDelete} title="Delete Prospect" message={deleteTarget ? `Delete prospect "${deleteTarget.name}"?` : ''} />
+  1484→    </div>
+  1485→  )
+  1486→}
+  1487→
+  1488→// =================================================================
+  1489→// FREEZES
+  1490→// =================================================================
+  1491→export function FreezesModule() {
+  1492→  const { has, selectedBranchIds } = useApp()
+  1493→  const [open, setOpen] = useState(false)
+  1494→  const [form, setForm] = useState<any>({})
+  1495→  const { data, reload } = useFetch<any>('/api/freezes')
+  1496→  const { data: membersData } = useFetch<any>('/api/members')
+  1497→  const freezes = data?.freezes || []
+  1498→
+  1499→  return (
+  1500→    <div>
+  1501→      <PageHeader title="Membership Freeze"
+  1502→        action={has('freeze.add') ? () => { setForm({ freezeFrom: new Date().toISOString().slice(0, 10) }); setOpen(true) } : undefined}
+  1503→        actionLabel="Freeze Membership" />
+  1504→      <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
+  1505→      <DataTable
+  1506→        columns={[
+  1507→          { key: 'member', label: 'Member', render: (r: any) => `${r.member?.firstName} ${r.member?.lastName || ''}` },
+  1508→          { key: 'freezeFrom', label: 'From', render: (r: any) => fmtDateStr(r.freezeFrom) },
+  1509→          { key: 'freezeTo', label: 'To', render: (r: any) => fmtDateStr(r.freezeTo) },
+  1510→          { key: 'days', label: 'Days', align: 'right' },
+  1511→          { key: 'reason', label: 'Reason' },
+  1512→          { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
+  1513→          { key: 'actions', label: '', align: 'right', render: (r: any) =>
+  1514→            r.status === 'Active' && has('freeze.edit') ? (
+  1515→              <Button size="sm" variant="outline" onClick={async (e) => {
+  1516→                e.stopPropagation()
+  1517→                try { await apiPatch('/api/freezes', { id: r.id, action: 'lift' }); toast.success('Freeze lifted'); reload() }
+  1518→                catch (e: any) { toast.error(e.message) }
+  1519→              }}>Lift</Button>
+  1520→            ) : null
+  1521→          },
+  1522→        ]}
+  1523→        rows={freezes}
+  1524→      />
+  1525→      <Modal open={open} onClose={() => setOpen(false)} title="Freeze Membership"
+  1526→        footer={<>
+  1527→          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+  1528→          <Button onClick={async () => {
+  1529→            try { await apiPost('/api/freezes', form); toast.success('Freeze applied'); setOpen(false); reload() }
+  1530→            catch (e: any) { toast.error(e.message) }
+  1531→          }}><Save className="h-4 w-4 mr-1" />Apply Freeze</Button>
+  1532→        </>}>
+  1533→        <FormRow label="Member" required>
+  1534→          <Select value={form.memberId || ''} onValueChange={v => setForm({ ...form, memberId: v })}>
+  1535→            <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
+  1536→            <SelectContent>{(membersData?.members || []).map((m: any) => <SelectItem key={m.id} value={m.id}>{m.memberId} — {m.firstName} {m.lastName || ''}</SelectItem>)}</SelectContent>
+  1537→          </Select>
+  1538→        </FormRow>
+  1539→        <div className="grid grid-cols-2 gap-3 mt-3">
+  1540→          <FormRow label="From" required><Input type="date" value={form.freezeFrom || ''} onChange={e => setForm({ ...form, freezeFrom: e.target.value })} /></FormRow>
+  1541→          <FormRow label="To" required><Input type="date" value={form.freezeTo || ''} onChange={e => setForm({ ...form, freezeTo: e.target.value })} /></FormRow>
+  1542→          <div className="col-span-2"><FormRow label="Reason"><Textarea rows={2} value={form.reason || ''} onChange={e => setForm({ ...form, reason: e.target.value })} /></FormRow></div>
+  1543→        </div>
+  1544→      </Modal>
+  1545→    </div>
+  1546→  )
+  1547→}
+  1548→
+  1549→// =================================================================
+  1550→// FOLLOW-UPS
+  1551→// =================================================================
+  1552→export function FollowUpsModule() {
+  1553→  const { has, selectedBranchIds } = useApp()
+  1554→  const [open, setOpen] = useState(false)
+  1555→  const [form, setForm] = useState<any>({ type: 'WhatsApp' })
+  1556→  const { data, reload } = useFetch<any>('/api/followups')
+  1557→  const records = data?.records || []
+  1558→  return (
+  1559→    <div>
+  1560→      <PageHeader title="Member Follow Up History"
+  1561→        action={has('followups.add') ? () => { setForm({ type: 'WhatsApp', date: new Date().toISOString().slice(0, 10) }); setOpen(true) } : undefined}
+  1562→        actionLabel="Log Follow Up" />
+  1563→      <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
+  1564→      <DataTable
+  1565→        columns={[
+  1566→          { key: 'date', label: 'Date', render: (r: any) => fmtDateStr(r.date) },
+  1567→          { key: 'member', label: 'Member', render: (r: any) => r.member ? `${r.member.firstName} ${r.member.lastName || ''}` : '—' },
+  1568→          { key: 'type', label: 'Type' },
+  1569→          { key: 'notes', label: 'Notes' },
+  1570→          { key: 'outcome', label: 'Outcome' },
+  1571→          { key: 'nextFollowUpDate', label: 'Next', render: (r: any) => fmtDateStr(r.nextFollowUpDate) },
+  1572→        ]}
+  1573→        rows={records}
+  1574→      />
+  1575→      <Modal open={open} onClose={() => setOpen(false)} title="Log Follow Up"
+  1576→        footer={<>
+  1577→          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+  1578→          <Button onClick={async () => {
+  1579→            try { await apiPost('/api/followups', form); toast.success('Follow up logged'); setOpen(false); reload() }
+  1580→            catch (e: any) { toast.error(e.message) }
+  1581→          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+  1582→        </>}>
+  1583→        <div className="grid grid-cols-2 gap-3">
+  1584→          <FormRow label="Type">
+  1585→            <Select value={form.type} onValueChange={v => setForm({ ...form, type: v })}>
+  1586→              <SelectTrigger><SelectValue /></SelectTrigger>
+  1587→              <SelectContent>
+  1588→                <SelectItem value="WhatsApp">WhatsApp</SelectItem>
+  1589→                <SelectItem value="Phone">Phone</SelectItem>
+  1590→                <SelectItem value="InPerson">In Person</SelectItem>
+  1591→                <SelectItem value="Email">Email</SelectItem>
+  1592→                <SelectItem value="Other">Other</SelectItem>
+  1593→              </SelectContent>
+  1594→            </Select>
+  1595→          </FormRow>
+  1596→          <FormRow label="Date"><Input type="date" value={form.date || ''} onChange={e => setForm({ ...form, date: e.target.value })} /></FormRow>
+  1597→          <FormRow label="Member (optional)">
+  1598→            <Input value={form.memberId || ''} onChange={e => setForm({ ...form, memberId: e.target.value })} placeholder="Member ID" />
+  1599→          </FormRow>
+  1600→          <FormRow label="Outcome">
+  1601→            <Select value={form.outcome || ''} onValueChange={v => setForm({ ...form, outcome: v })}>
+  1602→              <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+  1603→              <SelectContent>
+  1604→                <SelectItem value="Promise">Promise to pay</SelectItem>
+  1605→                <SelectItem value="NoAnswer">No answer</SelectItem>
+  1606→                <SelectItem value="NotInterested">Not interested</SelectItem>
+  1607→                <SelectItem value="Paid">Paid</SelectItem>
+  1608→                <SelectItem value="Other">Other</SelectItem>
+  1609→              </SelectContent>
+  1610→            </Select>
+  1611→          </FormRow>
+  1612→          <div className="col-span-2"><FormRow label="Notes"><Textarea rows={2} value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></FormRow></div>
+  1613→        </div>
+  1614→      </Modal>
+  1615→    </div>
+  1616→  )
+  1617→}
+  1618→
+  1619→// =================================================================
+  1620→// MEMBER STATUS (bulk update)
+  1621→// =================================================================
+  1622→export function MemberStatusModule() {
+  1623→  const { has, selectedBranchIds } = useApp()
+  1624→  const [selected, setSelected] = useState<Set<string>>(new Set())
+  1625→  const [bulkStatus, setBulkStatus] = useState('Active')
+  1626→  const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
+  1627→  const { data, reload } = useFetch<any>(`/api/members${branchesParam ? `?${branchesParam.slice(1)}` : '?'}`)
+  1628→  const members = data?.members || []
+  1629→
+  1630→  const toggle = (id: string) => {
+  1631→    const n = new Set(selected); if (n.has(id)) n.delete(id); else n.add(id); setSelected(n)
+  1632→  }
+  1633→  const apply = async () => {
+  1634→    if (selected.size === 0) { toast.error('Select at least one member'); return }
+  1635→    for (const id of selected) {
+  1636→      try { await apiPatch(`/api/members/${id}`, { action: 'status', status: bulkStatus }) } catch (e: any) { toast.error(e.message); return }
+  1637→    }
+  1638→    toast.success(`${selected.size} member(s) updated to ${bulkStatus}`)
+  1639→    setSelected(new Set()); reload()
+  1640→  }
+  1641→
+  1642→  return (
+  1643→    <div>
+  1644→      <PageHeader title="Member Status" />
+  1645→      <Toolbar>
+  1646→        <Select value={bulkStatus} onValueChange={setBulkStatus}>
+  1647→          <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+  1648→          <SelectContent>
+  1649→            <SelectItem value="Active">Active</SelectItem>
+  1650→            <SelectItem value="Inactive">Inactive</SelectItem>
+  1651→            <SelectItem value="Cancelled">Cancelled</SelectItem>
+  1652→            <SelectItem value="Suspended">Suspended</SelectItem>
+  1653→          </SelectContent>
+  1654→        </Select>
+  1655→        {has('members.status') && selected.size > 0 && <Button size="sm" onClick={apply}>Apply to {selected.size} selected</Button>}
+  1656→        <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+  1657→      </Toolbar>
+  1658→      <DataTable
+  1659→        columns={[
+  1660→          { key: 'select', label: '', render: (r: any) => <Checkbox checked={selected.has(r.id)} onCheckedChange={() => toggle(r.id)} onClick={(e: any) => e.stopPropagation()} /> },
+  1661→          { key: 'memberId', label: 'ID', mono: true },
+  1662→          { key: 'name', label: 'Name', render: (r: any) => `${r.firstName} ${r.lastName || ''}` },
+  1663→          { key: 'phone', label: 'Phone' },
+  1664→          { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name },
+  1665→          { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
+  1666→        ]}
+  1667→        rows={members}
+  1668→      />
+  1669→    </div>
+  1670→  )
+  1671→}
+  1672→
+  1673→// =================================================================
+  1674→// EQUIPMENT
+  1675→// =================================================================
+  1676→export function EquipmentModule() {
+  1677→  const { has, selectedBranchIds, branches } = useApp()
+  1678→  const [search, setSearch] = useState('')
+  1679→  const [condition, setCondition] = useState('all')
+  1680→  const [open, setOpen] = useState(false)
+  1681→  const [form, setForm] = useState<any>({})
+  1682→  const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
+  1683→  const { data, reload } = useFetch<any>(`/api/equipment?condition=${condition !== 'all' ? condition : ''}${branchesParam}`)
+  1684→  const equipment = (data?.equipment || []).filter((e: any) => !search || e.code?.toLowerCase().includes(search.toLowerCase()) || e.name?.toLowerCase().includes(search.toLowerCase()))
+  1685→
+  1686→  return (
+  1687→    <div>
+  1688→      <PageHeader title="Equipment"
+  1689→        action={has('equipment.add') ? () => { setForm({ condition: 'Working', category: 'Machine' }); setOpen(true) } : undefined}
+  1690→        actionLabel="Add Equipment" />
+  1691→      <Toolbar>
+  1692→        <SearchInput value={search} onChange={setSearch} placeholder="Search equipment…" />
+  1693→        <Select value={condition} onValueChange={setCondition}>
+  1694→          <SelectTrigger className="w-36"><SelectValue placeholder="Condition" /></SelectTrigger>
+  1695→          <SelectContent>
+  1696→            <SelectItem value="all">All conditions</SelectItem>
+  1697→            <SelectItem value="Working">Working</SelectItem>
+  1698→            <SelectItem value="Broken">Broken</SelectItem>
+  1699→            <SelectItem value="UnderMaintenance">Under Maintenance</SelectItem>
+  1700→            <SelectItem value="Retired">Retired</SelectItem>
+  1701→          </SelectContent>
+  1702→        </Select>
+  1703→        <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+  1704→      </Toolbar>
+  1705→      <DataTable
+  1706→        columns={[
+  1707→          { key: 'code', label: 'Code', mono: true },
+  1708→          { key: 'name', label: 'Name' },
+  1709→          { key: 'category', label: 'Category' },
+  1710→          { key: 'quantity', label: 'Qty', align: 'right' },
+  1711→          { key: 'purchasePrice', label: 'Price', align: 'right', mono: true, render: (r: any) => fmtMoney(r.purchasePrice) },
+  1712→          { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name },
+  1713→          { key: 'condition', label: 'Condition', render: (r: any) => <StatusBadge status={r.condition} /> },
+  1714→          { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
+  1715→        ]}
+  1716→        rows={equipment}
+  1717→      />
+  1718→      <Modal open={open} onClose={() => setOpen(false)} title="Add Equipment"
+  1719→        footer={<>
+  1720→          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+  1721→          <Button onClick={async () => {
+  1722→            try { await apiPost('/api/equipment', form); toast.success('Equipment added'); setOpen(false); reload() }
+  1723→            catch (e: any) { toast.error(e.message) }
+  1724→          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+  1725→        </>}>
+  1726→        <div className="grid grid-cols-2 gap-3">
+  1727→          <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
+  1728→          <FormRow label="Category">
+  1729→            <Select value={form.category || 'Machine'} onValueChange={v => setForm({ ...form, category: v })}>
+  1730→              <SelectTrigger><SelectValue /></SelectTrigger>
+  1731→              <SelectContent>
+  1732→                <SelectItem value="Machine">Machine</SelectItem>
+  1733→                <SelectItem value="Dumbbell">Dumbbell</SelectItem>
+  1734→                <SelectItem value="Bar">Bar</SelectItem>
+  1735→                <SelectItem value="Weight">Weight</SelectItem>
+  1736→                <SelectItem value="Accessory">Accessory</SelectItem>
+  1737→                <SelectItem value="Consumable">Consumable</SelectItem>
+  1738→              </SelectContent>
+  1739→            </Select>
+  1740→          </FormRow>
+  1741→          <FormRow label="Branch" required>
+  1742→            <Select value={form.branchId || ''} onValueChange={v => setForm({ ...form, branchId: v })}>
+  1743→              <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+  1744→              <SelectContent>{branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
+  1745→            </Select>
+  1746→          </FormRow>
+  1747→          <FormRow label="Quantity"><Input type="number" value={form.quantity || 1} onChange={e => setForm({ ...form, quantity: Number(e.target.value) })} /></FormRow>
+  1748→          <FormRow label="Purchase Date"><Input type="date" value={form.purchaseDate || ''} onChange={e => setForm({ ...form, purchaseDate: e.target.value })} /></FormRow>
+  1749→          <FormRow label="Purchase Price"><Input type="number" value={form.purchasePrice || 0} onChange={e => setForm({ ...form, purchasePrice: Number(e.target.value) })} /></FormRow>
+  1750→          <FormRow label="Condition">
+  1751→            <Select value={form.condition || 'Working'} onValueChange={v => setForm({ ...form, condition: v })}>
+  1752→              <SelectTrigger><SelectValue /></SelectTrigger>
+  1753→              <SelectContent>
+  1754→                <SelectItem value="Working">Working</SelectItem>
+  1755→                <SelectItem value="Broken">Broken</SelectItem>
+  1756→                <SelectItem value="UnderMaintenance">Under Maintenance</SelectItem>
+  1757→                <SelectItem value="Retired">Retired</SelectItem>
+  1758→              </SelectContent>
+  1759→            </Select>
+  1760→          </FormRow>
+  1761→          <FormRow label="Bill Reference"><Input value={form.billReference || ''} onChange={e => setForm({ ...form, billReference: e.target.value })} /></FormRow>
+  1762→          <div className="col-span-2"><FormRow label="Description"><Textarea rows={2} value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow></div>
+  1763→        </div>
+  1764→      </Modal>
+  1765→    </div>
+  1766→  )
+  1767→}
+  1768→
+  1769→// =================================================================
+  1770→// INVENTORY
+  1771→// =================================================================
+  1772→export function InventoryModule() {
+  1773→  const { has, selectedBranchIds, branches } = useApp()
+  1774→  const [search, setSearch] = useState('')
+  1775→  const [open, setOpen] = useState(false)
+  1776→  const [form, setForm] = useState<any>({})
+  1777→  const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
+  1778→  const { data, reload } = useFetch<any>(`/api/inventory${branchesParam ? `?${branchesParam.slice(1)}` : ''}`)
+  1779→  const items = (data?.items || []).filter((i: any) => !search || i.code?.toLowerCase().includes(search.toLowerCase()) || i.name?.toLowerCase().includes(search.toLowerCase()))
+  1780→
+  1781→  return (
+  1782→    <div>
+  1783→      <PageHeader title="Inventory"
+  1784→        action={has('inventory.add') ? () => { setForm({}); setOpen(true) } : undefined}
+  1785→        actionLabel="Add Item" />
+  1786→      <Toolbar>
+  1787→        <SearchInput value={search} onChange={setSearch} placeholder="Search inventory…" />
+  1788→        <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+  1789→      </Toolbar>
+  1790→      <DataTable
+  1791→        columns={[
+  1792→          { key: 'code', label: 'Code', mono: true },
+  1793→          { key: 'name', label: 'Name' },
+  1794→          { key: 'category', label: 'Category' },
+  1795→          { key: 'quantity', label: 'Qty', align: 'right' },
+  1796→          { key: 'reorderLevel', label: 'Reorder', align: 'right' },
+  1797→          { key: 'salePrice', label: 'Sale Price', align: 'right', mono: true, render: (r: any) => fmtMoney(r.salePrice) },
+  1798→          { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name },
+  1799→          { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
+  1800→        ]}
+  1801→        rows={items}
+  1802→      />
+  1803→      <Modal open={open} onClose={() => setOpen(false)} title="Add Inventory Item"
+  1804→        footer={<>
+  1805→          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+  1806→          <Button onClick={async () => {
+  1807→            try { await apiPost('/api/inventory', form); toast.success('Item added'); setOpen(false); reload() }
+  1808→            catch (e: any) { toast.error(e.message) }
+  1809→          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+  1810→        </>}>
+  1811→        <div className="grid grid-cols-2 gap-3">
+  1812→          <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
+  1813→          <FormRow label="Category"><Input value={form.category || ''} onChange={e => setForm({ ...form, category: e.target.value })} /></FormRow>
+  1814→          <FormRow label="Branch" required>
+  1815→            <Select value={form.branchId || ''} onValueChange={v => setForm({ ...form, branchId: v })}>
+  1816→              <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+  1817→              <SelectContent>{branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
+  1818→            </Select>
+  1819→          </FormRow>
+  1820→          <FormRow label="Unit"><Input value={form.unit || ''} onChange={e => setForm({ ...form, unit: e.target.value })} placeholder="pcs, box, kg…" /></FormRow>
+  1821→          <FormRow label="Quantity"><Input type="number" value={form.quantity || 0} onChange={e => setForm({ ...form, quantity: Number(e.target.value) })} /></FormRow>
+  1822→          <FormRow label="Reorder Level"><Input type="number" value={form.reorderLevel || 0} onChange={e => setForm({ ...form, reorderLevel: Number(e.target.value) })} /></FormRow>
+  1823→          <FormRow label="Purchase Price"><Input type="number" value={form.purchasePrice || 0} onChange={e => setForm({ ...form, purchasePrice: Number(e.target.value) })} /></FormRow>
+  1824→          <FormRow label="Sale Price"><Input type="number" value={form.salePrice || 0} onChange={e => setForm({ ...form, salePrice: Number(e.target.value) })} /></FormRow>
+  1825→          <div className="col-span-2"><FormRow label="Description"><Textarea rows={2} value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow></div>
+  1826→        </div>
+  1827→      </Modal>
+  1828→    </div>
+  1829→  )
+  1830→}
+  1831→
+  1832→// =================================================================
+  1833→// POS
+  1834→// =================================================================
+  1835→export function PosModule() {
+  1836→  const { has, selectedBranchIds, branches, session } = useApp()
+  1837→  const [cart, setCart] = useState<any[]>([])
+  1838→  const [method, setMethod] = useState('Cash')
+  1839→  const [paymentAccountId, setPaymentAccountId] = useState('')
+  1840→  const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
+  1841→  const { data: invData } = useFetch<any>(`/api/inventory${branchesParam ? `?${branchesParam.slice(1)}` : ''}`)
+  1842→  const { data: cashData } = useFetch<any>('/api/accounts?bookType=Cash')
+  1843→  const { data: bankData } = useFetch<any>('/api/accounts?bookType=Bank')
+  1844→
+  1845→  const items = invData?.items || []
+  1846→  const accounts = method === 'Cash' ? (cashData?.accounts || []) : method === 'Bank' ? (bankData?.accounts || []) : [...(cashData?.accounts || []), ...(bankData?.accounts || [])]
+  1847→  const total = cart.reduce((s, c) => s + c.unitPrice * c.quantity, 0)
+  1848→
+  1849→  const addToCart = (item: any) => {
+  1850→    setCart(prev => {
+  1851→      const ex = prev.find(c => c.inventoryItemId === item.id)
+  1852→      if (ex) return prev.map(c => c.inventoryItemId === item.id ? { ...c, quantity: c.quantity + 1 } : c)
+  1853→      return [...prev, { inventoryItemId: item.id, name: item.name, unitPrice: item.salePrice || 0, quantity: 1, max: item.quantity }]
+  1854→    })
+  1855→  }
+  1856→  const setQty = (id: string, q: number) => setCart(prev => prev.map(c => c.inventoryItemId === id ? { ...c, quantity: Math.max(1, Math.min(c.max, q)) } : c))
+  1857→  const remove = (id: string) => setCart(prev => prev.filter(c => c.inventoryItemId !== id))
+  1858→
+  1859→  const checkout = async () => {
+  1860→    if (cart.length === 0) { toast.error('Cart is empty'); return }
+  1861→    if (!paymentAccountId && accounts.length > 0) setPaymentAccountId(accounts[0].id)
+  1862→    try {
+  1863→      await apiPost('/api/pos', { branchId: session?.branchId, lines: cart.map(c => ({ inventoryItemId: c.inventoryItemId, quantity: c.quantity, unitPrice: c.unitPrice })), paymentMethod: method, paymentAccountId })
+  1864→      toast.success(`Sale completed · ${fmtMoney(total)}`)
+  1865→      setCart([])
+  1866→    } catch (e: any) { toast.error(e.message) }
+  1867→  }
+  1868→
+  1869→  return (
+  1870→    <div>
+  1871→      <PageHeader title="POS / Counter Sales" />
+  1872→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+  1873→        {/* Product grid */}
+  1874→        <div className="lg:col-span-2">
+  1875→          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+  1876→            {items.filter(i => i.quantity > 0).map((item: any) => (
+  1877→              <button key={item.id} onClick={() => addToCart(item)}
+  1878→                className="border rounded p-3 text-left hover:border-primary hover:bg-muted/30 transition">
+  1879→                <div className="text-sm font-medium">{item.name}</div>
+  1880→                <div className="text-xs text-muted-foreground">{item.category || 'Item'}</div>
+  1881→                <div className="mt-1 font-mono text-sm">{fmtMoney(item.salePrice)}</div>
+  1882→                <div className="text-[10px] text-muted-foreground">Stock: {item.quantity}</div>
+  1883→              </button>
+  1884→            ))}
+  1885→            {items.length === 0 && <div className="col-span-full text-center text-muted-foreground py-8 text-sm">No inventory items</div>}
+  1886→          </div>
+  1887→        </div>
+  1888→
+  1889→        {/* Cart */}
+  1890→        <Card>
+  1891→          <CardContent className="p-3">
+  1892→            <div className="font-medium mb-2">Cart</div>
+  1893→            {cart.length === 0 ? (
+  1894→              <div className="text-center text-muted-foreground py-8 text-sm">Tap products to add</div>
+  1895→            ) : (
+  1896→              <div className="space-y-2">
+  1897→                {cart.map(c => (
+  1898→                  <div key={c.inventoryItemId} className="flex items-center gap-2 text-sm">
+  1899→                    <div className="flex-1">{c.name}</div>
+  1900→                    <Input type="number" value={c.quantity} onChange={e => setQty(c.inventoryItemId, Number(e.target.value))} className="w-16 h-8" />
+  1901→                    <div className="font-mono text-xs w-16 text-right">{fmtMoney(c.unitPrice * c.quantity)}</div>
+  1902→                    <Button size="sm" variant="ghost" onClick={() => remove(c.inventoryItemId)}><X className="h-3 w-3" /></Button>
+  1903→                  </div>
+  1904→                ))}
+  1905→              </div>
+  1906→            )}
+  1907→            <div className="mt-3 pt-3 border-t space-y-2">
+  1908→              <FormRow label="Payment Method">
+  1909→                <Select value={method} onValueChange={v => { setMethod(v); setPaymentAccountId('') }}>
+  1910→                  <SelectTrigger><SelectValue /></SelectTrigger>
+  1911→                  <SelectContent>
+  1912→                    <SelectItem value="Cash">Cash</SelectItem>
+  1913→                    <SelectItem value="Bank">Bank</SelectItem>
+  1914→                    <SelectItem value="Online">Online</SelectItem>
+  1915→                  </SelectContent>
+  1916→                </Select>
+  1917→              </FormRow>
+  1918→              <FormRow label="Account">
+  1919→                <Select value={paymentAccountId} onValueChange={setPaymentAccountId}>
+  1920→                  <SelectTrigger><SelectValue placeholder="Auto" /></SelectTrigger>
+  1921→                  <SelectContent>{accounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}</SelectContent>
+  1922→                </Select>
+  1923→              </FormRow>
+  1924→              <div className="flex items-center justify-between text-sm font-medium">
+  1925→                <span>Total</span><span className="font-mono text-lg">{fmtMoney(total)}</span>
+  1926→              </div>
+  1927→              {has('pos.add') && <Button className="w-full" onClick={checkout} disabled={cart.length === 0}>Complete Sale</Button>}
+  1928→            </div>
+  1929→          </CardContent>
+  1930→        </Card>
+  1931→      </div>
+  1932→    </div>
+  1933→  )
+  1934→}
+  1935→
+  1936→// =================================================================
+  1937→// STAFF
+  1938→// =================================================================
+  1939→export function StaffModule() {
+  1940→  const { has, selectedBranchIds, branches } = useApp()
+  1941→  const [search, setSearch] = useState('')
+  1942→  const [open, setOpen] = useState(false)
+  1943→  const [form, setForm] = useState<any>({})
+  1944→  const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
+  1945→  const { data, reload } = useFetch<any>(`/api/staff${branchesParam ? `?${branchesParam.slice(1)}` : ''}`)
+  1946→  const { data: shiftsData } = useFetch<any>('/api/shifts')
+  1947→  const { data: payrollMastersData } = useFetch<any>('/api/payroll-master-files')
+  1948→  const payrollMasters = payrollMastersData?.records || []
+  1949→  const departments = payrollMasters.filter((r: any) => r.masterType === 'Department' && r.isActive)
+  1950→  const designations = payrollMasters.filter((r: any) => r.masterType === 'Designation' && r.isActive)
+  1951→  const staff = (data?.staff || []).filter((s: any) => !search || s.employeeId?.toLowerCase().includes(search.toLowerCase()) || s.firstName?.toLowerCase().includes(search.toLowerCase()))
+  1952→
+  1953→  return (
+  1954→    <div>
+  1955→      <PageHeader title="Staff"
+  1956→        action={has('staff.add') ? () => { setForm({ isTrainer: false, overtimeAllowed: false }); setOpen(true) } : undefined}
+  1957→        actionLabel="Add Staff" />
+  1958→      <Toolbar>
+  1959→        <SearchInput value={search} onChange={setSearch} placeholder="Search by ID or name…" />
+  1960→        <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+  1961→      </Toolbar>
+  1962→      <DataTable
+  1963→        columns={[
+  1964→          { key: 'employeeId', label: 'ID', mono: true },
+  1965→          { key: 'name', label: 'Name', render: (r: any) => `${r.firstName} ${r.lastName || ''}` },
+  1966→          { key: 'designation', label: 'Designation' },
+  1967→          { key: 'department', label: 'Department' },
+  1968→          { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name },
+  1969→          { key: 'shift', label: 'Shift', render: (r: any) => r.shift?.name || '—' },
+  1970→          { key: 'isTrainer', label: 'Trainer', render: (r: any) => r.isTrainer ? <Badge>Yes</Badge> : '—' },
+  1971→          { key: 'basicSalary', label: 'Salary', align: 'right', mono: true, render: (r: any) => fmtMoney(r.basicSalary) },
+  1972→          { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
+  1973→        ]}
+  1974→        rows={staff}
+  1975→      />
+  1976→      <Modal open={open} onClose={() => setOpen(false)} title="Add Staff" size="lg"
+  1977→        footer={<>
+  1978→          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+  1979→          <Button onClick={async () => {
+  1980→            try { await apiPost('/api/staff', form); toast.success('Staff added'); setOpen(false); reload() }
+  1981→            catch (e: any) { toast.error(e.message) }
+  1982→          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+  1983→        </>}>
+  1984→        {/* Single long scrollable form - no tabs */}
+  1985→        <div className="space-y-5 max-h-[70vh] overflow-y-auto pr-1">
+  1986→          {/* Basic Information */}
+  1987→          <div>
+  1988→            <div className="text-xs font-semibold uppercase text-muted-foreground mb-2 pb-1 border-b">Basic Information</div>
+  1989→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+  1990→              <FormRow label="First Name" required><Input value={form.firstName || ''} onChange={e => setForm({ ...form, firstName: e.target.value })} /></FormRow>
+  1991→              <FormRow label="Last Name"><Input value={form.lastName || ''} onChange={e => setForm({ ...form, lastName: e.target.value })} /></FormRow>
+  1992→              <FormRow label="Father/Guardian"><Input value={form.fatherGuardian || ''} onChange={e => setForm({ ...form, fatherGuardian: e.target.value })} /></FormRow>
+  1993→              <FormRow label="CNIC"><Input value={form.cnic || ''} onChange={e => setForm({ ...form, cnic: e.target.value })} /></FormRow>
+  1994→            </div>
+  1995→          </div>
+  1996→          {/* Contact Information */}
+  1997→          <div>
+  1998→            <div className="text-xs font-semibold uppercase text-muted-foreground mb-2 pb-1 border-b">Contact Information</div>
+  1999→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+  2000→              <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
+
+[showing lines 1-2000 of 3208; use offset=2001 with limit to continue reading]

@@ -1,0 +1,879 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState, useCallback, type ReactNode } from 'react'
+     4→import { Button } from '@/components/ui/button'
+     5→import { Input } from '@/components/ui/input'
+     6→import { Label } from '@/components/ui/label'
+     7→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     8→import {
+     9→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    10→} from '@/components/ui/dialog'
+    11→import {
+    12→  Sheet, SheetContent, SheetTrigger,
+    13→} from '@/components/ui/sheet'
+    14→import {
+    15→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    16→} from '@/components/ui/select'
+    17→import { Badge } from '@/components/ui/badge'
+    18→import { toast } from 'sonner'
+    19→import {
+    20→  LayoutDashboard, Wallet, Users, ClipboardList, Dumbbell, Apple,
+    21→  UserCog, Calendar, Receipt, Stethoscope, FileText, Settings, LogOut,
+    22→  Menu, ChevronDown, Search, Plus, Edit, Trash2, Eye, X,
+    23→  BarChart3, BookOpen, UsersRound, CalendarCheck, DonutIcon, Coins,
+    24→  Briefcase, Truck, ShieldCheck, Building2, IdCard, ScrollText,
+    25→  ListTree, Tag, FileBarChart, CheckCircle2, AlertCircle, Banknote,
+    26→  Layers, Crown, Cookie, BanknoteIcon, Send, Activity, Hand,
+    27→  AlertTriangle, Check, Filter, Download, Printer,
+    28→} from 'lucide-react'
+    29→import { format as fmtDate } from 'date-fns'
+    30→import {
+    31→  CoaModule as CoaModuleImpl,
+    32→  VouchersModule as VouchersModuleImpl,
+    33→  TaxHeadsModule as TaxHeadsModuleImpl,
+    34→  ChequesModule as ChequesModuleImpl,
+    35→  FinanceReportsModule as FinanceReportsModuleImpl,
+    36→  AccountMappingsModule as AccountMappingsModuleImpl,
+    37→  FinanceDefaultsModule as FinanceDefaultsModuleImpl,
+    38→  PeriodsModule as PeriodsModuleImpl,
+    39→  MembersModule as MembersModuleImpl,
+    40→  MembershipsModule as MembershipsModuleImpl,
+    41→  AttendanceModule as AttendanceModuleImpl,
+    42→  FeesModule as FeesModuleImpl,
+    43→  ProspectsModule as ProspectsModuleImpl,
+    44→  FreezesModule as FreezesModuleImpl,
+    45→  FollowUpsModule as FollowUpsModuleImpl,
+    46→  MemberStatusModule as MemberStatusModuleImpl,
+    47→  ExercisesModule as ExercisesModuleImpl,
+    48→  WorkoutsModule as WorkoutsModuleImpl,
+    49→  DietModule as DietModuleImpl,
+    50→  ProgressModule as ProgressModuleImpl,
+    51→  EquipmentModule as EquipmentModuleImpl,
+    52→  InventoryModule as InventoryModuleImpl,
+    53→  PosModule as PosModuleImpl,
+    54→  StaffModule as StaffModuleImpl,
+    55→  ShiftsModule as ShiftsModuleImpl,
+    56→  CalendarModule as CalendarModuleImpl,
+    57→  LeavesModule as LeavesModuleImpl,
+    58→  OvertimeModule as OvertimeModuleImpl,
+    59→  PayrollModule as PayrollModuleImpl,
+    60→  CompanyModule as CompanyModuleImpl,
+    61→  UsersModule as UsersModuleImpl,
+    62→  RolesModule as RolesModuleImpl,
+    63→  AuditModule as AuditModuleImpl,
+    64→} from './module-pages'
+    65→import { BranchesModule as BranchesModuleImpl } from './modules'
+    66→import { AppContext, type AppCtx, type SessionUser, type Branch, useApp } from './app-context'
+    67→
+    68→// =================================================================
+    69→// Auth context — types and useApp hook imported from ./app-context
+    70→// =================================================================
+    71→
+    72→// =================================================================
+    73→// Module router — all module components live in this file (avoids
+    74→// multi-route restriction of the sandbox)
+    75→// =================================================================
+    76→type ModuleKey =
+    77→  | 'dashboard' | 'login'
+    78→  // Finance
+    79→  | 'finance-coa' | 'finance-vouchers' | 'finance-tax' | 'finance-cheques'
+    80→  | 'finance-reports' | 'finance-mappings' | 'finance-defaults' | 'finance-periods'
+    81→  // Gym
+    82→  | 'gym-members' | 'gym-memberships' | 'gym-attendance' | 'gym-fees'
+    83→  | 'gym-prospects' | 'gym-freezes' | 'gym-followups' | 'gym-status'
+    84→  | 'gym-exercises' | 'gym-workouts' | 'gym-diet' | 'gym-progress'
+    85→  // Equipment + Inventory + POS
+    86→  | 'equipment' | 'inventory' | 'pos'
+    87→  // Staff + Payroll
+    88→  | 'staff' | 'staff-shifts' | 'staff-calendar' | 'staff-leaves' | 'staff-overtime'
+    89→  | 'payroll'
+    90→  // Admin
+    91→  | 'admin-company' | 'admin-branches' | 'admin-users' | 'admin-roles'
+    92→  | 'admin-audit'
+    93→
+    94→const NAV = [
+    95→  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, perm: 'dashboard.view' },
+    96→  {
+    97→    label: 'Finance', icon: Wallet, children: [
+    98→      { key: 'finance-voucher-crv', label: 'Cash Receipt Voucher', perm: 'vouchers.view' },
+    99→      { key: 'finance-voucher-cpv', label: 'Cash Payment Voucher', perm: 'vouchers.view' },
+   100→      { key: 'finance-voucher-brv', label: 'Bank Receipt Voucher', perm: 'vouchers.view' },
+   101→      { key: 'finance-voucher-bpv', label: 'Bank Payment Voucher', perm: 'vouchers.view' },
+   102→      { key: 'finance-voucher-jv', label: 'Journal Voucher', perm: 'vouchers.view' },
+   103→      { key: 'finance-voucher-otb', label: 'Opening Trial Balance', perm: 'vouchers.view' },
+   104→      { key: 'finance-voucher-cheques', label: 'Update Cheque Status', perm: 'cheques.view' },
+   105→      { key: 'finance-reports', label: 'Finance Reports', perm: 'finance.reports' },
+   106→      { key: 'finance-coa', label: 'Chart of Accounts', perm: 'finance.coa' },
+   107→      { key: 'finance-tax', label: 'Tax Heads', perm: 'tax.view' },
+   108→      { key: 'finance-mappings', label: 'Account Mappings', perm: 'accountMappings.view' },
+   109→      { key: 'finance-defaults', label: 'Finance Defaults', perm: 'finance.settings' },
+   110→      { key: 'finance-periods', label: 'Accounting Periods', perm: 'finance.periods' },
+   111→    ],
+   112→  },
+   113→  {
+   114→    label: 'Gym', icon: Dumbbell, children: [
+   115→      { key: 'gym-members', label: 'Members', perm: 'members.view' },
+   116→      { key: 'gym-memberships', label: 'Membership Plans', perm: 'memberships.view' },
+   117→      { key: 'gym-attendance', label: 'Attendance', perm: 'attendance.view' },
+   118→      { key: 'gym-fees', label: 'Fees & Invoices', perm: 'fees.view' },
+   119→      { key: 'gym-prospects', label: 'Prospects / Inquiries', perm: 'prospects.view' },
+   120→      { key: 'gym-freezes', label: 'Membership Freeze', perm: 'freeze.view' },
+   121→      { key: 'gym-followups', label: 'Member Follow Up', perm: 'followups.view' },
+   122→      { key: 'gym-status', label: 'Member Status', perm: 'members.status' },
+   123→      { key: 'gym-exercises', label: 'Exercises', perm: 'workouts.view' },
+   124→      { key: 'gym-workouts', label: 'Workout Plans', perm: 'workouts.view' },
+   125→      { key: 'gym-diet', label: 'Diet Plans', perm: 'diet.view' },
+   126→      { key: 'gym-progress', label: 'Progress Tracking', perm: 'progress.view' },
+   127→    ],
+   128→  },
+   129→  {
+   130→    label: 'Equipment & Inventory', icon: Truck, children: [
+   131→      { key: 'equipment', label: 'Equipment', perm: 'equipment.view' },
+   132→      { key: 'inventory', label: 'Inventory', perm: 'inventory.view' },
+   133→      { key: 'pos', label: 'POS / Counter Sales', perm: 'pos.view' },
+   134→    ],
+   135→  },
+   136→  {
+   137→    label: 'HR & Payroll', icon: UserCog, children: [
+   138→      { key: 'staff', label: 'Staff', perm: 'staff.view' },
+   139→      { key: 'staff-shifts', label: 'Shifts', perm: 'shifts.view' },
+   140→      { key: 'staff-calendar', label: 'Calendar', perm: 'calendar.view' },
+   141→      { key: 'staff-leaves', label: 'Leaves', perm: 'leaves.view' },
+   142→      { key: 'staff-overtime', label: 'Overtime', perm: 'overtime.view' },
+   143→      { key: 'payroll', label: 'Payroll', perm: 'payroll.view' },
+   144→    ],
+   145→  },
+   146→  {
+   147→    label: 'Admin', icon: Settings, children: [
+   148→      { key: 'admin-company', label: 'Company', perm: 'company.view' },
+   149→      { key: 'admin-branches', label: 'Branches', perm: 'branches.view' },
+   150→      { key: 'admin-users', label: 'Users', perm: 'users.view' },
+   151→      { key: 'admin-roles', label: 'Roles & Permissions', perm: 'roles.view' },
+   152→      { key: 'admin-audit', label: 'Audit Log', perm: 'audit.view' },
+   153→    ],
+   154→  },
+   155→]
+   156→
+   157→// =================================================================
+   158→// Hooks
+   159→// =================================================================
+   160→function useFetch<T>(url: string | null) {
+   161→  const [data, setData] = useState<T | null>(null)
+   162→  const [loading, setLoading] = useState(false)
+   163→  const [error, setError] = useState<string | null>(null)
+   164→  const reload = useCallback(async () => {
+   165→    if (!url) return
+   166→    setLoading(true)
+   167→    setError(null)
+   168→    try {
+   169→      const res = await fetch(url)
+   170→      if (res.status === 401) { setData(null); setError('Unauthorized'); return }
+   171→      const json = await res.json()
+   172→      if (!res.ok) setError(json.error || 'Failed')
+   173→      else setData(json)
+   174→    } catch (e: any) {
+   175→      setError(e.message)
+   176→    } finally {
+   177→      setLoading(false)
+   178→    }
+   179→  }, [url])
+   180→  useEffect(() => { reload() }, [reload])
+   181→  return { data, loading, error, reload, setData }
+   182→}
+   183→
+   184→async function apiPost(url: string, body: any) {
+   185→  const res = await fetch(url, {
+   186→    method: 'POST',
+   187→    headers: { 'Content-Type': 'application/json' },
+   188→    body: JSON.stringify(body),
+   189→  })
+   190→  const json = await res.json()
+   191→  if (!res.ok) throw new Error(json.error || 'Failed')
+   192→  return json
+   193→}
+   194→
+   195→async function apiPatch(url: string, body: any) {
+   196→  const res = await fetch(url, {
+   197→    method: 'PATCH',
+   198→    headers: { 'Content-Type': 'application/json' },
+   199→    body: JSON.stringify(body),
+   200→  })
+   201→  const json = await res.json()
+   202→  if (!res.ok) throw new Error(json.error || 'Failed')
+   203→  return json
+   204→}
+   205→
+   206→async function apiDelete(url: string) {
+   207→  const res = await fetch(url, { method: 'DELETE' })
+   208→  const json = await res.json()
+   209→  if (!res.ok) throw new Error(json.error || 'Failed')
+   210→  return json
+   211→}
+   212→
+   213→// =================================================================
+   214→// Common UI helpers
+   215→// =================================================================
+   216→function fmtMoney(n: number | null | undefined) {
+   217→  if (n === null || n === undefined) return '—'
+   218→  return Number(n).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+   219→}
+   220→
+   221→function fmtDateStr(d: string | Date | null | undefined) {
+   222→  if (!d) return '—'
+   223→  try { return fmtDate(new Date(d), 'dd MMM yyyy') } catch { return '—' }
+   224→}
+   225→
+   226→function fmtDateTime(d: string | Date | null | undefined) {
+   227→  if (!d) return '—'
+   228→  try { return fmtDate(new Date(d), 'dd MMM yyyy HH:mm') } catch { return '—' }
+   229→}
+   230→
+   231→// =================================================================
+   232→// App Shell
+   233→// =================================================================
+   234→export default function Home() {
+   235→  const [companyName, setCompanyName] = useState('Contoura Gym')
+   236→  const [session, setSession] = useState<SessionUser | null>(null)
+   237→  const [loadingSession, setLoadingSession] = useState(true)
+   238→  const [branches, setBranches] = useState<Branch[]>([])
+   239→  const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([])
+   240→  const [activeModule, setActiveModule] = useState<ModuleKey>('dashboard')
+   241→  const [sidebarOpen, setSidebarOpen] = useState(false)
+   242→
+   243→  const refreshSession = useCallback(async () => {
+   244→    setLoadingSession(true)
+   245→    try {
+   246→      const res = await fetch('/api/auth')
+   247→      if (res.ok) {
+   248→        const json = await res.json()
+   249→        setSession(json.user)
+   250→      } else {
+   251→        setSession(null)
+   252→      }
+   253→    } catch {
+   254→      setSession(null)
+   255→    } finally {
+   256→      setLoadingSession(false)
+   257→    }
+   258→  }, [])
+   259→
+   260→  const loadBranches = useCallback(async () => {
+   261→    const res = await fetch('/api/branches')
+   262→    if (res.ok) {
+   263→      const json = await res.json()
+   264→      setBranches(json.branches || [])
+   265→    }
+   266→  }, [])
+   267→
+   268→  useEffect(() => { refreshSession() }, [refreshSession])
+   269→
+   270→  useEffect(() => {
+   271→    fetch('/api/company').then(r => r.json()).then(d => {
+   272→      if (d.company?.name) setCompanyName(d.company.name)
+   273→    }).catch(() => {})
+   274→  }, [])
+   275→
+   276→  useEffect(() => {
+   277→    if (session) {
+   278→      loadBranches()
+   279→    } else {
+   280→      setActiveModule('login')
+   281→    }
+   282→  }, [session, loadBranches])
+   283→
+   284→  const login = useCallback(async (username: string, password: string) => {
+   285→    try {
+   286→      const res = await fetch('/api/auth', {
+   287→        method: 'POST', headers: { 'Content-Type': 'application/json' },
+   288→        body: JSON.stringify({ username, password }),
+   289→      })
+   290→      const json = await res.json()
+   291→      if (!res.ok) throw new Error(json.error || 'Login failed')
+   292→      await refreshSession()
+   293→      return true
+   294→    } catch (e: any) {
+   295→      toast.error(e.message)
+   296→      return false
+   297→    }
+   298→  }, [refreshSession])
+   299→
+   300→  const logout = useCallback(async () => {
+   301→    await fetch('/api/auth', { method: 'DELETE' })
+   302→    setSession(null)
+   303→    setBranches([])
+   304→    setSelectedBranchIds([])
+   305→  }, [])
+   306→
+   307→  const has = useCallback((perm: string) => {
+   308→    if (!session) return false
+   309→    return session.permissions.includes(perm)
+   310→  }, [session])
+   311→
+   312→  if (loadingSession) {
+   313→    return (
+   314→      <div className="min-h-screen flex items-center justify-center bg-background">
+   315→        <div className="text-muted-foreground">Loading…</div>
+   316→      </div>
+   317→    )
+   318→  }
+   319→
+   320→  if (!session) {
+   321→    return <LoginScreen login={login} />
+   322→  }
+   323→
+   324→  // Filter nav by permissions
+   325→  const visibleNav = NAV.map(group => {
+   326→    if ((group as any).key) return group
+   327→    const children = (group as any).children.filter((c: any) => has(c.perm))
+   328→    return children.length ? { ...group, children } : null
+   329→  }).filter(Boolean) as any[]
+   330→
+   331→  return (
+   332→    <AppContext.Provider value={{
+   333→      session, branches, selectedBranchIds, setSelectedBranchIds,
+   334→      has, refreshSession, logout, login,
+   335→    }}>
+   336→      <div className="min-h-screen bg-muted/30">
+   337→        {/* Topbar */}
+   338→        <header className="sticky top-0 z-30 h-14 bg-background border-b flex items-center px-3 sm:px-6 gap-2">
+   339→          <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+   340→            <SheetTrigger asChild>
+   341→              <Button variant="ghost" size="icon" className="lg:hidden">
+   342→                <Menu className="h-5 w-5" />
+   343→              </Button>
+   344→            </SheetTrigger>
+   345→            <SheetContent side="left" className="w-72 p-0">
+   346→              <SidebarContent
+   347→                nav={visibleNav}
+   348→                active={activeModule}
+   349→                onNavigate={(k) => { setActiveModule(k); setSidebarOpen(false) }}
+   350→                session={session}
+   351→                onLogout={logout}
+   352→              />
+   353→            </SheetContent>
+   354→          </Sheet>
+   355→
+   356→          <div className="font-semibold text-lg flex items-center gap-2">
+   357→            <div className="h-7 w-7 rounded bg-primary/15 text-primary flex items-center justify-center text-sm font-bold">C</div>
+   358→            <span className="hidden sm:inline">{companyName}</span>
+   359→            <span className="sm:hidden text-base">{companyName.slice(0, 8)}</span>
+   360→          </div>
+   361→
+   362→          <div className="flex-1" />
+   363→
+   364→          <BranchSelector
+   365→            branches={branches}
+   366→            selected={selectedBranchIds}
+   367→            onChange={setSelectedBranchIds}
+   368→          />
+   369→
+   370→          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded border bg-muted/40">
+   371→            <div className="h-7 w-7 rounded-full bg-primary/15 text-primary flex items-center justify-center text-xs font-bold">
+   372→              {session.fullName.charAt(0).toUpperCase()}
+   373→            </div>
+   374→            <div className="text-xs leading-tight">
+   375→              <div className="font-medium">{session.fullName}</div>
+   376→              <div className="text-muted-foreground">{session.roleName}</div>
+   377→            </div>
+   378→          </div>
+   379→
+   380→          <Button variant="ghost" size="icon" onClick={logout} title="Logout">
+   381→            <LogOut className="h-4 w-4" />
+   382→          </Button>
+   383→        </header>
+   384→
+   385→        <div className="flex">
+   386→          {/* Desktop Sidebar */}
+   387→          <aside className="hidden lg:block w-60 border-r bg-background min-h-[calc(100vh-3.5rem)] sticky top-14">
+   388→            <SidebarContent
+   389→              nav={visibleNav}
+   390→              active={activeModule}
+   391→              onNavigate={setActiveModule}
+   392→              session={session}
+   393→              onLogout={logout}
+   394→            />
+   395→          </aside>
+   396→
+   397→          {/* Main content */}
+   398→          <main className="flex-1 min-h-[calc(100vh-3.5rem)] p-4 sm:p-6">
+   399→            <ModuleRouter active={activeModule} setActive={setActiveModule} />
+   400→          </main>
+   401→        </div>
+   402→      </div>
+   403→    </AppContext.Provider>
+   404→  )
+   405→}
+   406→
+   407→// =================================================================
+   408→// Sidebar
+   409→// =================================================================
+   410→function SidebarContent({ nav, active, onNavigate, session, onLogout }: any) {
+   411→  return (
+   412→    <div className="h-full flex flex-col">
+   413→      <div className="h-14 border-b flex items-center px-4 gap-2">
+   414→        <div className="h-7 w-7 rounded bg-primary/15 text-primary flex items-center justify-center text-sm font-bold">C</div>
+   415→        <div className="font-semibold">{companyName}</div>
+   416→      </div>
+   417→      <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5 text-sm">
+   418→        {nav.map((item: any) => {
+   419→          if (item.key) {
+   420→            const Icon = item.icon
+   421→            return (
+   422→              <button
+   423→                key={item.key}
+   424→                onClick={() => onNavigate(item.key)}
+   425→                className={`w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-muted ${active === item.key ? 'bg-primary/10 text-primary font-medium' : 'text-foreground/80'}`}
+   426→              >
+   427→                <Icon className="h-4 w-4" />
+   428→                <span>{item.label}</span>
+   429→              </button>
+   430→            )
+   431→          }
+   432→          const Icon = item.icon
+   433→          return (
+   434→            <CollapsibleNav key={item.label} icon={Icon} label={item.label}>
+   435→              {item.children.map((c: any) => (
+   436→                <button
+   437→                  key={c.key}
+   438→                  onClick={() => onNavigate(c.key)}
+   439→                  className={`w-full text-left px-3 py-1.5 rounded hover:bg-muted ${active === c.key ? 'bg-primary/10 text-primary font-medium' : 'text-foreground/70'}`}
+   440→                >
+   441→                  {c.label}
+   442→                </button>
+   443→              ))}
+   444→            </CollapsibleNav>
+   445→          )
+   446→        })}
+   447→      </nav>
+   448→      <div className="border-t p-3 text-xs text-muted-foreground">
+   449→        <div className="font-medium text-foreground">{session?.fullName}</div>
+   450→        <div>{session?.roleName} · {session?.username}</div>
+   451→        <button onClick={onLogout} className="mt-2 flex items-center gap-1 text-red-600 hover:underline">
+   452→          <LogOut className="h-3 w-3" /> Logout
+   453→        </button>
+   454→      </div>
+   455→    </div>
+   456→  )
+   457→}
+   458→
+   459→function CollapsibleNav({ icon: Icon, label, children }: { icon: any, label: string, children: ReactNode }) {
+   460→  const [open, setOpen] = useState(false)
+   461→  return (
+   462→    <div>
+   463→      <button
+   464→        onClick={() => setOpen(o => !o)}
+   465→        className="w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-muted text-foreground/80"
+   466→      >
+   467→        <Icon className="h-4 w-4" />
+   468→        <span className="flex-1 text-left">{label}</span>
+   469→        <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+   470→      </button>
+   471→      {open && <div className="ml-4 mt-0.5 space-y-0.5 border-l pl-2">{children}</div>}
+   472→    </div>
+   473→  )
+   474→}
+   475→
+   476→// =================================================================
+   477→// Branch Selector
+   478→// =================================================================
+   479→function BranchSelector({ branches, selected, onChange }: any) {
+   480→  const [open, setOpen] = useState(false)
+   481→  const all = selected.length === 0
+   482→  return (
+   483→    <div className="relative">
+   484→      <Button variant="outline" size="sm" onClick={() => setOpen(o => !o)} className="gap-1.5 max-w-[180px]">
+   485→        <Building2 className="h-3.5 w-3.5" />
+   486→        <span className="truncate">{all ? 'All branches' : `${selected.length} selected`}</span>
+   487→        <ChevronDown className="h-3 w-3" />
+   488→      </Button>
+   489→      {open && (
+   490→        <>
+   491→          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+   492→          <div className="absolute right-0 mt-1 w-64 bg-background border rounded shadow-lg z-50 max-h-80 overflow-y-auto">
+   493→            <div className="p-2 border-b flex items-center justify-between">
+   494→              <span className="text-sm font-medium">Filter branches</span>
+   495→              <button onClick={() => onChange([])} className="text-xs text-primary hover:underline">All</button>
+   496→            </div>
+   497→            {branches.map((b: Branch) => (
+   498→              <label key={b.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-muted cursor-pointer text-sm">
+   499→                <input
+   500→                  type="checkbox"
+   501→                  checked={selected.includes(b.id)}
+   502→                  onChange={(e) => {
+   503→                    if (e.target.checked) onChange([...selected, b.id])
+   504→                    else onChange(selected.filter((x: string) => x !== b.id))
+   505→                  }}
+   506→                />
+   507→                <div className="flex-1">
+   508→                  <div className="font-medium">{b.name}</div>
+   509→                  <div className="text-xs text-muted-foreground">{b.code}{b.city ? ` · ${b.city}` : ''}</div>
+   510→                </div>
+   511→              </label>
+   512→            ))}
+   513→          </div>
+   514→        </>
+   515→      )}
+   516→    </div>
+   517→  )
+   518→}
+   519→
+   520→// =================================================================
+   521→// Login
+   522→// =================================================================
+   523→function LoginScreen({ login }: { login: (u: string, p: string) => Promise<boolean> }) {
+   524→  const [username, setUsername] = useState('admin')
+   525→  const [password, setPassword] = useState('admin123')
+   526→  const [loading, setLoading] = useState(false)
+   527→
+   528→  const submit = async (e: React.FormEvent) => {
+   529→    e.preventDefault()
+   530→    setLoading(true)
+   531→    await login(username, password)
+   532→    setLoading(false)
+   533→  }
+   534→
+   535→  return (
+   536→    <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
+   537→      <Card className="w-full max-w-md">
+   538→        <CardHeader className="space-y-1">
+   539→          <div className="flex items-center gap-2">
+   540→            <div className="h-9 w-9 rounded bg-primary/15 text-primary flex items-center justify-center font-bold">C</div>
+   541→            <div>
+   542→              <CardTitle className="text-xl">{companyName}</CardTitle>
+   543→              <div className="text-xs text-muted-foreground">Management System</div>
+   544→            </div>
+   545→          </div>
+   546→        </CardHeader>
+   547→        <CardContent>
+   548→          <form onSubmit={submit} className="space-y-4">
+   549→            <div className="space-y-1.5">
+   550→              <Label htmlFor="u">Username</Label>
+   551→              <Input id="u" value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" />
+   552→            </div>
+   553→            <div className="space-y-1.5">
+   554→              <Label htmlFor="p">Password</Label>
+   555→              <Input id="p" type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
+   556→            </div>
+   557→            <Button type="submit" className="w-full" disabled={loading}>
+   558→              {loading ? 'Signing in…' : 'Sign In'}
+   559→            </Button>
+   560→            <div className="text-xs text-muted-foreground text-center pt-2 border-t">
+   561→              Default admin: <code className="font-mono">admin</code> / <code className="font-mono">admin123</code>
+   562→            </div>
+   563→          </form>
+   564→        </CardContent>
+   565→      </Card>
+   566→    </div>
+   567→  )
+   568→}
+   569→
+   570→// =================================================================
+   571→// Module Router
+   572→// =================================================================
+   573→function ModuleRouter({ active, setActive }: { active: ModuleKey, setActive: (m: ModuleKey) => void }) {
+   574→  switch (active) {
+   575→    case 'dashboard': return <DashboardModule />
+   576→    case 'finance-coa': return <CoaModule />
+   577→    case 'finance-vouchers': return <VouchersModule />
+   578→    case 'finance-voucher-crv': return <VouchersModule presetType="CRV" presetTitle="Cash Receipt Voucher" />
+   579→    case 'finance-voucher-cpv': return <VouchersModule presetType="CPV" presetTitle="Cash Payment Voucher" />
+   580→    case 'finance-voucher-brv': return <VouchersModule presetType="BRV" presetTitle="Bank Receipt Voucher" />
+   581→    case 'finance-voucher-bpv': return <VouchersModule presetType="BPV" presetTitle="Bank Payment Voucher" />
+   582→    case 'finance-voucher-jv': return <VouchersModule presetType="JV" presetTitle="Journal Voucher" />
+   583→    case 'finance-voucher-otb': return <OpeningTrialBalanceScreen />
+   584→    case 'finance-voucher-cheques': return <ChequesModule />
+   585→    case 'finance-tax': return <TaxHeadsModule />
+   586→    case 'finance-cheques': return <ChequesModule />
+   587→    case 'finance-reports': return <FinanceReportsModule />
+   588→    case 'finance-mappings': return <AccountMappingsModule />
+   589→    case 'finance-defaults': return <FinanceDefaultsModule />
+   590→    case 'finance-periods': return <PeriodsModule />
+   591→    case 'gym-members': return <MembersModule />
+   592→    case 'gym-memberships': return <MembershipsModule />
+   593→    case 'gym-attendance': return <AttendanceModule />
+   594→    case 'gym-fees': return <FeesModule />
+   595→    case 'gym-prospects': return <ProspectsModule />
+   596→    case 'gym-freezes': return <FreezesModule />
+   597→    case 'gym-followups': return <FollowUpsModule />
+   598→    case 'gym-status': return <MemberStatusModule />
+   599→    case 'gym-exercises': return <ExercisesModule />
+   600→    case 'gym-workouts': return <WorkoutsModule />
+   601→    case 'gym-diet': return <DietModule />
+   602→    case 'gym-progress': return <ProgressModule />
+   603→    case 'equipment': return <EquipmentModule />
+   604→    case 'inventory': return <InventoryModule />
+   605→    case 'pos': return <PosModule />
+   606→    case 'staff': return <StaffModule />
+   607→    case 'staff-shifts': return <ShiftsModule />
+   608→    case 'staff-calendar': return <CalendarModule />
+   609→    case 'staff-leaves': return <LeavesModule />
+   610→    case 'staff-overtime': return <OvertimeModule />
+   611→    case 'payroll': return <PayrollModule />
+   612→    case 'admin-company': return <CompanyModule />
+   613→    case 'admin-branches': return <BranchesModule />
+   614→    case 'admin-users': return <UsersModule />
+   615→    case 'admin-roles': return <RolesModule />
+   616→    case 'admin-audit': return <AuditModule />
+   617→    default: return <DashboardModule />
+   618→  }
+   619→}
+   620→
+   621→// =================================================================
+   622→// Page Header
+   623→// =================================================================
+   624→function PageHeader({ title, action, actionLabel }: { title: string, action?: () => void, actionLabel?: string }) {
+   625→  return (
+   626→    <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+   627→      <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">{title}</h1>
+   628→      {action && (
+   629→        <Button onClick={action} size="sm" className="gap-1.5">
+   630→          <Plus className="h-4 w-4" /> {actionLabel || 'Add'}
+   631→        </Button>
+   632→      )}
+   633→    </div>
+   634→  )
+   635→}
+   636→
+   637→// Stub for many modules to keep file manageable; full implementations below
+   638→function NotImplemented({ name }: { name: string }) {
+   639→  return (
+   640→    <div className="flex items-center justify-center min-h-[60vh] text-muted-foreground">
+   641→      <div className="text-center">
+   642→        <div className="text-2xl font-medium">{name}</div>
+   643→        <div className="text-sm mt-2">Module under construction</div>
+   644→      </div>
+   645→    </div>
+   646→  )
+   647→}
+   648→
+   649→// Placeholders — replaced below with actual implementations
+   650→function DashboardModule() { return <Dashboard /> }
+   651→function CoaModule() { return <CoaModuleImpl /> }
+   652→function VouchersModule() { return <VouchersModuleImpl /> }
+   653→function TaxHeadsModule() { return <TaxHeadsModuleImpl /> }
+   654→function ChequesModule() { return <ChequesModuleImpl /> }
+   655→function FinanceReportsModule() { return <FinanceReportsModuleImpl /> }
+   656→function AccountMappingsModule() { return <AccountMappingsModuleImpl /> }
+   657→function FinanceDefaultsModule() { return <FinanceDefaultsModuleImpl /> }
+   658→function PeriodsModule() { return <PeriodsModuleImpl /> }
+   659→function MembersModule() { return <MembersModuleImpl /> }
+   660→function MembershipsModule() { return <MembershipsModuleImpl /> }
+   661→function AttendanceModule() { return <AttendanceModuleImpl /> }
+   662→function FeesModule() { return <FeesModuleImpl /> }
+   663→function ProspectsModule() { return <ProspectsModuleImpl /> }
+   664→function FreezesModule() { return <FreezesModuleImpl /> }
+   665→function FollowUpsModule() { return <FollowUpsModuleImpl /> }
+   666→function MemberStatusModule() { return <MemberStatusModuleImpl /> }
+   667→function ExercisesModule() { return <ExercisesModuleImpl /> }
+   668→function WorkoutsModule() { return <WorkoutsModuleImpl /> }
+   669→function DietModule() { return <DietModuleImpl /> }
+   670→function ProgressModule() { return <ProgressModuleImpl /> }
+   671→function EquipmentModule() { return <EquipmentModuleImpl /> }
+   672→function InventoryModule() { return <InventoryModuleImpl /> }
+   673→function PosModule() { return <PosModuleImpl /> }
+   674→function StaffModule() { return <StaffModuleImpl /> }
+   675→function ShiftsModule() { return <ShiftsModuleImpl /> }
+   676→function CalendarModule() { return <CalendarModuleImpl /> }
+   677→function LeavesModule() { return <LeavesModuleImpl /> }
+   678→function OvertimeModule() { return <OvertimeModuleImpl /> }
+   679→function PayrollModule() { return <PayrollModuleImpl /> }
+   680→function CompanyModule() { return <CompanyModuleImpl /> }
+   681→function BranchesModule() { return <BranchesModuleImpl /> }
+   682→function UsersModule() { return <UsersModuleImpl /> }
+   683→function RolesModule() { return <RolesModuleImpl /> }
+   684→function AuditModule() { return <AuditModuleImpl /> }
+   685→
+   686→// =================================================================
+   687→// Opening Trial Balance — COA grid with Dr/Cr, allows unbalanced save
+   688→// =================================================================
+   689→function OpeningTrialBalanceScreen() {
+   690→  const { has } = useApp()
+   691→  const [entries, setEntries] = useState<Record<string, { debit: number; credit: number }>>({})
+   692→  const [saving, setSaving] = useState(false)
+   693→
+   694→  const { data, reload } = useFetch<any>('/api/opening-balance')
+   695→
+   696→  useEffect(() => {
+   697→    if (data?.accounts) {
+   698→      const map: Record<string, { debit: number; credit: number }> = {}
+   699→      for (const a of data.accounts) {
+   700→        map[a.id] = { debit: a.debit || 0, credit: a.credit || 0 }
+   701→      }
+   702→      setEntries(map)
+   703→    }
+   704→  }, [data])
+   705→
+   706→  const accounts = data?.accounts || []
+   707→  const hasExisting = data?.hasExisting || false
+   708→
+   709→  const totalDebit = Object.values(entries).reduce((s, e) => s + (Number(e.debit) || 0), 0)
+   710→  const totalCredit = Object.values(entries).reduce((s, e) => s + (Number(e.credit) || 0), 0)
+   711→  const difference = totalCredit - totalDebit
+   712→
+   713→  const setDr = (id: string, val: number) => {
+   714→    if (val < 0) val = 0
+   715→    setEntries(prev => ({ ...prev, [id]: { debit: val, credit: 0 } }))
+   716→  }
+   717→  const setCr = (id: string, val: number) => {
+   718→    if (val < 0) val = 0
+   719→    setEntries(prev => ({ ...prev, [id]: { debit: 0, credit: val } }))
+   720→  }
+   721→
+   722→  const save = async () => {
+   723→    // NO balance requirement — OTB is allowed to save unbalanced
+   724→    setSaving(true)
+   725→    try {
+   726→      const entryArray = Object.entries(entries).map(([id, v]) => ({ id, debit: Number(v.debit) || 0, credit: Number(v.credit) || 0 }))
+   727→      await apiPost('/api/opening-balance', { entries: entryArray })
+   728→      toast.success(hasExisting ? 'Opening balances updated' : 'Opening balances saved')
+   729→      reload()
+   730→    } catch (e: any) {
+   731→      toast.error(e.message)
+   732→    } finally {
+   733→      setSaving(false)
+   734→    }
+   735→  }
+   736→
+   737→  return (
+   738→    <div>
+   739→      <PageHeader title="Opening Trial Balance"
+   740→        action={has('vouchers.add') ? save : undefined}
+   741→        actionLabel={saving ? 'Saving…' : (hasExisting ? 'Save Changes' : 'Save')}
+   742→      />
+   743→      <div className="text-xs text-muted-foreground mb-3">
+   744→        Enter opening amounts against detail accounts. Debit OR Credit per account. Unbalanced entries are allowed.
+   745→      </div>
+   746→      <div className="border rounded overflow-x-auto max-h-[65vh] overflow-y-auto">
+   747→        <table className="w-full text-sm">
+   748→          <thead className="bg-muted/50 border-b sticky top-0 z-10">
+   749→            <tr>
+   750→              <th className="px-3 py-2 text-left font-medium">Code</th>
+   751→              <th className="px-3 py-2 text-left font-medium">Account Name</th>
+   752→              <th className="px-3 py-2 text-left font-medium">Type</th>
+   753→              <th className="px-3 py-2 text-right font-medium w-32">Debit</th>
+   754→              <th className="px-3 py-2 text-right font-medium w-32">Credit</th>
+   755→            </tr>
+   756→          </thead>
+   757→          <tbody>
+   758→            {accounts.map((a: any) => (
+   759→              <tr key={a.id} className={"border-b last:border-0 hover:bg-muted/30 " + (!a.isActive ? 'opacity-50' : '')}>
+   760→                <td className="px-3 py-1.5 font-mono text-xs">{a.code}</td>
+   761→                <td className="px-3 py-1.5">{a.name}{!a.isActive && <span className="ml-1 text-xs text-muted-foreground">(inactive)</span>}</td>
+   762→                <td className="px-3 py-1.5 text-xs">{a.accountType}</td>
+   763→                <td className="px-3 py-1.5"><Input type="number" min={0} step="0.01" value={entries[a.id]?.debit || ''} onChange={e => setDr(a.id, Number(e.target.value))} className="h-7 text-right" placeholder="0" /></td>
+   764→                <td className="px-3 py-1.5"><Input type="number" min={0} step="0.01" value={entries[a.id]?.credit || ''} onChange={e => setCr(a.id, Number(e.target.value))} className="h-7 text-right" placeholder="0" /></td>
+   765→              </tr>
+   766→            ))}
+   767→            {accounts.length === 0 && <tr><td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">No detail accounts found in COA.</td></tr>}
+   768→          </tbody>
+   769→        </table>
+   770→      </div>
+   771→      <div className="sticky bottom-0 mt-3 bg-background border rounded p-3 flex items-center gap-6 shadow">
+   772→        <div className="text-sm"><span className="text-muted-foreground">Total Debit: </span><span className="font-mono font-semibold">{fmtMoney(totalDebit)}</span></div>
+   773→        <div className="text-sm"><span className="text-muted-foreground">Total Credit: </span><span className="font-mono font-semibold">{fmtMoney(totalCredit)}</span></div>
+   774→        <div className="text-sm"><span className="text-muted-foreground">Difference (Cr − Dr): </span><span className={"font-mono font-semibold " + (Math.abs(difference) < 0.01 ? 'text-green-600' : 'text-amber-600')}>{difference > 0 ? '+' : ''}{fmtMoney(difference)}</span></div>
+   775→        <div className="flex-1" />
+   776→        <div className={"text-xs font-medium " + (Math.abs(difference) < 0.01 ? 'text-green-600' : 'text-amber-600')}>{Math.abs(difference) < 0.01 ? 'Balanced' : 'Unbalanced (save allowed)'}</div>
+   777→      </div>
+   778→    </div>
+   779→  )
+   780→}
+   781→
+   782→// =================================================================
+   783→// Dashboard
+   784→// =================================================================
+   785→function Dashboard() {
+   786→  const { session, selectedBranchIds } = useApp()
+   787→  const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
+   788→  const { data, loading, reload } = useFetch<any>(`/api/dashboard?${branchesParam}`)
+   789→
+   790→  if (loading && !data) return <div className="text-muted-foreground">Loading dashboard…</div>
+   791→
+   792→  const stats = data?.stats || {}
+   793→  const dueAlerts = data?.dueAlerts || []
+   794→
+   795→  const cards = [
+   796→    { label: 'Members', value: stats.members ?? 0, sub: `${stats.activeMembers ?? 0} active`, icon: Users, perm: 'members.view' },
+   797→    { label: 'Attendance Today', value: stats.todayAttendance ?? 0, sub: 'check-ins', icon: CalendarCheck, perm: 'attendance.view' },
+   798→    { label: 'Unpaid Fees', value: fmtMoney(stats.unpaidFeesBalance), sub: 'balance due', icon: AlertCircle, perm: 'fees.view' },
+   799→    { label: "Today's Revenue", value: fmtMoney(stats.todayRevenue), sub: 'collected today', icon: Banknote, perm: 'finance.view' },
+   800→    { label: 'Prospects', value: stats.prospects ?? 0, sub: 'open leads', icon: UsersRound, perm: 'prospects.view' },
+   801→    { label: 'Vouchers Posted', value: stats.postedVouchers ?? 0, sub: `${stats.drafts ?? 0} drafts`, icon: FileText, perm: 'vouchers.view' },
+   802→    { label: 'Staff', value: stats.staff ?? 0, sub: 'active', icon: UserCog, perm: 'staff.view' },
+   803→    { label: 'Branches', value: stats.branches ?? 0, sub: 'accessible', icon: Building2, perm: 'branches.view' },
+   804→  ]
+   805→
+   806→  return (
+   807→    <div>
+   808→      <PageHeader title="Dashboard" />
+   809→      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+   810→        {cards.map(c => {
+   811→          if (!session?.permissions.includes(c.perm)) return null
+   812→          const Icon = c.icon
+   813→          return (
+   814→            <Card key={c.label} className="py-3">
+   815→              <CardContent className="px-3">
+   816→                <div className="flex items-start justify-between">
+   817→                  <div>
+   818→                    <div className="text-xs text-muted-foreground">{c.label}</div>
+   819→                    <div className="text-2xl font-semibold mt-0.5">{c.value}</div>
+   820→                    <div className="text-[11px] text-muted-foreground mt-0.5">{c.sub}</div>
+   821→                  </div>
+   822→                  <Icon className="h-4 w-4 text-muted-foreground" />
+   823→                </div>
+   824→              </CardContent>
+   825→            </Card>
+   826→          )
+   827→        })}
+   828→      </div>
+   829→
+   830→      <div className="mt-6">
+   831→        <div className="flex items-center justify-between mb-2">
+   832→          <h2 className="font-semibold text-lg">Due / Grace Alerts</h2>
+   833→          <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+   834→        </div>
+   835→        <Card>
+   836→          <CardContent className="p-0">
+   837→            {dueAlerts.length === 0 ? (
+   838→              <div className="text-center py-8 text-muted-foreground text-sm">No outstanding dues within grace period</div>
+   839→            ) : (
+   840→              <div className="overflow-x-auto">
+   841→                <table className="w-full text-sm">
+   842→                  <thead className="border-b bg-muted/40">
+   843→                    <tr>
+   844→                      <th className="text-left px-3 py-2 font-medium">Member</th>
+   845→                      <th className="text-left px-3 py-2 font-medium">Phone</th>
+   846→                      <th className="text-left px-3 py-2 font-medium">Fee #</th>
+   847→                      <th className="text-left px-3 py-2 font-medium">Due Date</th>
+   848→                      <th className="text-left px-3 py-2 font-medium">Grace</th>
+   849→                      <th className="text-right px-3 py-2 font-medium">Balance</th>
+   850→                      <th className="text-left px-3 py-2 font-medium">Status</th>
+   851→                    </tr>
+   852→                  </thead>
+   853→                  <tbody>
+   854→                    {dueAlerts.map((a: any) => (
+   855→                      <tr key={a.feeId} className="border-b last:border-0 hover:bg-muted/30">
+   856→                        <td className="px-3 py-2 font-medium">{a.memberName}</td>
+   857→                        <td className="px-3 py-2 text-muted-foreground">{a.phone}</td>
+   858→                        <td className="px-3 py-2">{a.feeNo}</td>
+   859→                        <td className="px-3 py-2">{fmtDateStr(a.dueDate)}</td>
+   860→                        <td className="px-3 py-2">{a.graceDays}d</td>
+   861→                        <td className="px-3 py-2 text-right font-mono">{fmtMoney(a.balance)}</td>
+   862→                        <td className="px-3 py-2">
+   863→                          <Badge variant={a.alertStatus === 'Overdue' ? 'destructive' : 'secondary'}>
+   864→                            {a.alertStatus}
+   865→                          </Badge>
+   866→                        </td>
+   867→                      </tr>
+   868→                    ))}
+   869→                  </tbody>
+   870→                </table>
+   871→              </div>
+   872→            )}
+   873→          </CardContent>
+   874→        </Card>
+   875→      </div>
+   876→    </div>
+   877→  )
+   878→}
+   879→
