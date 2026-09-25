@@ -872,6 +872,7 @@ export function MembersModule() {
 function MemberFormModal({ open, onClose, editing, plans, onSaved }: any) {
   const { session, branches } = useApp()
   const [form, setForm] = useState<any>({})
+  const { data: staffData } = useFetch<any>('/api/staff?isTrainer=true')
 
   useEffect(() => {
     if (open) {
@@ -958,6 +959,15 @@ function MemberFormModal({ open, onClose, editing, plans, onSaved }: any) {
             <Select value={form.membershipPlanId || ''} onValueChange={v => setForm({ ...form, membershipPlanId: v })}>
               <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
               <SelectContent>{plans.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name} — {fmtMoney(p.amount)}</SelectItem>)}</SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Assigned Trainer">
+            <Select value={form.assignedTrainerId || ''} onValueChange={v => setForm({ ...form, assignedTrainerId: v || null })}>
+              <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">—</SelectItem>
+                {(staffData?.staff || []).map((s: any) => <SelectItem key={s.id} value={s.id}>{s.employeeId} — {s.firstName} {s.lastName || ''}{s.specialization ? ` (${s.specialization})` : ''}</SelectItem>)}
+              </SelectContent>
             </Select>
           </FormRow>
           <FormRow label="Status">
@@ -1317,7 +1327,7 @@ function FeePayModal({ open, fee, cashAccounts, bankAccounts, onClose, onPaid }:
   const [form, setForm] = useState<any>({ amount: 0, method: 'Cash', accountId: '', reference: '', paymentDate: new Date().toISOString().slice(0, 10) })
   useEffect(() => { if (fee) setForm({ amount: fee.balance || 0, method: 'Cash', accountId: '', reference: '', paymentDate: new Date().toISOString().slice(0, 10) }) }, [fee])
 
-  const accounts = form.method === 'Cash' ? cashAccounts : form.method === 'Bank' ? bankAccounts : [...cashAccounts, ...bankAccounts]
+  const accounts = form.method === 'Cash' ? cashAccounts : bankAccounts
 
   return (
     <Modal open={open} onClose={onClose} title={`Collect Payment — ${fee?.feeNo || ''}`}
@@ -1341,8 +1351,8 @@ function FeePayModal({ open, fee, cashAccounts, bankAccounts, onClose, onPaid }:
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="Cash">Cash</SelectItem>
-              <SelectItem value="Bank">Bank</SelectItem>
-              <SelectItem value="Online">Online</SelectItem>
+              <SelectItem value="Card">Card</SelectItem>
+              <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
             </SelectContent>
           </Select>
         </FormRow>
@@ -2099,6 +2109,10 @@ export function StaffModule() {
                 </Select>
               </FormRow>
               <FormRow label="Trainer"><Switch checked={form.isTrainer || false} onCheckedChange={v => setForm({ ...form, isTrainer: v })} /></FormRow>
+              <FormRow label="Personal Training"><Switch checked={form.personalTraining || false} onCheckedChange={v => setForm({ ...form, personalTraining: v })} /></FormRow>
+              <FormRow label="Specialization"><Input value={form.specialization || ''} onChange={e => setForm({ ...form, specialization: e.target.value })} placeholder="e.g. Strength, Cardio" /></FormRow>
+              <FormRow label="Availability"><Input value={form.availability || ''} onChange={e => setForm({ ...form, availability: e.target.value })} placeholder="e.g. Mon-Fri 9-5" /></FormRow>
+              <div className="col-span-2"><FormRow label="Schedule"><Input value={form.trainerSchedule || ''} onChange={e => setForm({ ...form, trainerSchedule: e.target.value })} placeholder="e.g. Mon: 9-12, Wed: 14-18" /></FormRow></div>
             </div>
           </div>
           {/* Salary Information */}

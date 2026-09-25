@@ -998,6 +998,10 @@ model Staff {
   department  String?
   designation String?
   isTrainer   Boolean  @default(false)
+  specialization String?
+  availability String?
+  trainerSchedule String?
+  personalTraining Boolean @default(false)
   branchId    String
   branch      Branch   @relation(fields: [branchId], references: [id])
   shiftId     String?

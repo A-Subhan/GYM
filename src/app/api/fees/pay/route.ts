@@ -13,8 +13,8 @@ export async function POST(req: NextRequest) {
   if (!feeId || !amount || !method || !accountId) {
     return NextResponse.json({ error: 'feeId, amount, method, accountId required' }, { status: 400 })
   }
-  if (!['Cash', 'Bank', 'Online'].includes(method)) {
-    return NextResponse.json({ error: 'method must be Cash, Bank, or Online' }, { status: 400 })
+  if (!['Cash', 'Card', 'Bank Transfer'].includes(method)) {
+    return NextResponse.json({ error: 'method must be Cash, Card, or Bank Transfer' }, { status: 400 })
   }
 
   const fee = await db.fee.findUnique({ where: { id: feeId }, include: { member: true, branch: true } })
@@ -41,7 +41,6 @@ export async function POST(req: NextRequest) {
   // If fee already existed as receivable (member had outstanding), we debit Cash and credit Receivable
   // For simplicity, we post: Debit [account user paid into], Credit [feeIncome or feeReceivable]
   const voucherType = method === 'Cash' ? 'CRV' : 'BRV'
-
   const lines: Array<{ accountId: string; debit: number; credit: number; lineDescription?: string }> = []
   // Debit the cash/bank account user paid into
   lines.push({ accountId, debit: payAmount, credit: 0, lineDescription: `Fee payment: ${fee.feeNo} - ${fee.member.firstName} ${fee.member.lastName || ''}` })

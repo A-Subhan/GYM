@@ -24,7 +24,7 @@ import {
   Briefcase, Truck, ShieldCheck, Building2, IdCard, ScrollText,
   ListTree, Tag, FileBarChart, CheckCircle2, AlertCircle, Banknote,
   Layers, Crown, Cookie, BanknoteIcon, Send, Activity, Hand,
-  AlertTriangle, Check, Filter, Download, Printer,
+  AlertTriangle, Check, Filter, Download, Printer, Save,
 } from 'lucide-react'
 import { format as fmtDate } from 'date-fns'
 import {
@@ -63,7 +63,7 @@ import {
   RolesModule as RolesModuleImpl,
   AuditModule as AuditModuleImpl,
 } from './module-pages'
-import { BranchesModule as BranchesModuleImpl } from './modules'
+import { BranchesModule as BranchesModuleImpl, Modal, FormRow } from './modules'
 import { AppContext, type AppCtx, type SessionUser, type Branch, useApp } from './app-context'
 
 // =================================================================
@@ -690,9 +690,10 @@ function AdminDefaultsModule() { return <AdminDefaultsModuleImpl /> }
 // Opening Trial Balance — COA grid with Dr/Cr, allows unbalanced save
 // =================================================================
 function OpeningTrialBalanceScreen() {
-  const { has } = useApp()
+  const { has, session } = useApp()
   const [entries, setEntries] = useState<Record<string, { debit: number; credit: number }>>({})
   const [saving, setSaving] = useState(false)
+  const [knockOffTarget, setKnockOffTarget] = useState<any>(null)
 
   const { data, reload } = useFetch<any>('/api/opening-balance')
 
@@ -745,6 +746,7 @@ function OpeningTrialBalanceScreen() {
       />
       <div className="text-xs text-muted-foreground mb-3">
         Enter opening amounts against detail accounts. Debit OR Credit per account. Unbalanced entries are allowed.
+        Customer/Supplier accounts show a Knock Off button for billwise opening balance entry.
       </div>
       <div className="border rounded overflow-x-auto max-h-[65vh] overflow-y-auto">
         <table className="w-full text-sm">
@@ -755,6 +757,7 @@ function OpeningTrialBalanceScreen() {
               <th className="px-3 py-2 text-left font-medium">Type</th>
               <th className="px-3 py-2 text-right font-medium w-32">Debit</th>
               <th className="px-3 py-2 text-right font-medium w-32">Credit</th>
+              <th className="px-3 py-2 text-center font-medium w-28">Billwise</th>
             </tr>
           </thead>
           <tbody>
@@ -765,9 +768,16 @@ function OpeningTrialBalanceScreen() {
                 <td className="px-3 py-1.5 text-xs">{a.accountType}</td>
                 <td className="px-3 py-1.5"><Input type="number" min={0} step="0.01" value={entries[a.id]?.debit || ''} onChange={e => setDr(a.id, Number(e.target.value))} className="h-7 text-right" placeholder="0" /></td>
                 <td className="px-3 py-1.5"><Input type="number" min={0} step="0.01" value={entries[a.id]?.credit || ''} onChange={e => setCr(a.id, Number(e.target.value))} className="h-7 text-right" placeholder="0" /></td>
+                <td className="px-3 py-1.5 text-center">
+                  {['Customer', 'Supplier'].includes(a.accountTag) && has('vouchers.add') && (
+                    <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setKnockOffTarget(a) }}>
+                      Knock Off
+                    </Button>
+                  )}
+                </td>
               </tr>
             ))}
-            {accounts.length === 0 && <tr><td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">No detail accounts found in COA.</td></tr>}
+            {accounts.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">No detail accounts found in COA.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -778,7 +788,134 @@ function OpeningTrialBalanceScreen() {
         <div className="flex-1" />
         <div className={"text-xs font-medium " + (Math.abs(difference) < 0.01 ? 'text-green-600' : 'text-amber-600')}>{Math.abs(difference) < 0.01 ? 'Balanced' : 'Unbalanced (save allowed)'}</div>
       </div>
+      <KnockOffModal account={knockOffTarget} onClose={() => setKnockOffTarget(null)} onSaved={() => { setKnockOffTarget(null); reload() }} />
     </div>
+  )
+}
+
+// Knock Off bill entry — only for Customer/Supplier tagged accounts
+function KnockOffModal({ account, onClose, onSaved }: { account: any, onClose: () => void, onSaved: () => void }) {
+  const [form, setForm] = useState<any>({ billNumber: '', referenceNumber: '', billType: 'Sales Bill', amount: 0, referenceDate: '', dueDate: '', description: '' })
+  const [billTypes, setBillTypes] = useState<any[]>([])
+  const [existingBills, setExistingBills] = useState<any[]>([])
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/knockoff').then(r => r.json()).then(d => setBillTypes(d.billTypes || [])).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (account?.id) {
+      fetch(`/api/knockoff?accountId=${account.id}`).then(r => r.json()).then(d => setExistingBills(d.bills || [])).catch(() => {})
+    } else {
+      setExistingBills([])
+    }
+  }, [account?.id])
+
+  if (!account) return null
+
+  const save = async () => {
+    if (!form.billNumber || !form.billType || !form.amount) {
+      toast.error('Bill Number, Bill Type, and Amount are required')
+      return
+    }
+    if (form.description && String(form.description).length > 20) {
+      toast.error('Description must be max 20 characters')
+      return
+    }
+    setSaving(true)
+    try {
+      await apiPost('/api/knockoff', {
+        accountId: account.id,
+        branchId: account.branchId || session?.branchId,
+        billNumber: form.billNumber,
+        referenceNumber: form.referenceNumber || null,
+        billType: form.billType,
+        amount: Number(form.amount),
+        referenceDate: form.referenceDate || null,
+        dueDate: form.dueDate || null,
+        description: form.description ? String(form.description).slice(0, 20) : null,
+      })
+      toast.success('Bill added')
+      setForm({ billNumber: '', referenceNumber: '', billType: 'Sales Bill', amount: 0, referenceDate: '', dueDate: '', description: '' })
+      // Refresh bills
+      fetch(`/api/knockoff?accountId=${account.id}`).then(r => r.json()).then(d => setExistingBills(d.bills || []))
+      onSaved()
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal open={!!account} onClose={onClose} title={`Knock Off — ${account.name} (${account.code})`} size="lg"
+      footer={
+        <Button onClick={save} disabled={saving}>
+          <Save className="h-4 w-4 mr-1" />{saving ? 'Saving…' : 'Add Bill'}
+        </Button>
+      }>
+      <div className="text-xs text-muted-foreground mb-3">
+        Billwise opening balance entry for <strong>{account.accountTag}</strong> account.
+        Bill ID is auto-generated as <code>OTB/branchId/000001</code>.
+      </div>
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <FormRow label="Bill Number" required><Input value={form.billNumber} onChange={e => setForm({ ...form, billNumber: e.target.value })} /></FormRow>
+        <FormRow label="Bill Type" required>
+          <Select value={form.billType} onValueChange={v => setForm({ ...form, billType: v })}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {billTypes.map((b: any) => <SelectItem key={b.type} value={b.type}>{b.type}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </FormRow>
+        <FormRow label="Reference Number (optional)"><Input value={form.referenceNumber} onChange={e => setForm({ ...form, referenceNumber: e.target.value })} /></FormRow>
+        <FormRow label="Amount" required><Input type="number" value={form.amount || 0} onChange={e => setForm({ ...form, amount: Number(e.target.value) })} /></FormRow>
+        <FormRow label="Reference / Bill Date"><Input type="date" value={form.referenceDate} onChange={e => setForm({ ...form, referenceDate: e.target.value })} /></FormRow>
+        <FormRow label="Due Date"><Input type="date" value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} /></FormRow>
+        <FormRow label="Description (max 20 chars)"><Input value={form.description} maxLength={20} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow>
+      </div>
+      {existingBills.length > 0 && (
+        <div>
+          <div className="text-sm font-medium mb-2">Existing Bills ({existingBills.length})</div>
+          <div className="border rounded overflow-x-auto max-h-60 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-muted/50 border-b sticky top-0">
+                <tr>
+                  <th className="px-2 py-1.5 text-left font-medium">Bill ID</th>
+                  <th className="px-2 py-1.5 text-left font-medium">Bill #</th>
+                  <th className="px-2 py-1.5 text-left font-medium">Type</th>
+                  <th className="px-2 py-1.5 text-right font-medium">Amount</th>
+                  <th className="px-2 py-1.5 text-right font-medium">Outstanding</th>
+                  <th className="px-2 py-1.5 text-center font-medium">Status</th>
+                  <th className="px-2 py-1.5"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {existingBills.map((b: any) => (
+                  <tr key={b.id} className="border-b last:border-0">
+                    <td className="px-2 py-1.5 font-mono">{b.billId}</td>
+                    <td className="px-2 py-1.5">{b.billNumber}</td>
+                    <td className="px-2 py-1.5">{b.billType}</td>
+                    <td className="px-2 py-1.5 text-right font-mono">{fmtMoney(b.amount)}</td>
+                    <td className="px-2 py-1.5 text-right font-mono">{fmtMoney(b.outstandingAmount)}</td>
+                    <td className="px-2 py-1.5 text-center">{b.status}</td>
+                    <td className="px-2 py-1.5 text-center">
+                      <button onClick={async () => {
+                        if (confirm(`Delete bill ${b.billId}?`)) {
+                          await apiDelete(`/api/knockoff?id=${b.id}`)
+                          fetch(`/api/knockoff?accountId=${account.id}`).then(r => r.json()).then(d => setExistingBills(d.bills || []))
+                        }
+                      }} className="text-red-600 text-xs hover:underline">Delete</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </Modal>
   )
 }
 
