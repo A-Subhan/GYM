@@ -1,0 +1,1237 @@
+// Contoura Gym Management System — full ERP schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+// =================================================================
+// CORE
+// =================================================================
+
+model Company {
+  id             String @db.NVarChar(50)   @id @default(cuid())
+  companyId      String @db.NVarChar(50)   @unique
+  name           String @db.NVarChar(255)
+  address        String? @db.NVarChar(MAX)
+  phone          String? @db.NVarChar(255)
+  email          String? @db.NVarChar(255)
+  website        String? @db.NVarChar(255)
+  logo           String? @db.NVarChar(255)
+  accountingType String @db.NVarChar(255)   @default("FIFO")
+  strn           String? @db.NVarChar(255)
+  ntn            String? @db.NVarChar(255)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Branch {
+  id        String @db.NVarChar(50)   @id @default(cuid())
+  code      String @db.NVarChar(191)   @unique
+  name      String @db.NVarChar(255)
+  address   String? @db.NVarChar(MAX)
+  city      String? @db.NVarChar(255)
+  phone     String? @db.NVarChar(255)
+  email     String? @db.NVarChar(255)
+  strn      String? @db.NVarChar(255)
+  ntn       String? @db.NVarChar(255)
+  logo      String? @db.NVarChar(255)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isDeleted Boolean  @default(false)
+
+  users              User[]
+  accounts           Account[]
+  members            Member[]
+  attendance         Attendance[]
+  fees               Fee[]
+  equipment          Equipment[]
+  inventory          InventoryItem[]
+  prospects          Prospect[]
+  exercises          Exercise[]
+  workoutPlans       WorkoutPlan[]
+  dietPlans          DietPlan[]
+  staff              Staff[]
+  shifts             Shift[]
+  calendar           CalendarDay[]
+  vouchers           Voucher[]
+  taxHeads           TaxHead[]
+  payroll            Payroll[]
+  posSales           PosSale[]
+  followUps          FollowUp[]
+  freezes            MembershipFreeze[]
+  // New relations from extended models
+  fitnessAssessments  FitnessAssessment[]
+  trainerAvailabilities TrainerAvailability[] @relation("TrainerAvailBranch")
+  trainerSchedules   TrainerSchedule[] @relation("TrainerSchedBranch")
+  ptSessions         PersonalTrainingSession[] @relation("PTSessionBranch")
+  gymClasses          GymClass[] @relation("ClassBranch")
+  suppliers           Supplier[] @relation("SupplierBranch")
+  purchases           Purchase[] @relation("PurchaseBranch")
+  stockMovements      StockMovement[] @relation("StockMoveBranch")
+}
+
+model Role {
+  id          String @db.NVarChar(50)   @id @default(cuid())
+  name        String @db.NVarChar(191)   @unique
+  description String? @db.NVarChar(MAX)
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String @db.NVarChar(50)  @id @default(cuid())
+  module      String @db.NVarChar(255)
+  action      String @db.NVarChar(255)
+  code        String @db.NVarChar(191)  @unique
+  description String? @db.NVarChar(MAX)
+
+  roles RolePermission[]
+}
+
+model RolePermission {
+  roleId       String @db.NVarChar(50)
+  permissionId String @db.NVarChar(50)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([roleId, permissionId])
+}
+
+model User {
+  id                 String @db.NVarChar(50)   @id @default(cuid())
+  username           String @db.NVarChar(191)   @unique
+  email              String? @db.NVarChar(191)  @unique
+  fullName           String @db.NVarChar(255)
+  passwordHash       String @db.NVarChar(255)
+  roleId             String @db.NVarChar(50)
+  role               Role     @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  branchId           String? @db.NVarChar(50)
+  branch             Branch?  @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  accessibleBranchIds String @db.NVarChar(255)  @default("*")
+  phone              String? @db.NVarChar(255)
+  photo              String? @db.NVarChar(255)
+  isActive           Boolean  @default(true)
+  failedLoginCount   Int      @default(0)
+  lastLoginAt        DateTime?
+  mustChangePassword Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  isDeleted          Boolean  @default(false)
+
+  sessions  Session[]
+  auditLogs AuditLog[]
+}
+
+model Session {
+  id           String @db.NVarChar(50)   @id @default(cuid())
+  userId       String @db.NVarChar(50)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  refreshToken String @db.NVarChar(255)
+  ipAddress    String? @db.NVarChar(255)
+  userAgent    String? @db.NVarChar(255)
+  location     String? @db.NVarChar(255)
+  status       String @db.NVarChar(255)   @default("Active")
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+  @@index([refreshToken])
+}
+
+model AuditLog {
+  id        String @db.NVarChar(50)   @id @default(cuid())
+  userId    String? @db.NVarChar(50)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  action    String @db.NVarChar(255)
+  module    String @db.NVarChar(255)
+  details   String? @db.NVarChar(MAX)
+  ipAddress String? @db.NVarChar(255)
+  location  String? @db.NVarChar(255)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([module])
+  @@index([createdAt])
+}
+
+// =================================================================
+// FINANCE
+// =================================================================
+
+model Account {
+  id                 String @db.NVarChar(50)   @id @default(cuid())
+  code               String @db.NVarChar(255)
+  name               String @db.NVarChar(255)
+  parentId           String? @db.NVarChar(50)
+  parent             Account? @relation("AccountHierarchy", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children           Account[] @relation("AccountHierarchy")
+  accountType        String @db.NVarChar(255)
+  bookType           String? @db.NVarChar(255)
+  accountTag         String? @db.NVarChar(255)
+  isControl         Boolean  @default(false)
+  isDetail          Boolean  @default(true)
+  isActive          Boolean  @default(true)
+  branchId          String? @db.NVarChar(50)
+  branch            Branch?  @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  contactName       String? @db.NVarChar(255)
+  phone             String? @db.NVarChar(255)
+  email             String? @db.NVarChar(255)
+  address           String? @db.NVarChar(MAX)
+  bankName          String? @db.NVarChar(255)
+  bankAccountNo     String? @db.NVarChar(255)
+  bankBranch        String? @db.NVarChar(255)
+  cnic              String? @db.NVarChar(255)
+  ntn               String? @db.NVarChar(255)
+  description       String? @db.NVarChar(MAX)
+  openingBalance    Float    @default(0)
+  openingBalanceType String? @db.NVarChar(255)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  lines             VoucherLine[]
+  bookVouchers      Voucher[] @relation("VoucherBookAccount")
+  mappings          AccountMapping[]
+
+  @@index([code])
+  @@index([parentId])
+  @@index([branchId])
+}
+
+model FinancialYear {
+  id        String @db.NVarChar(50)   @id @default(cuid())
+  name      String @db.NVarChar(191)   @unique
+  startDate DateTime
+  endDate   DateTime
+  isActive Boolean  @default(true)
+  isClosed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  periods AccountingPeriod[]
+}
+
+model AccountingPeriod {
+  id               String @db.NVarChar(50)   @id @default(cuid())
+  financialYearId  String @db.NVarChar(50)
+  financialYear    FinancialYear @relation(fields: [financialYearId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  name             String @db.NVarChar(255)
+  startDate        DateTime
+  endDate          DateTime
+  status           String @db.NVarChar(255)   @default("Open")
+  createdAt        DateTime @default(now())
+
+  @@index([financialYearId])
+}
+
+model TaxHead {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  code       String @db.NVarChar(255)
+  shortName  String @db.NVarChar(255)
+  name       String @db.NVarChar(255)
+  taxType    String @db.NVarChar(255)
+  rate       Float
+  branchId   String? @db.NVarChar(50)
+  branch     Branch?  @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([code])
+}
+
+model Voucher {
+  id           String @db.NVarChar(50)   @id @default(cuid())
+  voucherNo    String @db.NVarChar(191)   @unique
+  voucherType  String @db.NVarChar(255)
+  voucherDate  DateTime
+  branchId     String @db.NVarChar(50)
+  branch       Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  bookAccountId String? @db.NVarChar(50)
+  bookAccount  Account? @relation("VoucherBookAccount", fields: [bookAccountId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  description  String? @db.NVarChar(MAX)
+  reference    String? @db.NVarChar(255)
+  status       String @db.NVarChar(255)   @default("Draft")
+  postedById   String? @db.NVarChar(50)
+  postedAt     DateTime?
+  reversedById String? @db.NVarChar(50)
+  reversedAt   DateTime?
+  reversalReason String? @db.NVarChar(255)
+  totalDebit   Float    @default(0)
+  totalCredit  Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  lines      VoucherLine[]
+  cheques    Cheque[]
+  feePayments FeePayment[]
+  fees       Fee[]     @relation("FeeVoucher")
+  payrolls   Payroll[]
+
+  @@index([voucherType])
+  @@index([voucherDate])
+  @@index([branchId])
+  @@index([status])
+}
+
+model VoucherLine {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  voucherId  String @db.NVarChar(50)
+  voucher    Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  accountId  String @db.NVarChar(50)
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lineDescription String? @db.NVarChar(255)
+  title      String? @db.NVarChar(255)
+  reference  String? @db.NVarChar(255)
+  amount     Float    @default(0)
+  debit      Float    @default(0)
+  credit     Float    @default(0)
+  taxAccountId String? @db.NVarChar(50)
+  taxRate    Float    @default(0)
+  taxAmount  Float    @default(0)
+  chequeNo   String? @db.NVarChar(255)
+  chequeAmount Float?
+  chequeBankName String? @db.NVarChar(255)
+  chequeStatus String? @db.NVarChar(255)
+  status     String @db.NVarChar(255)   @default("Active")
+  createdAt  DateTime @default(now())
+
+  @@index([voucherId])
+  @@index([accountId])
+}
+
+model Cheque {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  voucherId  String @db.NVarChar(50)
+  voucher    Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  chequeNo   String @db.NVarChar(255)
+  chequeDate DateTime
+  bankName   String? @db.NVarChar(255)
+  amount     Float
+  status     String @db.NVarChar(255)   @default("Hold")
+  statusChangedAt DateTime?
+  statusChangedBy String? @db.NVarChar(255)
+  statusHistory String? @db.NVarChar(255)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([status])
+  @@index([chequeNo])
+}
+
+model AccountMapping {
+  id          String @db.NVarChar(50)   @id @default(cuid())
+  branchId    String? @db.NVarChar(50)
+  key         String @db.NVarChar(255)
+  accountId   String @db.NVarChar(50)
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  description String? @db.NVarChar(MAX)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([branchId, key])
+  @@index([key])
+}
+
+model FinanceDefaults {
+  id              String @db.NVarChar(50)   @id @default(cuid())
+  branchId        String? @db.NVarChar(50)  @unique
+  defaultCashAccountId String? @db.NVarChar(50)
+  defaultBankAccountId String? @db.NVarChar(50)
+  defaultTaxHeadId String? @db.NVarChar(50)
+  financialYearId String? @db.NVarChar(50)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model UserReportFormat {
+  id        String @db.NVarChar(50)   @id @default(cuid())
+  userId    String @db.NVarChar(50)
+  reportKey String @db.NVarChar(255)
+  name      String @db.NVarChar(255)
+  columns   String @db.NVarChar(255)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, reportKey, name])
+  @@index([userId, reportKey])
+}
+
+// =================================================================
+// GYM
+// =================================================================
+
+model Member {
+  id              String @db.NVarChar(50)   @id @default(cuid())
+  memberId        String @db.NVarChar(50)   @unique
+  firstName       String @db.NVarChar(255)
+  lastName        String? @db.NVarChar(255)
+  gender          String? @db.NVarChar(255)
+  dob             DateTime?
+  phone           String? @db.NVarChar(255)
+  whatsapp        String? @db.NVarChar(255)
+  email           String? @db.NVarChar(255)
+  address         String? @db.NVarChar(MAX)
+  emergencyContact String? @db.NVarChar(255)
+  emergencyContactNo String? @db.NVarChar(255)
+  photo           String? @db.NVarChar(255)
+  cnic            String? @db.NVarChar(255)
+  joiningDate     DateTime @default(now())
+  billingStartDate DateTime?
+  feeRelaxationDays Int @default(0)
+  status          String @db.NVarChar(255)   @default("Active")
+  membershipPlanId String? @db.NVarChar(50)
+  membershipPlan   MembershipPlan? @relation(fields: [membershipPlanId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  branchId        String @db.NVarChar(50)
+  branch          Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assignedTrainerId String? @db.NVarChar(50)
+  notes           String? @db.NVarChar(MAX)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  isDeleted       Boolean  @default(false)
+
+  attendance         Attendance[]
+  fees               Fee[]
+  progress           ProgressEntry[]
+  freezes            MembershipFreeze[]
+  followUps          FollowUp[]
+  workoutAssignments WorkoutAssignment[]
+  dietAssignments    DietAssignment[]
+  fitnessGoals       FitnessGoal[]
+  fitnessAssessments  FitnessAssessment[]
+  ptSessions         PersonalTrainingSession[]
+  classEnrollments   ClassEnrollment[] @relation("ClassEnrollmentMember")
+  memberDocuments    MemberDocument[]
+
+  @@index([branchId])
+  @@index([status])
+  @@index([phone])
+}
+
+model MembershipPlan {
+  id           String @db.NVarChar(50)   @id @default(cuid())
+  code          String @db.NVarChar(191)   @unique
+  name          String @db.NVarChar(255)
+  durationDays  Int
+  amount        Float
+  description   String? @db.NVarChar(MAX)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  members      Member[]
+}
+
+model Attendance {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  memberId   String @db.NVarChar(50)
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  branchId   String @db.NVarChar(50)
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  date       DateTime
+  checkIn    DateTime?
+  checkOut   DateTime?
+  notes      String? @db.NVarChar(MAX)
+  createdAt  DateTime @default(now())
+
+  @@unique([memberId, date])
+  @@index([branchId, date])
+}
+
+model Fee {
+  id           String @db.NVarChar(50)   @id @default(cuid())
+  feeNo        String @db.NVarChar(191)   @unique
+  memberId     String @db.NVarChar(50)
+  member       Member   @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  branchId     String @db.NVarChar(50)
+  branch       Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  billingPeriodStart DateTime
+  billingPeriodEnd   DateTime
+  amount       Float
+  discount     Float    @default(0)
+  paidAmount   Float    @default(0)
+  balance      Float    @default(0)
+  dueDate      DateTime
+  status       String @db.NVarChar(255)   @default("Unpaid")
+  paymentMethod String? @db.NVarChar(255)
+  paymentAccountId String? @db.NVarChar(50)
+  paymentDate  DateTime?
+  reference    String? @db.NVarChar(255)
+  voucherId    String? @db.NVarChar(50)
+  voucher      Voucher? @relation("FeeVoucher", fields: [voucherId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  payments     FeePayment[]
+
+  @@index([memberId])
+  @@index([branchId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+model FeePayment {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  feeId      String @db.NVarChar(50)
+  fee        Fee       @relation(fields: [feeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  voucherId  String @db.NVarChar(50)
+  voucher    Voucher   @relation(fields: [voucherId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  amount     Float
+  method     String @db.NVarChar(255)   // Cash | Card | Bank Transfer | Online
+  accountId  String @db.NVarChar(50)
+  cardTypeId String? @db.NVarChar(50)  // MasterFile id (masterType = 'CardTypes') when method = Card
+  cardTypeName String? @db.NVarChar(255) // snapshot of card type name at time of payment (preserved if master is deactivated)
+  bankMasterId String? @db.NVarChar(50) // MasterFile id (masterType = 'Banks') when method = Bank Transfer
+  bankMasterName String? @db.NVarChar(255) // snapshot of bank name at time of payment
+  createdAt  DateTime @default(now())
+
+  @@index([feeId])
+}
+
+model Prospect {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  prospectId String @db.NVarChar(50)   @unique
+  name       String @db.NVarChar(255)
+  phone      String? @db.NVarChar(255)
+  whatsapp   String? @db.NVarChar(255)
+  gender     String? @db.NVarChar(255)
+  age        Int?
+  dob        DateTime?
+  interestedMembership String? @db.NVarChar(255)
+  preferredBranchId String? @db.NVarChar(50)
+  preferredBranch  Branch? @relation(fields: [preferredBranchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  source     String @db.NVarChar(255)
+  status     String @db.NVarChar(255)   @default("New")
+  inquiryDate DateTime @default(now())
+  followUpDate DateTime?
+  assignedTo String? @db.NVarChar(255)
+  notes      String? @db.NVarChar(MAX)
+  convertedMemberId String? @db.NVarChar(50)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([status])
+  @@index([source])
+}
+
+model MembershipFreeze {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  memberId   String @db.NVarChar(50)
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  branchId   String @db.NVarChar(50)
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  freezeFrom DateTime
+  freezeTo   DateTime
+  days       Int
+  reason     String? @db.NVarChar(MAX)
+  approvedBy String? @db.NVarChar(255)
+  status     String @db.NVarChar(255)   @default("Active")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([memberId])
+}
+
+model FollowUp {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  memberId   String? @db.NVarChar(50)
+  member     Member?  @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  prospectId String? @db.NVarChar(50)
+  branchId   String? @db.NVarChar(50)
+  branch     Branch?  @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  date       DateTime @default(now())
+  type       String @db.NVarChar(255)
+  userId     String? @db.NVarChar(50)
+  notes      String? @db.NVarChar(MAX)
+  outcome    String? @db.NVarChar(255)
+  nextFollowUpDate DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([memberId])
+  @@index([prospectId])
+}
+
+// =================================================================
+// GYM MASTERS
+// =================================================================
+
+model Exercise {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  code       String @db.NVarChar(255)
+  name       String @db.NVarChar(255)
+  category   String? @db.NVarChar(255)
+  muscleGroup String? @db.NVarChar(255)
+  instructions String? @db.NVarChar(MAX)
+  sets       Int?
+  reps       String? @db.NVarChar(255)
+  duration   String? @db.NVarChar(255)
+  rest       String? @db.NVarChar(255)
+  equipment  String? @db.NVarChar(255)
+  image      String? @db.NVarChar(255)
+  branchId   String? @db.NVarChar(50)
+  branch     Branch?  @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  status     String @db.NVarChar(255)   @default("Active")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  dayExercises WorkoutDayExercise[]
+}
+
+model WorkoutPlan {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  name       String @db.NVarChar(255)
+  description String? @db.NVarChar(MAX)
+  isGeneral  Boolean  @default(true)
+  branchId   String? @db.NVarChar(50)
+  branch     Branch?  @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  days       WorkoutDay[]
+  assignments WorkoutAssignment[]
+}
+
+model WorkoutDay {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  planId     String @db.NVarChar(50)
+  plan       WorkoutPlan @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  dayName    String @db.NVarChar(255)
+  notes      String? @db.NVarChar(MAX)
+  exercises  WorkoutDayExercise[]
+}
+
+model WorkoutDayExercise {
+  id          String @db.NVarChar(50)  @id @default(cuid())
+  dayId       String @db.NVarChar(50)
+  day         WorkoutDay @relation(fields: [dayId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  exerciseId  String @db.NVarChar(50)
+  exercise    Exercise @relation(fields: [exerciseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sets        Int?
+  reps        String? @db.NVarChar(255)
+  duration    String? @db.NVarChar(255)
+  rest        String? @db.NVarChar(255)
+  notes       String? @db.NVarChar(MAX)
+}
+
+model WorkoutAssignment {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  memberId   String @db.NVarChar(50)
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  planId     String? @db.NVarChar(50)
+  plan       WorkoutPlan? @relation(fields: [planId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  trainerId  String? @db.NVarChar(50)
+  startDate  DateTime @default(now())
+  endDate    DateTime?
+  notes      String? @db.NVarChar(MAX)
+  createdAt  DateTime @default(now())
+
+  @@index([memberId])
+}
+
+model DietPlan {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  name       String @db.NVarChar(255)
+  description String? @db.NVarChar(MAX)
+  branchId   String? @db.NVarChar(50)
+  branch     Branch?  @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  meals      DietMeal[]
+  assignments DietAssignment[]
+}
+
+model DietMeal {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  planId     String @db.NVarChar(50)
+  plan       DietPlan @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  dayOfWeek  String @db.NVarChar(255)   // Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday
+  timing     String @db.NVarChar(255)   // Breakfast, Brunch, Lunch, Snack, Dinner, Late Night, Pre Workout, Post Workout
+  foods      String? @db.NVarChar(255)  // max 60 chars per spec (enforced in app + API)
+  quantity   String? @db.NVarChar(255)
+  calories   Float?
+  protein    Float?
+  carbs      Float?
+  fat        Float?
+  notes      String? @db.NVarChar(MAX)
+
+  @@index([planId, dayOfWeek])
+}
+
+model DietAssignment {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  memberId   String @db.NVarChar(50)
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  planId     String @db.NVarChar(50)
+  plan       DietPlan @relation(fields: [planId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  startDate  DateTime @default(now())
+  endDate    DateTime?
+  notes      String? @db.NVarChar(MAX)
+  createdAt  DateTime @default(now())
+
+  @@index([memberId])
+}
+
+model ProgressEntry {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  memberId   String @db.NVarChar(50)
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  date       DateTime @default(now())
+  weight     Float?
+  chest      Float?
+  waist      Float?
+  hips       Float?
+  biceps     Float?
+  thighs     Float?
+  notes      String? @db.NVarChar(MAX)
+  photo      String? @db.NVarChar(255)
+  createdAt  DateTime @default(now())
+
+  @@index([memberId, date])
+}
+
+// =================================================================
+// EQUIPMENT + INVENTORY
+// =================================================================
+
+model Equipment {
+  id           String @db.NVarChar(50)   @id @default(cuid())
+  code         String @db.NVarChar(255)
+  name         String @db.NVarChar(255)
+  category     String @db.NVarChar(255)
+  description  String? @db.NVarChar(MAX)
+  purchaseDate DateTime?
+  purchasePrice Float?
+  quantity     Int      @default(1)
+  condition    String @db.NVarChar(MAX)   @default("Working")
+  status       String @db.NVarChar(255)   @default("Active")
+  branchId     String @db.NVarChar(50)
+  branch       Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  billReference String? @db.NVarChar(255)
+  billImage    String? @db.NVarChar(255)
+  image        String? @db.NVarChar(255)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  maintenance EquipmentMaintenance[]
+}
+
+model EquipmentMaintenance {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  equipmentId String @db.NVarChar(50)
+  equipment  Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  date       DateTime @default(now())
+  type       String @db.NVarChar(255)
+  description String? @db.NVarChar(MAX)
+  cost       Float    @default(0)
+  vendor     String? @db.NVarChar(255)
+  notes      String? @db.NVarChar(MAX)
+  attachment String? @db.NVarChar(255)
+  createdAt  DateTime @default(now())
+
+  @@index([equipmentId])
+}
+
+model InventoryItem {
+  id           String @db.NVarChar(50)   @id @default(cuid())
+  code         String @db.NVarChar(255)
+  name         String @db.NVarChar(255)
+  category     String? @db.NVarChar(255)
+  description  String? @db.NVarChar(MAX)
+  unit         String? @db.NVarChar(255)
+  quantity     Int      @default(0)
+  reorderLevel Int      @default(0)
+  purchasePrice Float?
+  salePrice    Float?
+  branchId     String @db.NVarChar(50)
+  branch       Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  status       String @db.NVarChar(255)   @default("Active")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  posLines PosSaleLine[]
+  stockMovements StockMovement[]
+  purchaseLines PurchaseLine[]
+}
+
+// =================================================================
+// POS
+// =================================================================
+
+model PosSale {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  saleNo     String @db.NVarChar(191)   @unique
+  date       DateTime @default(now())
+  branchId   String @db.NVarChar(50)
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cashierId  String? @db.NVarChar(50)
+  total      Float
+  paymentMethod String @db.NVarChar(255)
+  paymentAccountId String? @db.NVarChar(50)
+  voucherId  String? @db.NVarChar(50)
+  status     String @db.NVarChar(255)   @default("Completed")
+  notes      String? @db.NVarChar(MAX)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  lines      PosSaleLine[]
+}
+
+model PosSaleLine {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  saleId     String @db.NVarChar(50)
+  sale       PosSale  @relation(fields: [saleId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  inventoryItemId String @db.NVarChar(50)
+  inventoryItem  InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  quantity   Int
+  unitPrice  Float
+  amount     Float
+}
+
+// =================================================================
+// STAFF + PAYROLL
+// =================================================================
+
+model Staff {
+  id          String @db.NVarChar(50)   @id @default(cuid())
+  employeeId  String @db.NVarChar(50)   @unique
+  firstName   String @db.NVarChar(255)
+  lastName    String? @db.NVarChar(255)
+  fatherGuardian String? @db.NVarChar(255)
+  cnic        String? @db.NVarChar(255)
+  photo       String? @db.NVarChar(255)
+  address     String? @db.NVarChar(MAX)
+  emergencyContact String? @db.NVarChar(255)
+  emergencyContactNo String? @db.NVarChar(255)
+  phone       String? @db.NVarChar(255)
+  whatsapp    String? @db.NVarChar(255)
+  telephone   String? @db.NVarChar(255)
+  fax         String? @db.NVarChar(255)
+  email       String? @db.NVarChar(255)
+  joiningDate DateTime @default(now())
+  department  String? @db.NVarChar(255)
+  designation String? @db.NVarChar(255)
+  isTrainer   Boolean  @default(false)
+  branchId    String @db.NVarChar(50)
+  branch      Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shiftId     String? @db.NVarChar(50)
+  shift       Shift?   @relation(fields: [shiftId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  basicSalary Float    @default(0)
+  fuelAllowance Float  @default(0)
+  rentAllowance Float  @default(0)
+  houseAllowance Float @default(0)
+  otherAllowance Float @default(0)
+  sessi       Float    @default(0)
+  eobi        Float    @default(0)
+  fbrTaxNumber String? @db.NVarChar(255)
+  overtimeAllowed Boolean @default(false)
+  overtimeRate Float   @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  isDeleted   Boolean  @default(false)
+
+  overtimes   Overtime[]
+  leaves      Leave[]
+  payrolls    Payroll[]
+  trainerAvailabilities TrainerAvailability[]
+  trainerSchedules   TrainerSchedule[]
+  staffDocuments     StaffDocument[]
+}
+
+model Shift {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  name       String @db.NVarChar(255)
+  timeIn     String @db.NVarChar(255)
+  timeOut    String @db.NVarChar(255)
+  workingDays String @db.NVarChar(255)
+  branchId   String? @db.NVarChar(50)
+  branch     Branch?  @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  staff Staff[]
+}
+
+model CalendarDay {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  date       DateTime @unique
+  branchId   String? @db.NVarChar(50)
+  branch     Branch?  @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  dayType    String @db.NVarChar(255)
+  notes      String? @db.NVarChar(MAX)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Leave {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  staffId    String @db.NVarChar(50)
+  staff      Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  leaveType  String @db.NVarChar(255)
+  fromDate   DateTime
+  toDate     DateTime
+  days       Int
+  reason     String? @db.NVarChar(MAX)
+  status     String @db.NVarChar(255)   @default("Pending")
+  approvedBy String? @db.NVarChar(255)
+  approvedAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([staffId])
+  @@index([status])
+}
+
+model Overtime {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  staffId    String @db.NVarChar(50)
+  staff      Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  date       DateTime
+  hours      Float
+  rate       Float
+  amount     Float
+  status     String @db.NVarChar(255)   @default("Pending")
+  approvedBy String? @db.NVarChar(255)
+  approvedAt DateTime?
+  notes      String? @db.NVarChar(MAX)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([staffId])
+  @@index([status])
+}
+
+model Payroll {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  payrollNo  String @db.NVarChar(191)   @unique
+  staffId    String @db.NVarChar(50)
+  staff      Staff    @relation(fields: [staffId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  branchId   String @db.NVarChar(50)
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  month      Int
+  year       Int
+  basicSalary Float
+  totalAllowances Float
+  overtimeAmount Float
+  totalEarnings Float
+  totalDeductions Float
+  netPay     Float
+  status     String @db.NVarChar(255)   @default("Draft")
+  voucherId  String? @db.NVarChar(50)
+  voucher    Voucher? @relation(fields: [voucherId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([staffId, month, year])
+  @@index([branchId])
+}
+
+model LeaveType {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  name       String @db.NVarChar(191)   @unique
+  allowedDays Int
+  isPaid     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+model Allowance {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  name       String @db.NVarChar(191)   @unique
+  description String? @db.NVarChar(MAX)
+  isStatutory Boolean @default(false)
+  createdAt  DateTime @default(now())
+}
+
+// =================================================================
+// UNIVERSAL MASTER FILES — generic master record (Department, Designation, Education, Currency, etc.)
+// =================================================================
+model MasterFile {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  masterType String @db.NVarChar(255)   // Department, Designation, Education, Currency, Allowance, LeaveType, etc.
+  code       String @db.NVarChar(255)   // auto-generated per masterType
+  name       String @db.NVarChar(255)
+  description String? @db.NVarChar(MAX)
+  isActive   Boolean  @default(true)
+  // optional extra fields stored as JSON for masters that need more (e.g. Currency has symbol, ExchangeRate)
+  extra      String? @db.NVarChar(255)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([masterType, code])
+  @@unique([masterType, name])
+  @@index([masterType])
+}
+
+// =================================================================
+// FITNESS MANAGEMENT
+// =================================================================
+
+model FitnessGoal {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  memberId   String @db.NVarChar(50)
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  goalType   String @db.NVarChar(255)   // WeightLoss, MuscleBuilding, Strength, Bodybuilding, General, Other
+  targetValue Float?
+  unit       String? @db.NVarChar(255)
+  startDate  DateTime @default(now())
+  targetDate DateTime?
+  status     String @db.NVarChar(255)   @default("Active") // Active, Achieved, Abandoned
+  notes      String? @db.NVarChar(MAX)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([memberId])
+}
+
+model FitnessAssessment {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  memberId   String @db.NVarChar(50)
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  trainerId  String? @db.NVarChar(50)
+  branchId   String? @db.NVarChar(50)
+  branch     Branch?  @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assessmentDate DateTime @default(now())
+  height     Float?
+  weight     Float?
+  bmi        Float?
+  bodyFat    Float?
+  chest      Float?
+  waist      Float?
+  arms       Float?
+  thighs     Float?
+  fitnessLevel String? @db.NVarChar(255)
+  goal       String? @db.NVarChar(255)
+  notes      String? @db.NVarChar(MAX)
+  createdAt  DateTime @default(now())
+
+  @@index([memberId, assessmentDate])
+}
+
+model PersonalTrainingSession {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  memberId   String @db.NVarChar(50)
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  trainerId  String @db.NVarChar(50)
+  branchId   String? @db.NVarChar(50)
+  branch     Branch?  @relation("PTSessionBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sessionsPurchased Int @default(0)
+  sessionsUsed   Int  @default(0)
+  sessionsRemaining Int @default(0)
+  sessionDate DateTime?
+  sessionStatus String @db.NVarChar(255) @default("Scheduled") // Scheduled, Completed, Cancelled, NoShow
+  startDate  DateTime?
+  endDate    DateTime?
+  notes      String? @db.NVarChar(MAX)
+  status     String @db.NVarChar(255)   @default("Active")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([memberId])
+  @@index([trainerId])
+}
+
+model GymClass {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  name       String @db.NVarChar(255)
+  trainerId  String? @db.NVarChar(50)
+  branchId   String @db.NVarChar(50)
+  branch     Branch   @relation("ClassBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  capacity   Int      @default(20)
+  dayOfWeek  String @db.NVarChar(255)
+  startTime  String @db.NVarChar(255)
+  endTime    String @db.NVarChar(255)
+  status     String @db.NVarChar(255)   @default("Active")
+  notes      String? @db.NVarChar(MAX)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  enrollments ClassEnrollment[]
+}
+
+model ClassEnrollment {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  classId    String @db.NVarChar(50)
+  gymClass   GymClass @relation(fields: [classId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  memberId   String @db.NVarChar(50)
+  member     Member   @relation("ClassEnrollmentMember", fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  enrollmentDate DateTime @default(now())
+  status     String @db.NVarChar(255)   @default("Enrolled") // Enrolled, Cancelled, Completed
+  attended   Boolean  @default(false)
+  notes      String? @db.NVarChar(MAX)
+  createdAt  DateTime @default(now())
+
+  @@index([classId])
+  @@index([memberId])
+}
+
+model TrainerAvailability {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  staffId    String @db.NVarChar(50)
+  staff      Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  dayOfWeek  String @db.NVarChar(255)   // Monday, Tuesday, etc.
+  startTime  String @db.NVarChar(255)
+  endTime    String @db.NVarChar(255)
+  branchId   String? @db.NVarChar(50)
+  branch     Branch?  @relation("TrainerAvailBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  status     String @db.NVarChar(255)   @default("Available") // Available, Unavailable, Busy
+  createdAt  DateTime @default(now())
+
+  @@index([staffId])
+}
+
+model TrainerSchedule {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  staffId    String @db.NVarChar(50)
+  staff      Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  branchId   String? @db.NVarChar(50)
+  branch     Branch?  @relation("TrainerSchedBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  date       DateTime
+  dayOfWeek  String @db.NVarChar(255)
+  startTime  String @db.NVarChar(255)
+  endTime    String @db.NVarChar(255)
+  sessionType String @db.NVarChar(255)  // PersonalTraining, Class, GroupSession, Assessment
+  memberId   String? @db.NVarChar(50)
+  classId    String? @db.NVarChar(50)
+  status     String @db.NVarChar(255)   @default("Scheduled") // Scheduled, Completed, Cancelled
+  notes      String? @db.NVarChar(MAX)
+  createdAt  DateTime @default(now())
+
+  @@index([staffId, date])
+}
+
+model MemberDocument {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  memberId   String @db.NVarChar(50)
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  documentType String @db.NVarChar(255) // ID, Medical, Contract, Photo, Other
+  documentName String @db.NVarChar(255)
+  fileUrl    String @db.NVarChar(255)
+  issueDate  DateTime?
+  expiryDate DateTime?
+  status     String @db.NVarChar(255)   @default("Active")
+  notes      String? @db.NVarChar(MAX)
+  uploadedBy String? @db.NVarChar(255)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([memberId])
+}
+
+model StaffDocument {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  staffId    String @db.NVarChar(50)
+  staff      Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  documentType String @db.NVarChar(255) // CNIC, Contract, Certificate, Photo, Other
+  documentName String @db.NVarChar(255)
+  fileUrl    String @db.NVarChar(255)
+  issueDate  DateTime?
+  expiryDate DateTime?
+  status     String @db.NVarChar(255)   @default("Active")
+  notes      String? @db.NVarChar(MAX)
+  uploadedBy String? @db.NVarChar(255)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([staffId])
+}
+
+model FoodItem {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  code       String @db.NVarChar(255)
+  name       String @db.NVarChar(255)
+  category   String? @db.NVarChar(255)
+  calories   Float    @default(0)
+  protein    Float    @default(0)
+  carbs      Float    @default(0)
+  fat        Float    @default(0)
+  servingSize String? @db.NVarChar(255)
+  unit       String? @db.NVarChar(255)
+  status     String @db.NVarChar(255)   @default("Active")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([code])
+}
+
+// =================================================================
+// INVENTORY EXTENSION
+// =================================================================
+
+model Supplier {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  code       String @db.NVarChar(255)
+  name       String @db.NVarChar(255)
+  contactPerson String? @db.NVarChar(255)
+  phone      String? @db.NVarChar(255)
+  email      String? @db.NVarChar(255)
+  address    String? @db.NVarChar(MAX)
+  branchId   String? @db.NVarChar(50)
+  branch     Branch?  @relation("SupplierBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  status     String @db.NVarChar(255)   @default("Active")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  purchases  Purchase[]
+}
+
+model Purchase {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  purchaseNo  String @db.NVarChar(191)  @unique
+  supplierId String? @db.NVarChar(50)
+  supplier   Supplier? @relation(fields: [supplierId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  branchId   String @db.NVarChar(50)
+  branch     Branch   @relation("PurchaseBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  purchaseDate DateTime @default(now())
+  totalAmount Float   @default(0)
+  status     String @db.NVarChar(255)   @default("Pending") // Pending, Received, Cancelled
+  notes      String? @db.NVarChar(MAX)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  lines      PurchaseLine[]
+}
+
+model PurchaseLine {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  purchaseId String @db.NVarChar(50)
+  purchase   Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  inventoryItemId String? @db.NVarChar(50)
+  inventoryItem  InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  itemName   String @db.NVarChar(255)
+  quantity   Int      @default(0)
+  unitPrice  Float    @default(0)
+  amount     Float    @default(0)
+}
+
+model StockMovement {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  inventoryItemId String @db.NVarChar(50)
+  inventoryItem  InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  branchId   String @db.NVarChar(50)
+  branch     Branch   @relation("StockMoveBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  movementType String @db.NVarChar(255) // PurchaseIn, PurchaseReturn, StockIn, StockOut, Adjustment, Transfer
+  quantity   Int
+  reference  String? @db.NVarChar(255)
+  referenceId String? @db.NVarChar(50)
+  date       DateTime @default(now())
+  notes      String? @db.NVarChar(MAX)
+  createdAt  DateTime @default(now())
+
+  @@index([inventoryItemId])
+  @@index([branchId, date])
+}

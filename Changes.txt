@@ -1,0 +1,71 @@
+--------------------------------------------------------------Finance:--------------------------------------------------------------
+. Bank payment voucher me tax ki amount calculate nh ho rhi, like agr mne voucher amount 90000 enter ki hai or tax percentage 18 enter ki hai to software ko automatically 90k ka 18% calculate kr k tax amount k coloumn me appear krdena chye and then total voucher amount me nazar ana chye. 
+. let unbalanced opening trial balance be save.
+. Opening Trial Balance ki screen ka scenario asa hoga k agr defaults me knock off/billwise accounting set hai jo k one time set krni hogi to OTBki screen me 1 button nazar ayega knock off k name se hr account k barabr : uska function ye hoga k jo bhi accounts jinki accounttag supplier ya customer hai srf unpr ye button kam kre ga and after clicking on this button a new window will appear Jahan ap apny opening k bills dal skty hen us screen me feilds hongi bill id (jo k software khud generate kry ga like OTB-Branchid/0000001), Bill number*(which will be entered by the user), reference number, billtype*(sales bll, purchasebill, creditnote, debit note, Sales Credit Note, Sales Debit Note, Opening Adjustment Debit, Opening Adjustment Credit, Purchase Debit Note, Purchase Credit Note, etc etc jitni bhi bills ki type hoti hen wo sab is drop down me hongi and we can select from this and is se auto decide hojayega k amount debit hog y credit like sales bill ki amount i think hamesha credit me hoti hai so amount auto credit hojaygi jo bhi amount hum enter krengy), amount*, reference date, Due Date (Iski wajah se baad mein:Customer aging, Supplier aging, Overdue bills, Due soon, Outstanding by due date, properly calculate kiye ja sakenge),description (upto 20 charachters),   
+. Bank k vouchers me se cheque amount ki feild ko amount k feild se tag krwa do, q k jo particular line ki amount hai wohi cheque amount consider ki jani chye and it can only be change when the amount changes. 
+. Chart of account ki screen add feilds: STRN, NTN, FBR, Other name, Refernce Number, Address, Fax Number, City, Country, Wesbite, Payment terms (will only be applicable to customer/suppier,), Registration Number | Remove: Opening Balance, Opening Type
+. COA me kuch feilds mandatory krni hen like: aAccount name, Parent account, account type, Account tag, book type, Control/Detail, 
+
+
+--------------------------------------------------------------Database:--------------------------------------------------------------. 
+.Finance me jo vouhcers hen like CPV, BPV< CRV< CPV inke 2 table banengy database me 1 cashbook k name se and 1 bankbook k name se cashbook me CPV or CRV k vouchers jaengy sary or bankbook me BPV and BRV k vouchers jaengy sary. voucher id and voucher number will be same  kuch is trh generate hongi like cash receipt voucher ki hogi: CRV/branchid/monthyear/000001.
+. Agr ki voucher reverse hua hai to uske agy -R lg jaye ga for example: CRV/branchid/monthyear/000001-R.
+. Jv ka 1 alg table bane ga JV k name se and uski voucher id and voucher number will be same and the format will be: JV/branchid/monthyear/000001.
+. Opening Trial Balance ka 1 alg table bane ga OpenTB k name se and uski voucher id and voucher number will be same and the format will be: OTV/branchid/monthyear/000001.
+. Chart of account k table ko account se rename kr charts rkhna hai and also account id and account code will be same in like age defaults me chart of account k 1 level pr 2 digit set kia hai to 01 , 02, 03 these will be the accounts id, and similarly parent code/parented will be one feild and is table k hr record me parent id lazmi save hogi.
+. Bill wise/knock off vouchers ki jo detail hongi yani k knock off me jo bills hongy uska ik alg table bane ga like knockoff ya billwise k name se usme sare records akar save hongy.
+
+
+
+--------------------------------------------------------------Gym:--------------------------------------------------------------
+. In add members screen 1 checkbox chye beside WhatsApp number which says same as phone number if the checkbox is ticked the phone number should be copied in WhatsApp number, and also there should be buttons like add, edit, delete just like the chart of accounts have in this screen too. Member delete krne ka option bhi chye butye soft delete hoga like it will be deleted from frontend but in database it will be save.
+. Membership Plans me new membership add nh ho rhi. and also there should be buttons like add, edit, delete just like the chart of accounts have in this screen too.
+. In attendance screen manual checkin and checkout are not working and also ispr validation lagao k last month ya next month ka checking and check out nh dal skty nor next day ka previous days ya same day ka checkin and checkout dal skty hen just.
+. Fees & Invoices wali screen me jse hi  hum member add kren wse hi us member ka data show hojaye like Fee id#, member name, joining date, bill starting date, fee amount, , Period (billing date),Amount, Paid, Balance, Due, Status. and just hame fee collect wale button par click krna ho and then details dalni ho like jo hamari collect button pr click krne pr popup open ho rha hai bas w open ho and details dal kr save krden jse abi ho rha hai.
+. Prospects / Inquiries isme add edit delete k action coloumn on the left side chye.
+. Remove classes, member documents (fontend/backend/tables).
+. Add exercise ki screen me equipment ki feild me dropdown open hona chye Jahan sary equipments ki list ani chye but first ye equipments gym ki Masterfile me ja kr branchwise open krne hongy then they will eppear here. and also branch selection ka option bhi chye add excersise ki screen me along with action panel on the left side (add,edit,delete).
+. in the add diet plan screen give me a button like copy in all like mne Monday ka doet plan add krdia hai  after clicking copy it should get copy in rest of the days.
+. workout assignment / diet assignment / fitness goals (maybe remove this screen) / fitness assesments (remove this screen too) / Personal training (keep if needed otherwise remove this too) / classes (remove this entirely) / trainer availability / Trainer schedule / member documents (remove this entirely) 
+
+--------------------------------------------------------------Database:--------------------------------------------------------------
+. In the member table the member id will generate like Branchid/MonthYear/00001 and the feilds id and member id will be same. 
+. Membership plan k table me the membership plan id will generate like Branchid/MonthYear/00001 and the feilds id and code will be same. 
+. the attendance id in the attendance table will be simple like Branchid/MonthYear/00001 
+. in the fee table the fee id wil be simply Branchid/MonthYear/00001 and there will be no fee no#
+. Memeberfreeze k table me freeze id will be like f-000001
+. prospect table me prospectid and id will be one feild only and it will be like: brnachid/p-00001 and also change the name of the feild preferredBranchId to just branched
+. FollowUp table me id will be like branchid/fw-000001.
+. ProgressEntry k table me id will be like branchid/Pg-000001.
+. WorkoutPlan k table me id will be like WO-000001.
+. DietPlan k table me id will be like DP-000001.
+. Gym ki master file ka ik alg table hoga named gymmasterfile and usme gym se related cheezen open krengy hum like, excerise, equipment, excersie type etc
+. gymMasterfile k table me there will be master id like excersie ki master is 001 and excersie me jo details hum open krengy like chest press, squats, plank will have id like 0010001. 
+
+
+--------------------------------------------------------------Hr and Payroll:--------------------------------------------------------------
+. hr and payroll ki ka ik alg table hoga named payrollmasterfile and usme payroll se related cheezen open krengy like education, desgination, country, department, shirt ,etc etc 
+. Add staff ki ik hi long screen hogi not in tabs and department and designation ka ik dropdown open hoga jiska data jo humne payroll master file me data open kia hai wahan se uth kr ayega. 
+. action panel (add,edit, delete) required on the left on the leave screen.
+. action panel (add,edit, delete)  required on the left on the shift screen.
+
+--------------------------------------------------------------Database:--------------------------------------------------------------
+. in the leave table make the id simple like LV-0001 and also add branch id in this table. 
+. remove the leave type table we will tackle it from the master file screen we have and open the leave type in that. 
+
+
+
+--------------------------------------------------------------Admin & Security:--------------------------------------------------------------
+. admin me defaults name ka ik page hona chye, isme hum company name jo database se enter krengy one time wo save hojaye ga and then it will not be change or yehi name har jaga display hoga even Jahan likha hua hai abi top right corners pr contoura gym.
+. isi default page me kuch tabs hongy like: company information(enter address, logo, strn, ntn, fbr details, address, etc etc), finance tab (isme hum btaengy finance type like fifo ya billwise/knockoff, and chart of accounts ki level detailing bhi isi me hogi once chart of account ki detailing set krdi and chart of account me koi open hogya to ye detailing change nh ki ja skti, is tab me finance se related sari cheezen hongi.
+. isi default k page me next tab hoga account mapping ka. account maaping branch wise hogi remember har branch ki apni account mapping hogi.  
+. master files me hum batengy branches, users, and permissions/rights.
+. now to branch file branch file me jo bhi branches create hongi wo level wise create hongi like ik hirerachy hogi jse chart of accounts me hai: 
+for e.g: 
+company name (control) (action panel required on the left like add,edit, delete)
+	headoffice (control)
+		branch 1 (detail) (isme hum btaengy branch ka address, logo, name, ntn, trn,fbr info, and other details too)
+		branch 2 (detail) (isme hum btaengy branch ka address, logo, name, ntn, trn,fbr info, and other details too)
+. User,  Roles and permission ki 1 hi single screen hogi uska scenario kuch asy hoga first hum 1 user open krengy (usme name*, password*, username*, email, photo, contact details, etc)usko save krengy then usi k barabr me button hog permission by clicking on permission 1 popup window open hogi jisme hamara software ki sari screen ka name hongy or unke barabr me button hongy k can this person view this screen, add , edit, delete , print from this screen)
+
+--------------------------------------------------------------Database:--------------------------------------------------------------

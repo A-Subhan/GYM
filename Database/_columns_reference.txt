@@ -1,0 +1,63 @@
+Company: id, companyId, name, address, phone, email, website, logo, accountingType, strn, ntn, createdAt, updatedAt
+Branch: id, code, name, address, city, phone, email, strn, ntn, logo, isActive, createdAt, updatedAt, isDeleted
+Role: id, name, description, isSystem, createdAt, updatedAt
+Permission: id, module, action, code, description
+RolePermission: roleId, permissionId
+User: id, username, email, fullName, passwordHash, roleId, branchId, accessibleBranchIds, phone, photo, isActive, failedLoginCount, lastLoginAt, mustChangePassword, createdAt, updatedAt, isDeleted
+Session: id, userId, refreshToken, ipAddress, userAgent, location, status, expiresAt, createdAt, updatedAt
+AuditLog: id, userId, action, module, details, ipAddress, location, createdAt
+Account: id, code, name, parentId, accountType, bookType, accountTag, isControl, isDetail, isActive, branchId, contactName, phone, email, address, bankName, bankAccountNo, bankBranch, cnic, ntn, description, openingBalance, openingBalanceType, createdAt, updatedAt
+FinancialYear: id, name, startDate, endDate, isActive, isClosed, createdAt
+AccountingPeriod: id, financialYearId, name, startDate, endDate, status, createdAt
+TaxHead: id, code, shortName, name, taxType, rate, branchId, isActive, createdAt, updatedAt
+Voucher: id, voucherNo, voucherType, voucherDate, branchId, bookAccountId, description, reference, status, postedById, postedAt, reversedById, reversedAt, reversalReason, totalDebit, totalCredit, createdAt, updatedAt
+VoucherLine: id, voucherId, accountId, lineDescription, title, reference, amount, debit, credit, taxAccountId, taxRate, taxAmount, chequeNo, chequeAmount, chequeBankName, chequeStatus, status, createdAt
+Cheque: id, voucherId, chequeNo, chequeDate, bankName, amount, status, statusChangedAt, statusChangedBy, statusHistory, createdAt, updatedAt
+AccountMapping: id, branchId, key, accountId, description, createdAt, updatedAt
+FinanceDefaults: id, branchId, defaultCashAccountId, defaultBankAccountId, defaultTaxHeadId, financialYearId, createdAt, updatedAt
+UserReportFormat: id, userId, reportKey, name, columns, isDefault, createdAt, updatedAt
+Member: id, memberId, firstName, lastName, gender, dob, phone, whatsapp, email, address, emergencyContact, emergencyContactNo, photo, cnic, joiningDate, billingStartDate, feeRelaxationDays, status, membershipPlanId, branchId, assignedTrainerId, notes, isActive, createdAt, updatedAt, isDeleted
+MembershipPlan: id, code, name, durationDays, amount, description, isActive, createdAt, updatedAt
+Attendance: id, memberId, branchId, date, checkIn, checkOut, notes, createdAt
+Fee: id, feeNo, memberId, branchId, billingPeriodStart, billingPeriodEnd, amount, discount, paidAmount, balance, dueDate, status, paymentMethod, paymentAccountId, paymentDate, reference, voucherId, createdAt, updatedAt
+FeePayment: id, feeId, voucherId, amount, method, accountId, cardTypeId, cardTypeName, bankMasterId, bankMasterName, createdAt
+Prospect: id, prospectId, name, phone, whatsapp, gender, age, dob, interestedMembership, preferredBranchId, source, status, inquiryDate, followUpDate, assignedTo, notes, convertedMemberId, createdAt, updatedAt
+MembershipFreeze: id, memberId, branchId, freezeFrom, freezeTo, days, reason, approvedBy, status, createdAt, updatedAt
+FollowUp: id, memberId, prospectId, branchId, date, type, userId, notes, outcome, nextFollowUpDate, createdAt
+Exercise: id, code, name, category, muscleGroup, instructions, sets, reps, duration, rest, equipment, image, branchId, status, createdAt, updatedAt
+WorkoutPlan: id, name, description, isGeneral, branchId, isActive, createdAt, updatedAt
+WorkoutDay: id, planId, dayName, notes
+WorkoutDayExercise: id, dayId, exerciseId, sets, reps, duration, rest, notes
+WorkoutAssignment: id, memberId, planId, trainerId, startDate, endDate, notes, createdAt
+DietPlan: id, name, description, branchId, isActive, createdAt, updatedAt
+DietMeal: id, planId, dayOfWeek, timing, foods, quantity, calories, protein, carbs, fat, notes
+DietAssignment: id, memberId, planId, startDate, endDate, notes, createdAt
+ProgressEntry: id, memberId, date, weight, chest, waist, hips, biceps, thighs, notes, photo, createdAt
+Equipment: id, code, name, category, description, purchaseDate, purchasePrice, quantity, condition, status, branchId, billReference, billImage, image, createdAt, updatedAt
+EquipmentMaintenance: id, equipmentId, date, type, description, cost, vendor, notes, attachment, createdAt
+InventoryItem: id, code, name, category, description, unit, quantity, reorderLevel, purchasePrice, salePrice, branchId, status, createdAt, updatedAt
+PosSale: id, saleNo, date, branchId, cashierId, total, paymentMethod, paymentAccountId, voucherId, status, notes, createdAt, updatedAt
+PosSaleLine: id, saleId, inventoryItemId, quantity, unitPrice, amount
+Staff: id, employeeId, firstName, lastName, fatherGuardian, cnic, photo, address, emergencyContact, emergencyContactNo, phone, whatsapp, telephone, fax, email, joiningDate, department, designation, isTrainer, branchId, shiftId, basicSalary, fuelAllowance, rentAllowance, houseAllowance, otherAllowance, sessi, eobi, fbrTaxNumber, overtimeAllowed, overtimeRate, isActive, createdAt, updatedAt, isDeleted
+Shift: id, name, timeIn, timeOut, workingDays, branchId, isActive, createdAt, updatedAt
+CalendarDay: id, date, branchId, dayType, notes, createdAt, updatedAt
+Leave: id, staffId, leaveType, fromDate, toDate, days, reason, status, approvedBy, approvedAt, createdAt, updatedAt
+Overtime: id, staffId, date, hours, rate, amount, status, approvedBy, approvedAt, notes, createdAt, updatedAt
+Payroll: id, payrollNo, staffId, branchId, month, year, basicSalary, totalAllowances, overtimeAmount, totalEarnings, totalDeductions, netPay, status, voucherId, createdAt, updatedAt
+LeaveType: id, name, allowedDays, isPaid, createdAt
+Allowance: id, name, description, isStatutory, createdAt
+MasterFile: id, masterType, code, name, description, isActive, extra, createdAt, updatedAt
+FitnessGoal: id, memberId, goalType, targetValue, unit, startDate, targetDate, status, notes, createdAt, updatedAt
+FitnessAssessment: id, memberId, trainerId, branchId, assessmentDate, height, weight, bmi, bodyFat, chest, waist, arms, thighs, fitnessLevel, goal, notes, createdAt
+PersonalTrainingSession: id, memberId, trainerId, branchId, sessionsPurchased, sessionsUsed, sessionsRemaining, sessionDate, sessionStatus, startDate, endDate, notes, status, createdAt, updatedAt
+GymClass: id, name, trainerId, branchId, capacity, dayOfWeek, startTime, endTime, status, notes, createdAt, updatedAt
+ClassEnrollment: id, classId, memberId, enrollmentDate, status, attended, notes, createdAt
+TrainerAvailability: id, staffId, dayOfWeek, startTime, endTime, branchId, status, createdAt
+TrainerSchedule: id, staffId, branchId, date, dayOfWeek, startTime, endTime, sessionType, memberId, classId, status, notes, createdAt
+MemberDocument: id, memberId, documentType, documentName, fileUrl, issueDate, expiryDate, status, notes, uploadedBy, createdAt, updatedAt
+StaffDocument: id, staffId, documentType, documentName, fileUrl, issueDate, expiryDate, status, notes, uploadedBy, createdAt, updatedAt
+FoodItem: id, code, name, category, calories, protein, carbs, fat, servingSize, unit, status, createdAt, updatedAt
+Supplier: id, code, name, contactPerson, phone, email, address, branchId, status, createdAt, updatedAt
+Purchase: id, purchaseNo, supplierId, branchId, purchaseDate, totalAmount, status, notes, createdAt, updatedAt
+PurchaseLine: id, purchaseId, inventoryItemId, itemName, quantity, unitPrice, amount
+StockMovement: id, inventoryItemId, branchId, movementType, quantity, reference, referenceId, date, notes, createdAt
