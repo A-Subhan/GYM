@@ -33,7 +33,8 @@ import { format as fmtDate } from 'date-fns'
 import { useTheme } from 'next-themes'
 import {
   CoaModule as CoaModuleImpl,
-  VouchersModule as VouchersModuleImpl,
+  BookVoucherScreen as BookVoucherScreenImpl,
+  OpeningTrialBalanceModule as OpeningTrialBalanceModuleImpl,
   TaxHeadsModule as TaxHeadsModuleImpl,
   ChequesModule as ChequesModuleImpl,
   FinanceReportsModule as FinanceReportsModuleImpl,
@@ -182,7 +183,7 @@ const NAV: NavModule[] = [
           { key: 'finance-voucher-crv', label: 'Cash Receipt Voucher', perm: 'vouchers.view' },
           { key: 'finance-voucher-jv', label: 'Journal Voucher', perm: 'vouchers.view' },
           { key: 'finance-voucher-otb', label: 'Opening Trial Balance', perm: 'vouchers.view' },
-          { key: 'finance-voucher-cheques', label: 'Update Cheque Status', perm: 'cheques.view' },
+          { key: 'finance-voucher-cheques', label: 'Cheques', perm: 'cheques.view' },
         ],
       },
       {
@@ -865,7 +866,7 @@ function DashboardModule() { return <Dashboard /> }
 function CoaModule() { return <CoaModuleImpl /> }
 function TaxHeadsModule() { return <TaxHeadsModuleImpl /> }
 function ChequesModule() { return <ChequesModuleImpl /> }
-function OpeningTrialBalanceModule() { return <OpeningTrialBalanceScreen /> }
+function OpeningTrialBalanceModule() { return <OpeningTrialBalanceModuleImpl /> }
 function FinanceReportsModule() { return <FinanceReportsModuleImpl /> }
 function AccountMappingsModule() { return <AccountMappingsModuleImpl /> }
 function FinanceDefaultsModule() { return <FinanceDefaultsModuleImpl /> }
@@ -909,7 +910,7 @@ function SuppliersModule() { return <NotImplemented name="Suppliers" /> }
 
 // New module screens for the restructured ERP navigation
 function VoucherScreenModule({ voucherType, title }: { voucherType: string, title: string }) {
-  return <VouchersModuleImpl presetType={voucherType} presetTitle={title} />
+  return <BookVoucherScreenImpl voucherType={voucherType} title={title} />
 }
 function AgingReportsModule() { return <FinanceReportsModuleImpl presetReport="aging" /> }
 function WorkoutAssignmentModule() { return <NotImplemented name="Workout Assignment" /> }
@@ -994,139 +995,6 @@ function UniversalMasterFilesScreen() {
           <div className="col-span-2"><FormRow label="Description"><Textarea rows={2} value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow></div>
         </div>
       </Modal>
-    </div>
-  )
-}
-
-// =================================================================
-// Opening Trial Balance — single scrollable COA grid with Dr/Cr columns
-// =================================================================
-function OpeningTrialBalanceScreen() {
-  const { has } = useApp()
-  const { data, reload } = useFetch<any>('/api/opening-balance')
-  const [entries, setEntries] = useState<Record<string, { debit: number; credit: number }>>({})
-  const [saving, setSaving] = useState(false)
-
-  // Load entries when data arrives
-  useEffect(() => {
-    if (data?.accounts) {
-      const map: Record<string, { debit: number; credit: number }> = {}
-      for (const a of data.accounts) {
-        map[a.id] = { debit: a.debit || 0, credit: a.credit || 0 }
-      }
-      setEntries(map)
-    }
-  }, [data])
-
-  const accounts = data?.accounts || []
-  const hasExisting = data?.hasExisting || false
-
-  const totalDebit = Object.values(entries).reduce((s, e) => s + (Number(e.debit) || 0), 0)
-  const totalCredit = Object.values(entries).reduce((s, e) => s + (Number(e.credit) || 0), 0)
-  const difference = totalCredit - totalDebit
-  const balanced = Math.abs(difference) < 0.01
-
-  const setDr = (id: string, val: number) => {
-    if (val < 0) val = 0
-    setEntries(prev => ({ ...prev, [id]: { debit: val, credit: 0 } })) // entering Dr clears Cr
-  }
-  const setCr = (id: string, val: number) => {
-    if (val < 0) val = 0
-    setEntries(prev => ({ ...prev, [id]: { debit: 0, credit: val } })) // entering Cr clears Dr
-  }
-
-  const save = async () => {
-    if (!balanced) {
-      toast.error(`Opening Trial Balance is not balanced. Difference: ${difference > 0 ? '+' : ''}${difference.toFixed(2)}`)
-      return
-    }
-    setSaving(true)
-    try {
-      const entryArray = Object.entries(entries).map(([id, v]) => ({ id, debit: Number(v.debit) || 0, credit: Number(v.credit) || 0 }))
-      await apiPost('/api/opening-balance', { entries: entryArray })
-      toast.success(hasExisting ? 'Opening balances updated' : 'Opening balances saved')
-      reload()
-    } catch (e: any) {
-      toast.error(e.message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div>
-      <PageHeader
-        title="Opening Trial Balance"
-        action={has('vouchers.add') ? save : undefined}
-        actionLabel={saving ? 'Saving…' : (hasExisting ? 'Save Changes' : 'Save')}
-      />
-      <div className="text-xs text-muted-foreground mb-3">
-        Enter opening amounts against detail accounts. Debit OR Credit per account (not both). The Trial Balance must balance before saving.
-      </div>
-      <div className="border rounded overflow-x-auto max-h-[65vh] overflow-y-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 border-b sticky top-0 z-10">
-            <tr>
-              <th className="px-3 py-2 text-left font-medium text-nowrap">Code</th>
-              <th className="px-3 py-2 text-left font-medium">Account Name</th>
-              <th className="px-3 py-2 text-left font-medium">Type</th>
-              <th className="px-3 py-2 text-right font-medium w-32">Debit</th>
-              <th className="px-3 py-2 text-right font-medium w-32">Credit</th>
-            </tr>
-          </thead>
-          <tbody>
-            {accounts.map((a: any) => (
-              <tr key={a.id} className={`border-b last:border-0 hover:bg-muted/30 ${!a.isActive ? 'opacity-50' : ''}`}>
-                <td className="px-3 py-1.5 font-mono text-xs">{a.code}</td>
-                <td className="px-3 py-1.5">{a.name}{!a.isActive && <span className="ml-1 text-xs text-muted-foreground">(inactive)</span>}</td>
-                <td className="px-3 py-1.5 text-xs">{a.accountType}</td>
-                <td className="px-3 py-1.5">
-                  <Input
-                    type="number" min={0} step="0.01"
-                    value={entries[a.id]?.debit || ''}
-                    onChange={e => setDr(a.id, Number(e.target.value))}
-                    className="h-7 text-right"
-                    placeholder="0"
-                  />
-                </td>
-                <td className="px-3 py-1.5">
-                  <Input
-                    type="number" min={0} step="0.01"
-                    value={entries[a.id]?.credit || ''}
-                    onChange={e => setCr(a.id, Number(e.target.value))}
-                    className="h-7 text-right"
-                    placeholder="0"
-                  />
-                </td>
-              </tr>
-            ))}
-            {accounts.length === 0 && (
-              <tr><td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">No detail accounts found in COA.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      {/* Totals footer — sticky at bottom */}
-      <div className="sticky bottom-0 mt-3 bg-background border rounded p-3 flex items-center gap-6 shadow">
-        <div className="text-sm">
-          <span className="text-muted-foreground">Total Debit: </span>
-          <span className="font-mono font-semibold">{fmtMoney(totalDebit)}</span>
-        </div>
-        <div className="text-sm">
-          <span className="text-muted-foreground">Total Credit: </span>
-          <span className="font-mono font-semibold">{fmtMoney(totalCredit)}</span>
-        </div>
-        <div className="text-sm">
-          <span className="text-muted-foreground">Difference (Cr − Dr): </span>
-          <span className={`font-mono font-semibold ${balanced ? 'text-green-600' : difference > 0 ? 'text-amber-600' : 'text-red-600'}`}>
-            {difference > 0 ? '+' : ''}{fmtMoney(difference)}
-          </span>
-        </div>
-        <div className="flex-1" />
-        <div className={`text-xs font-medium ${balanced ? 'text-green-600' : 'text-amber-600'}`}>
-          {balanced ? '✓ Balanced' : `Out of balance by ${Math.abs(difference).toFixed(2)}`}
-        </div>
-      </div>
     </div>
   )
 }

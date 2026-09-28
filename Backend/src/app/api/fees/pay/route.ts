@@ -1,20 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
-import { postVoucher } from '@/lib/accounting'
+import { postBookVoucher } from '@/lib/accounting'
 
-// Pay a fee — creates auto CRV/BRV and links to the fee
-// Supports: Cash | Card | Bank Transfer | Online
-// Card → cardTypeId (MasterFile ExerciseCategories? no — CardTypes) required
-// Bank Transfer → bankMasterId (MasterFile Banks) required
+// Pay a fee — posts an auto CRV (Cash) or BRV (Card/Bank Transfer/Online) book
+// voucher and links it to the fee via bookVoucherId.
+//   Cash               → CRV, book account = mapped `cashAccount`
+//   Card / Bank / Online → BRV, book account = mapped `bankAccount`
+// Detail line (auto-credited by the book lib): mapped `feeReceivable`
+// (fallback: mapped `feeIncome`). Tax heads are NOT applied on fee payments.
 export async function POST(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!session.permissions.includes('fees.post')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { feeId, amount, method, accountId, reference, paymentDate, cardTypeId, bankMasterId } = await req.json()
-  if (!feeId || !amount || !method || !accountId) {
-    return NextResponse.json({ error: 'feeId, amount, method, accountId required' }, { status: 400 })
+  if (!feeId || !amount || !method) {
+    return NextResponse.json({ error: 'feeId, amount, method required' }, { status: 400 })
   }
   if (!['Cash', 'Card', 'Bank Transfer', 'Online'].includes(method)) {
     return NextResponse.json({ error: 'method must be Cash, Card, Bank Transfer, or Online' }, { status: 400 })
@@ -58,38 +60,50 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid payment amount' }, { status: 400 })
   }
 
-  // Look up account mappings
+  // Account mappings (branch-scoped first, then global null-branch)
   const mappings = await db.accountMapping.findMany({ where: { OR: [{ branchId: fee.branchId }, { branchId: null }] } })
   const pickMapping = (key: string) => {
     const branchSpecific = mappings.find(m => m.key === key && m.branchId === fee.branchId)
     return branchSpecific || mappings.find(m => m.key === key && m.branchId === null)
   }
+  const cashMapping = pickMapping('cashAccount')
+  const bankMapping = pickMapping('bankAccount')
   const feeIncomeMapping = pickMapping('feeIncome')
   const feeReceivableMapping = pickMapping('feeReceivable')
-  if (!feeIncomeMapping) return NextResponse.json({ error: 'Account mapping "feeIncome" not configured' }, { status: 500 })
 
-  // Determine voucher type: Cash → CRV, Card/Bank Transfer/Online → BRV
-  const voucherType = method === 'Cash' ? 'CRV' : 'BRV'
+  // Book account: Cash → cashAccount; Card/Bank Transfer/Online → bankAccount
+  const voucherType = method === 'Cash' ? 'CRV' as const : 'BRV' as const
+  const bookMapping = method === 'Cash' ? cashMapping : bankMapping
+  if (!bookMapping) {
+    return NextResponse.json({ error: `Account mapping "${method === 'Cash' ? 'cashAccount' : 'bankAccount'}" not configured` }, { status: 500 })
+  }
+  const bookChartId = bookMapping.accountId
 
-  const lines: Array<{ accountId: string; debit: number; credit: number; lineDescription?: string }> = []
-  lines.push({ accountId, debit: payAmount, credit: 0, lineDescription: `Fee payment: ${fee.feeNo} - ${fee.member.firstName} ${fee.member.lastName || ''}` })
-  if (feeReceivableMapping && fee.status !== 'Unpaid') {
-    lines.push({ accountId: feeReceivableMapping.accountId, debit: 0, credit: payAmount, lineDescription: `Receivable cleared: ${fee.feeNo}` })
-  } else {
-    lines.push({ accountId: feeIncomeMapping.accountId, debit: 0, credit: payAmount, lineDescription: `Fee income: ${fee.feeNo}` })
+  // Counter (detail) line: feeReceivable if configured, else feeIncome
+  const detailMapping = feeReceivableMapping || feeIncomeMapping
+  if (!detailMapping) {
+    return NextResponse.json({ error: 'Account mapping "feeReceivable" (or "feeIncome") not configured' }, { status: 500 })
   }
 
   try {
-    const voucher = await postVoucher({
-      voucherType: voucherType as any,
+    const voucher = await postBookVoucher({
+      voucherType,
       voucherDate: paymentDate ? new Date(paymentDate) : new Date(),
       branchId: fee.branchId,
-      bookAccountId: accountId,
-      description: `Fee payment — ${fee.feeNo} — ${fee.member.firstName} ${fee.member.lastName || ''} — ${method}${cardTypeName ? ` (${cardTypeName})` : ''}${bankMasterName ? ` (${bankMasterName})` : ''}`,
+      branchCode: fee.branch.code,
+      bookChartId,
+      description: `Fee payment — ${fee.feeNo} — ${fee.member.firstName} ${fee.member.lastName || ''} — ${method}${cardTypeName ? ` (${cardTypeName})` : ''}${bankMasterName ? ` (${bankMasterName})` : ''}`.slice(0, 250),
       reference: reference || fee.feeNo,
-      lines,
+      paymentMode: method === 'Cash' ? 'Cash' : 'Online Transfer',
+      lines: [
+        {
+          accountId: detailMapping.accountId,
+          amount: payAmount,
+          lineDescription: `Fee payment ${fee.feeNo}`,
+          billType: 'Receipt',
+        },
+      ],
       postedById: session.id,
-      status: 'Posted',
     })
 
     const newPaid = fee.paidAmount + payAmount
@@ -102,16 +116,16 @@ export async function POST(req: NextRequest) {
         balance: newBalance,
         status: newStatus,
         paymentMethod: method,
-        paymentAccountId: accountId,
+        paymentAccountId: bookChartId,
         paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
         reference: reference || fee.reference,
-        voucherId: voucher.id,
+        bookVoucherId: voucher.id,
         payments: {
           create: {
-            voucherId: voucher.id,
+            bookVoucherId: voucher.id,
             amount: payAmount,
             method,
-            accountId,
+            accountId: bookChartId,
             cardTypeId: cardTypeId || null,
             cardTypeName: cardTypeName,
             bankMasterId: bankMasterId || null,

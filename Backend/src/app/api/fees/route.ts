@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
       ...(status ? { status } : {}),
       ...(memberId ? { memberId } : {}),
     },
-    include: { member: true, branch: true, voucher: true, payments: true },
+    include: { member: true, branch: true, payments: true },
     orderBy: { dueDate: 'desc' },
     take: 200,
   })

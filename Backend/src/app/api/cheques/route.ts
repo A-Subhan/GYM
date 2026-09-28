@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 
+const CHEQUE_STATUSES = ['Hold', 'Cleared', 'Bounced', 'Cancelled']
+
 export async function GET(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -12,13 +14,15 @@ export async function GET(req: NextRequest) {
 
   const cheques = await db.cheque.findMany({
     where: {
-      ...(status ? { status } : {}),
+      ...(status && status !== 'all' ? { status } : {}),
       ...(branchId && branchId !== 'all' ? { voucher: { branchId } } : {}),
       ...(allowed ? { voucher: { branchId: { in: allowed } } } : {}),
     },
-    include: { voucher: { include: { branch: true, bookAccount: true } } },
+    include: {
+      voucher: { include: { branch: true, bookChart: true, lines: true } },
+    },
     orderBy: { chequeDate: 'desc' },
-    take: 200,
+    take: 300,
   })
   return NextResponse.json({ cheques })
 }
@@ -30,10 +34,10 @@ export async function PATCH(req: NextRequest) {
 
   const { ids, status, reason } = await req.json()
   if (!Array.isArray(ids) || !ids.length || !status) return NextResponse.json({ error: 'ids[] and status required' }, { status: 400 })
-  if (!['Hold', 'Clear', 'Bounced', 'Deposited'].includes(status)) return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
+  if (!CHEQUE_STATUSES.includes(status)) return NextResponse.json({ error: `Invalid status (allowed: ${CHEQUE_STATUSES.join(', ')})` }, { status: 400 })
 
   const now = new Date()
-  const updated = []
+  const updated: any[] = []
   for (const id of ids) {
     const cheque = await db.cheque.findUnique({ where: { id } })
     if (!cheque) continue

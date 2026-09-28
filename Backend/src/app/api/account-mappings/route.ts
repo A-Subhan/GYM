@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   const branchId = url.searchParams.get('branchId')
   const mappings = await db.accountMapping.findMany({
     where: { ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}) },
-    include: { account: true },
+    include: { account: { select: { id: true, name: true, accountType: true } } },
   })
   return NextResponse.json({ mappings })
 }
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   const data = await req.json()
   if (!data.key || !data.accountId) return NextResponse.json({ error: 'key and accountId required' }, { status: 400 })
   // Validate account type matches key
-  const account = await db.account.findUnique({ where: { id: data.accountId } })
+  const account = await db.chart.findUnique({ where: { id: data.accountId } })
   if (!account) return NextResponse.json({ error: 'Invalid account' }, { status: 400 })
 
   const existing = data.branchId

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, getSelectedBranchIds } from '@/lib/auth'
-import { getAccountBalanceBetween } from '@/lib/accounting'
 
 // Available reports
 const REPORTS = [
   { key: 'trial-balance', name: 'Trial Balance', filters: ['from', 'to', 'branches', 'bookType'] },
+  { key: 'ledger', name: 'Ledger', filters: ['from', 'to', 'branches', 'accountId'] },
   { key: 'general-ledger', name: 'General Ledger', filters: ['from', 'to', 'branches', 'accountId'] },
   { key: 'account-ledger', name: 'Account Ledger', filters: ['from', 'to', 'accountId'] },
   { key: 'income-statement', name: 'Income Statement', filters: ['from', 'to', 'branches'] },
@@ -13,8 +13,114 @@ const REPORTS = [
   { key: 'cash-book', name: 'Cash Book', filters: ['from', 'to', 'branches'] },
   { key: 'bank-book', name: 'Bank Book', filters: ['from', 'to', 'branches'] },
   { key: 'voucher-register', name: 'Voucher Register', filters: ['from', 'to', 'branches', 'voucherType'] },
+  { key: 'day-book', name: 'Day Book', filters: ['from', 'to', 'branches'] },
   { key: 'tax-report', name: 'Tax Report', filters: ['from', 'to', 'branches'] },
+  { key: 'aging', name: 'Aging', filters: ['asOf', 'branches'] },
+  { key: 'customer-aging', name: 'Customer Aging', filters: ['asOf', 'branches'] },
+  { key: 'vendor-aging', name: 'Vendor Aging', filters: ['asOf', 'branches'] },
 ]
+
+type PostedLine = {
+  date: Date
+  voucherNo: string
+  type: string
+  bookType: string
+  branchId: string
+  description: string | null
+  debit: number
+  credit: number
+  taxAmount: number
+  taxRate: number
+  accountName?: string
+  accountCode?: string
+}
+
+function r2(n: number): number {
+  return Math.round(Number(n || 0) * 100) / 100
+}
+
+/** All Active voucher lines (with parent voucher info) for one account, from Posted vouchers only. */
+async function postedLinesForAccount(accountId: string): Promise<PostedLine[]> {
+  const lines = await db.bookVoucherLine.findMany({
+    where: { accountId, status: 'Active' },
+    include: {
+      cashbookVoucher: { select: { id: true, voucherType: true, voucherDate: true, branchId: true, status: true, description: true } },
+      bankbookVoucher: { select: { id: true, voucherType: true, voucherDate: true, branchId: true, status: true, description: true } },
+      journalVoucher: { select: { id: true, voucherType: true, voucherDate: true, branchId: true, status: true, description: true } },
+      openTbVoucher: { select: { id: true, voucherType: true, voucherDate: true, branchId: true, status: true, description: true } },
+    },
+  })
+  const out: PostedLine[] = []
+  for (const l of lines) {
+    const v = l.cashbookVoucher || l.bankbookVoucher || l.journalVoucher || l.openTbVoucher
+    if (!v || v.status !== 'Posted') continue
+    out.push({
+      date: v.voucherDate,
+      voucherNo: v.id,
+      type: v.voucherType,
+      bookType: l.bookType,
+      branchId: v.branchId,
+      description: l.lineDescription || v.description,
+      debit: l.debit,
+      credit: l.credit,
+      taxAmount: l.taxAmount,
+      taxRate: l.taxRate,
+    })
+  }
+  out.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  return out
+}
+
+/** Union of all Posted book vouchers (any of the 4 stores) in a range, normalized. */
+async function postedVouchers(opts: { from?: Date; to?: Date; allowed?: string[] | null; voucherType?: string; branchId?: string } = {}) {
+  const dateFilter = opts.from || opts.to
+    ? { voucherDate: { ...(opts.from ? { gte: opts.from } : {}), ...(opts.to ? { lte: opts.to } : {}) } }
+    : {}
+  const branchFilter = {
+    ...(opts.allowed ? { branchId: { in: opts.allowed } } : {}),
+    ...(opts.branchId && opts.branchId !== 'all' ? { branchId: opts.branchId } : {}),
+  }
+  const select = { id: true, voucherType: true, voucherDate: true, branchId: true, description: true, reference: true, status: true, branch: true }
+  const [cash, bank, jv, otb] = await Promise.all([
+    db.cashbookVoucher.findMany({ where: { status: 'Posted', ...dateFilter, ...branchFilter, ...(opts.voucherType ? { voucherType: opts.voucherType } : {}) }, select: { ...select, totalAmount: true } }),
+    db.bankbookVoucher.findMany({ where: { status: 'Posted', ...dateFilter, ...branchFilter, ...(opts.voucherType ? { voucherType: opts.voucherType } : {}) }, select: { ...select, totalAmount: true } }),
+    db.journalVoucher.findMany({ where: { status: 'Posted', ...dateFilter, ...branchFilter, ...(opts.voucherType ? { voucherType: opts.voucherType } : {}) }, select: { ...select, totalDebit: true, totalCredit: true } }),
+    db.openTbVoucher.findMany({ where: { status: 'Posted', ...dateFilter, ...branchFilter, ...(opts.voucherType ? { voucherType: opts.voucherType } : {}) }, select: { ...select, totalDebit: true, totalCredit: true, difference: true, isBalanced: true } }),
+  ])
+  const rows: any[] = []
+  for (const v of cash) {
+    rows.push({
+      voucherNo: v.id, id: v.id, voucherType: v.voucherType, voucherDate: v.voucherDate,
+      branch: v.branch, description: v.description, reference: v.reference, status: v.status,
+      totalDebit: (v as any).totalAmount, totalCredit: (v as any).totalAmount, totalAmount: (v as any).totalAmount,
+      bookType: 'CASHBOOK', store: 'CASHBOOK',
+    })
+  }
+  for (const v of bank) {
+    rows.push({
+      voucherNo: v.id, id: v.id, voucherType: v.voucherType, voucherDate: v.voucherDate,
+      branch: v.branch, description: v.description, reference: v.reference, status: v.status,
+      totalDebit: (v as any).totalAmount, totalCredit: (v as any).totalAmount, totalAmount: (v as any).totalAmount,
+      bookType: 'BANKBOOK', store: 'BANKBOOK',
+    })
+  }
+  for (const v of jv) {
+    rows.push({
+      voucherNo: v.id, id: v.id, voucherType: v.voucherType, voucherDate: v.voucherDate,
+      branch: v.branch, description: v.description, reference: v.reference, status: v.status,
+      totalDebit: (v as any).totalDebit, totalCredit: (v as any).totalCredit, bookType: 'JV', store: 'JV',
+    })
+  }
+  for (const v of otb) {
+    rows.push({
+      voucherNo: v.id, id: v.id, voucherType: v.voucherType, voucherDate: v.voucherDate,
+      branch: v.branch, description: v.description, reference: v.reference, status: v.status,
+      totalDebit: (v as any).totalDebit, totalCredit: (v as any).totalCredit, difference: (v as any).difference, isBalanced: (v as any).isBalanced, bookType: 'OTB', store: 'OTB',
+    })
+  }
+  rows.sort((a, b) => new Date(b.voucherDate).getTime() - new Date(a.voucherDate).getTime())
+  return rows
+}
 
 export async function GET(req: NextRequest) {
   const session = await getSession()
@@ -25,6 +131,7 @@ export async function GET(req: NextRequest) {
   const reportKey = url.searchParams.get('report')
   const from = url.searchParams.get('from') ? new Date(url.searchParams.get('from')!) : new Date(new Date().getFullYear(), 0, 1)
   const to = url.searchParams.get('to') ? new Date(url.searchParams.get('to')!) : new Date()
+  const asOfParam = url.searchParams.get('asOf') ? new Date(url.searchParams.get('asOf')!) : new Date()
   const branchesParam = url.searchParams.get('branches')
   const allowed = getSelectedBranchIds(session, branchesParam)
   const accountId = url.searchParams.get('accountId')
@@ -35,135 +142,235 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ reports: REPORTS })
   }
 
-  // Generate report
+  // ---------- Trial Balance (all detail accounts, cumulative to `to`) ----------
   if (reportKey === 'trial-balance') {
-    const accounts = await db.account.findMany({
-      where: { isDetail: true, ...(allowed ? { branchId: { in: allowed } } : {}), ...(bookType ? { bookType } : {}) },
+    const charts = await db.chart.findMany({
+      where: { isDetail: true, ...(allowed ? { OR: [{ branchId: { in: allowed } }, { branchId: null }] } : {}), ...(bookType && bookType !== 'all' ? { bookType } : {}) },
       include: { branch: true },
+      orderBy: { id: 'asc' },
     })
     const rows: any[] = []
     let totalDebit = 0, totalCredit = 0
-    for (const a of accounts) {
-      const bal = await getAccountBalanceBetween(a.id, from, to)
-      if (Math.abs(bal.balance) < 0.01) continue
-      const debit = bal.balance > 0 ? bal.balance : 0
-      const credit = bal.balance < 0 ? -bal.balance : 0
-      totalDebit += debit
-      totalCredit += credit
-      rows.push({ code: a.code, name: a.name, type: a.accountType, debit, credit, balance: bal.balance })
+    for (const a of charts) {
+      const lines = await postedLinesForAccount(a.id)
+      const upto = lines.filter(l => new Date(l.date).getTime() <= to.getTime())
+      const debit = r2(upto.reduce((s, l) => s + l.debit, 0))
+      const credit = r2(upto.reduce((s, l) => s + l.credit, 0))
+      const balance = r2(debit - credit)
+      if (Math.abs(balance) < 0.01) continue
+      const dr = balance > 0 ? balance : 0
+      const cr = balance < 0 ? -balance : 0
+      totalDebit += dr
+      totalCredit += cr
+      rows.push({ code: a.id, name: a.name, type: a.accountType, debit: dr, credit: cr, balance })
     }
-    return NextResponse.json({ report: { title: 'Trial Balance', from, to, rows, totalDebit, totalCredit, balanced: Math.abs(totalDebit - totalCredit) < 0.01 } })
+    return NextResponse.json({ report: { title: 'Trial Balance', from, to, rows, totalDebit: r2(totalDebit), totalCredit: r2(totalCredit), balanced: Math.abs(totalDebit - totalCredit) < 0.01 } })
   }
 
-  if (reportKey === 'general-ledger' || reportKey === 'account-ledger') {
-    const accountWhere = accountId ? { id: accountId } : { isDetail: true, ...(allowed ? { branchId: { in: allowed } } : {}) }
-    const accounts = await db.account.findMany({ where: accountWhere, include: { branch: true } })
+  // ---------- Ledger / General Ledger / Account Ledger ----------
+  if (reportKey === 'ledger' || reportKey === 'general-ledger' || reportKey === 'account-ledger') {
+    const accountWhere = accountId
+      ? { id: accountId }
+      : { isDetail: true, ...(allowed ? { OR: [{ branchId: { in: allowed } }, { branchId: null }] } : {}) }
+    const charts = await db.chart.findMany({ where: accountWhere, orderBy: { id: 'asc' } })
     const result: any[] = []
-    for (const a of accounts) {
-      const lines = await db.voucherLine.findMany({
-        where: { accountId: a.id, voucher: { status: 'Posted', voucherDate: { gte: from, lte: to } } },
-        include: { voucher: true },
-        orderBy: { voucher: { voucherDate: 'asc' } },
+    for (const a of charts) {
+      const all = await postedLinesForAccount(a.id)
+      const opening = r2(all.filter(l => new Date(l.date).getTime() < from.getTime()).reduce((s, l) => s + l.debit - l.credit, 0))
+      const period = all.filter(l => new Date(l.date).getTime() >= from.getTime() && new Date(l.date).getTime() <= to.getTime())
+      if (!period.length) continue
+      let running = opening
+      const rows = period.map(l => {
+        running = r2(running + l.debit - l.credit)
+        return { date: l.date, voucherNo: l.voucherNo, type: l.type, description: l.description, debit: l.debit, credit: l.credit, balance: running }
       })
-      if (!lines.length) continue
-      const opening = await getAccountBalanceBetween(a.id, new Date(0), from)
-      let running = opening.balance
-      const rows = lines.map(l => {
-        running += (l.debit - l.credit)
-        return { date: l.voucher.voucherDate, voucherNo: l.voucher.voucherNo, type: l.voucher.voucherType, description: l.lineDescription || l.voucher.description, debit: l.debit, credit: l.credit, balance: running }
-      })
-      result.push({ account: { code: a.code, name: a.name }, openingBalance: opening.balance, rows, closingBalance: running })
+      result.push({ account: { code: a.id, name: a.name }, openingBalance: opening, rows, closingBalance: running })
     }
-    return NextResponse.json({ report: { title: reportKey === 'account-ledger' ? 'Account Ledger' : 'General Ledger', from, to, accounts: result } })
+    return NextResponse.json({ report: { title: reportKey === 'account-ledger' ? 'Account Ledger' : reportKey === 'ledger' ? 'Ledger' : 'General Ledger', from, to, accounts: result } })
   }
 
+  // ---------- Income Statement (period movement) ----------
   if (reportKey === 'income-statement') {
-    const revenueAccounts = await db.account.findMany({ where: { accountType: 'Revenue', isDetail: true, ...(allowed ? { branchId: { in: allowed } } : {}) } })
-    const expenseAccounts = await db.account.findMany({ where: { accountType: 'Expense', isDetail: true, ...(allowed ? { branchId: { in: allowed } } : {}) } })
+    const branchScope = allowed ? { OR: [{ branchId: { in: allowed } }, { branchId: null }] } : {}
+    const revenueAccounts = await db.chart.findMany({ where: { accountType: 'Revenue', isDetail: true, ...branchScope }, orderBy: { id: 'asc' } })
+    const expenseAccounts = await db.chart.findMany({ where: { accountType: 'Expense', isDetail: true, ...branchScope }, orderBy: { id: 'asc' } })
     const revenues: any[] = []
     const expenses: any[] = []
     let totalRevenue = 0, totalExpense = 0
     for (const a of revenueAccounts) {
-      const bal = await getAccountBalanceBetween(a.id, from, to)
-      // Revenue is credit-normal → balance should be negative normally (credits)
-      const amount = -bal.balance
+      const period = (await postedLinesForAccount(a.id)).filter(l => l.date >= from && l.date <= to)
+      const amount = r2(period.reduce((s, l) => s + l.credit - l.debit, 0)) // revenue is credit-normal
       if (Math.abs(amount) < 0.01) continue
-      revenues.push({ code: a.code, name: a.name, amount })
+      revenues.push({ code: a.id, name: a.name, amount })
       totalRevenue += amount
     }
     for (const a of expenseAccounts) {
-      const bal = await getAccountBalanceBetween(a.id, from, to)
-      const amount = bal.balance
+      const period = (await postedLinesForAccount(a.id)).filter(l => l.date >= from && l.date <= to)
+      const amount = r2(period.reduce((s, l) => s + l.debit - l.credit, 0)) // expense is debit-normal
       if (Math.abs(amount) < 0.01) continue
-      expenses.push({ code: a.code, name: a.name, amount })
+      expenses.push({ code: a.id, name: a.name, amount })
       totalExpense += amount
     }
-    return NextResponse.json({ report: { title: 'Income Statement', from, to, revenues, expenses, totalRevenue, totalExpense, netProfit: totalRevenue - totalExpense } })
+    return NextResponse.json({ report: { title: 'Income Statement', from, to, revenues, expenses, totalRevenue: r2(totalRevenue), totalExpense: r2(totalExpense), netProfit: r2(totalRevenue - totalExpense) } })
   }
 
+  // ---------- Balance Sheet (cumulative to asOf) ----------
   if (reportKey === 'balance-sheet') {
-    const asOf = url.searchParams.get('asOf') ? new Date(url.searchParams.get('asOf')!) : new Date()
-    const assetAccounts = await db.account.findMany({ where: { accountType: 'Asset', isDetail: true, ...(allowed ? { branchId: { in: allowed } } : {}) } })
-    const liabilityAccounts = await db.account.findMany({ where: { accountType: 'Liability', isDetail: true, ...(allowed ? { branchId: { in: allowed } } : {}) } })
-    const equityAccounts = await db.account.findMany({ where: { accountType: 'Equity', isDetail: true, ...(allowed ? { branchId: { in: allowed } } : {}) } })
+    const asOf = asOfParam
+    const branchScope = allowed ? { OR: [{ branchId: { in: allowed } }, { branchId: null }] } : {}
+    const groups: Array<{ type: string; key: 'assets' | 'liabilities' | 'equity' }> = [
+      { type: 'Asset', key: 'assets' },
+      { type: 'Liability', key: 'liabilities' },
+      { type: 'Equity', key: 'equity' },
+    ]
     const rows: any = { assets: [], liabilities: [], equity: [] }
     let totalAssets = 0, totalLiabilities = 0, totalEquity = 0
-    for (const a of assetAccounts) {
-      const bal = await getAccountBalanceBetween(a.id, new Date(0), asOf)
-      const amount = bal.balance
-      if (Math.abs(amount) < 0.01) continue
-      rows.assets.push({ code: a.code, name: a.name, amount })
-      totalAssets += amount
+    for (const g of groups) {
+      const charts = await db.chart.findMany({ where: { accountType: g.type, isDetail: true, ...branchScope }, orderBy: { id: 'asc' } })
+      for (const a of charts) {
+        const upto = (await postedLinesForAccount(a.id)).filter(l => new Date(l.date).getTime() <= asOf.getTime())
+        const balance = r2(upto.reduce((s, l) => s + l.debit - l.credit, 0))
+        const amount = g.key === 'assets' ? balance : -balance // liabilities/equity are credit-normal
+        if (Math.abs(amount) < 0.01) continue
+        rows[g.key].push({ code: a.id, name: a.name, amount })
+        if (g.key === 'assets') totalAssets += amount
+        else if (g.key === 'liabilities') totalLiabilities += amount
+        else totalEquity += amount
+      }
     }
-    for (const a of liabilityAccounts) {
-      const bal = await getAccountBalanceBetween(a.id, new Date(0), asOf)
-      const amount = -bal.balance
-      if (Math.abs(amount) < 0.01) continue
-      rows.liabilities.push({ code: a.code, name: a.name, amount })
-      totalLiabilities += amount
-    }
-    for (const a of equityAccounts) {
-      const bal = await getAccountBalanceBetween(a.id, new Date(0), asOf)
-      const amount = -bal.balance
-      if (Math.abs(amount) < 0.01) continue
-      rows.equity.push({ code: a.code, name: a.name, amount })
-      totalEquity += amount
-    }
-    return NextResponse.json({ report: { title: 'Balance Sheet', asOf, rows, totalAssets, totalLiabilities, totalEquity, balanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01 } })
+    return NextResponse.json({ report: { title: 'Balance Sheet', asOf, rows, totalAssets: r2(totalAssets), totalLiabilities: r2(totalLiabilities), totalEquity: r2(totalEquity), balanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01 } })
   }
 
-  if (reportKey === 'voucher-register') {
-    const vouchers = await db.voucher.findMany({
-      where: { status: 'Posted', voucherDate: { gte: from, lte: to }, ...(allowed ? { branchId: { in: allowed } } : {}), ...(voucherType ? { voucherType } : {}) },
-      include: { branch: true, lines: true },
-      orderBy: { voucherDate: 'desc' },
-    })
-    return NextResponse.json({ report: { title: 'Voucher Register', from, to, vouchers } })
-  }
-
-  if (reportKey === 'cash-book' || reportKey === 'bank-book') {
-    const bookTypeFilter = reportKey === 'cash-book' ? 'Cash' : 'Bank'
-    const accounts = await db.account.findMany({ where: { bookType: bookTypeFilter, isDetail: true, ...(allowed ? { branchId: { in: allowed } } : {}) } })
-    const result: any[] = []
-    for (const a of accounts) {
-      const bal = await getAccountBalanceBetween(a.id, from, to)
-      const lines = await db.voucherLine.findMany({
-        where: { accountId: a.id, voucher: { status: 'Posted', voucherDate: { gte: from, lte: to } } },
-        include: { voucher: true },
-        orderBy: { voucher: { voucherDate: 'asc' } },
+  // ---------- Voucher Register / Day Book ----------
+  if (reportKey === 'voucher-register' || reportKey === 'day-book') {
+    const vouchers = await postedVouchers({ from, to, allowed, voucherType: voucherType || undefined })
+    if (reportKey === 'voucher-register') {
+      return NextResponse.json({ report: { title: 'Voucher Register', from, to, vouchers: vouchers.map(({ store, ...rest }: any) => rest) } })
+    }
+    // Day Book: group by bookType with lines
+    const STORE_TABLE: Record<string, 'cashbookVoucher' | 'bankbookVoucher' | 'journalVoucher' | 'openTbVoucher'> = {
+      CASHBOOK: 'cashbookVoucher', BANKBOOK: 'bankbookVoucher', JV: 'journalVoucher', OTB: 'openTbVoucher',
+    }
+    const groupsMap: Record<string, any[]> = { CASHBOOK: [], BANKBOOK: [], JV: [], OTB: [] }
+    for (const v of vouchers) {
+      const full: any = await (db as any)[STORE_TABLE[v.store]].findUnique({
+        where: { id: v.id },
+        include: { lines: { include: { account: true } } },
       })
-      if (!lines.length && Math.abs(bal.balance) < 0.01) continue
-      result.push({ account: a, opening: bal.opening, lines: lines.map(l => ({ date: l.voucher.voucherDate, voucherNo: l.voucher.voucherNo, description: l.lineDescription || l.voucher.description, debit: l.debit, credit: l.credit })), closing: bal.balance })
+      if (!full) continue
+      groupsMap[v.store].push({
+        voucherNo: v.id, voucherType: v.voucherType, voucherDate: v.voucherDate,
+        branch: v.branch?.name, description: v.description, totalDebit: v.totalDebit, totalCredit: v.totalCredit,
+        paymentMode: (full as any).paymentMode || null,
+        lines: (full as any).lines.map((l: any) => ({ account: `${l.account.id} — ${l.account.name}`, lineDescription: l.lineDescription, debit: l.debit, credit: l.credit })),
+      })
+    }
+    const groups = Object.entries(groupsMap).map(([bookTypeKey, list]) => ({ bookType: bookTypeKey, vouchers: list }))
+    return NextResponse.json({ report: { title: 'Day Book', from, to, groups } })
+  }
+
+  // ---------- Cash Book / Bank Book ----------
+  if (reportKey === 'cash-book' || reportKey === 'bank-book') {
+    const bookFilter = reportKey === 'cash-book' ? 'Cash' : 'Bank'
+    const charts = await db.chart.findMany({
+      where: { bookType: bookFilter, isDetail: true, ...(allowed ? { OR: [{ branchId: { in: allowed } }, { branchId: null }] } : {}) },
+      orderBy: { id: 'asc' },
+    })
+    const result: any[] = []
+    for (const a of charts) {
+      const all = await postedLinesForAccount(a.id)
+      const opening = r2(all.filter(l => new Date(l.date).getTime() < from.getTime()).reduce((s, l) => s + l.debit - l.credit, 0))
+      const period = all.filter(l => new Date(l.date).getTime() >= from.getTime() && new Date(l.date).getTime() <= to.getTime())
+      if (!period.length && Math.abs(opening) < 0.01) continue
+      const closing = r2(all.filter(l => new Date(l.date).getTime() <= to.getTime()).reduce((s, l) => s + l.debit - l.credit, 0))
+      result.push({
+        account: { code: a.id, name: a.name, bookType: a.bookType },
+        opening,
+        lines: period.map(l => ({ date: l.date, voucherNo: l.voucherNo, type: l.type, description: l.description, debit: l.debit, credit: l.credit })),
+        closing,
+      })
     }
     return NextResponse.json({ report: { title: reportKey === 'cash-book' ? 'Cash Book' : 'Bank Book', from, to, accounts: result } })
   }
 
+  // ---------- Tax Report ----------
   if (reportKey === 'tax-report') {
-    const lines = await db.voucherLine.findMany({
-      where: { taxAmount: { gt: 0 }, voucher: { status: 'Posted', voucherDate: { gte: from, lte: to }, ...(allowed ? { branchId: { in: allowed } } : {}) } },
-      include: { voucher: { include: { branch: true } }, account: true },
+    const lines = await db.bookVoucherLine.findMany({
+      where: { taxAmount: { gt: 0 }, status: 'Active' },
+      include: {
+        account: true,
+        cashbookVoucher: { include: { branch: true } },
+        bankbookVoucher: { include: { branch: true } },
+        journalVoucher: { include: { branch: true } },
+        openTbVoucher: { include: { branch: true } },
+      },
+      take: 5000,
     })
-    return NextResponse.json({ report: { title: 'Tax Report', from, to, lines: lines.map(l => ({ date: l.voucher.voucherDate, voucherNo: l.voucher.voucherNo, branch: l.voucher.branch.name, account: l.account.name, taxableAmount: l.debit + l.credit, taxAmount: l.taxAmount, taxRate: l.taxRate })) } })
+    const rows = lines
+      .map(l => {
+        const v: any = l.cashbookVoucher || l.bankbookVoucher || l.journalVoucher || l.openTbVoucher
+        if (!v || v.status !== 'Posted') return null
+        if (v.voucherDate < from || v.voucherDate > to) return null
+        if (allowed && !allowed.includes(v.branchId)) return null
+        return {
+          date: v.voucherDate, voucherNo: v.id, branch: v.branch?.name,
+          account: l.account.name, taxableAmount: r2(l.debit + l.credit), taxAmount: l.taxAmount, taxRate: l.taxRate,
+        }
+      })
+      .filter(Boolean)
+    return NextResponse.json({ report: { title: 'Tax Report', from, to, rows } })
+  }
+
+  // ---------- Aging (fee-based customer aging + vendor aging) ----------
+  if (reportKey === 'aging' || reportKey === 'customer-aging' || reportKey === 'vendor-aging') {
+    const asOf = asOfParam
+    if (reportKey === 'vendor-aging') {
+      const purchases = await db.purchase.findMany({
+        where: { status: { in: ['Pending', 'Received'] }, ...(allowed ? { branchId: { in: allowed } } : {}) },
+        include: { supplier: true },
+        orderBy: { purchaseDate: 'asc' },
+        take: 1000,
+      })
+      const bucket = (days: number) => (days <= 30 ? '0-30' : days <= 60 ? '31-60' : days <= 90 ? '61-90' : '90+')
+      const rows = purchases.map(p => {
+        const daysPastDue = Math.max(0, Math.floor((asOf.getTime() - new Date(p.purchaseDate).getTime()) / 86400000))
+        return {
+          supplier: p.supplier?.name || '—',
+          purchaseNo: p.purchaseNo,
+          purchaseDate: p.purchaseDate,
+          amount: p.totalAmount,
+          outstanding: p.totalAmount,
+          daysPastDue,
+          bucket: bucket(daysPastDue),
+        }
+      })
+      const summary: Record<string, number> = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 }
+      rows.forEach(r => { summary[r.bucket] = r2((summary[r.bucket] || 0) + r.outstanding) })
+      return NextResponse.json({ report: { title: 'Vendor Aging', asOf, rows, summary } })
+    }
+    const fees = await db.fee.findMany({
+      where: { balance: { gt: 0.01 }, status: { in: ['Unpaid', 'Partial', 'Late', 'Overdue'] }, ...(allowed ? { branchId: { in: allowed } } : {}) },
+      include: { member: true },
+      orderBy: { dueDate: 'asc' },
+      take: 1000,
+    })
+    const bucket = (days: number) => (days <= 30 ? '0-30' : days <= 60 ? '31-60' : days <= 90 ? '61-90' : '90+')
+    const rows = fees.map(f => {
+      const daysPastDue = Math.max(0, Math.floor((asOf.getTime() - new Date(f.dueDate).getTime()) / 86400000))
+      return {
+        member: `${f.member.firstName} ${f.member.lastName || ''}`.trim(),
+        memberId: f.member.memberId,
+        feeNo: f.feeNo,
+        dueDate: f.dueDate,
+        amount: f.amount,
+        balance: f.balance,
+        daysPastDue,
+        bucket: bucket(daysPastDue),
+      }
+    })
+    const summary: Record<string, number> = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 }
+    rows.forEach(r => { summary[r.bucket] = r2((summary[r.bucket] || 0) + r.balance) })
+    return NextResponse.json({ report: { title: reportKey === 'aging' ? 'Aging' : 'Customer Aging', asOf, rows, summary } })
   }
 
   return NextResponse.json({ error: 'Unknown report' }, { status: 400 })

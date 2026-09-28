@@ -25,30 +25,33 @@ import {
 } from './modules'
 
 // =================================================================
-// CHART OF ACCOUNTS
+// CHART OF ACCOUNTS — /api/charts (id IS the account code)
 // =================================================================
 export function CoaModule() {
-  const { session, has } = useApp()
+  const { has } = useApp()
   const [search, setSearch] = useState('')
   const [type, setType] = useState('all')
-  const [bookType, setBookType] = useState('all')
   const [status, setStatus] = useState('all')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<any>({})
   const [editingAccount, setEditingAccount] = useState<any>(null)
+  const [viewing, setViewing] = useState<any>(null)
+  const [viewOpen, setViewOpen] = useState(false)
+  const [printTarget, setPrintTarget] = useState<any>(null)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
-  const { data, reload } = useFetch<any>(`/api/accounts?accountType=${type !== 'all' ? type : ''}&bookType=${bookType !== 'all' ? bookType : ''}`)
+  const { data, reload } = useFetch<any>(`/api/charts?${type !== 'all' ? `type=${type}&` : ''}${status !== 'all' ? `isActive=${status === 'active' ? 'true' : 'false'}` : ''}`)
 
-  const accounts = data?.accounts || []
+  const accounts = data?.charts || []
+  const selected = accounts.find((a: any) => a.id === selectedId) || null
   const roots = accounts.filter(a => !a.parentId)
   const matches = (a: any) => {
     if (!search) return true
     const q = search.toLowerCase()
-    if (a.name.toLowerCase().includes(q) || a.code.includes(q)) return true
-    // also match if any descendant matches
+    if (a.name.toLowerCase().includes(q) || a.id.toLowerCase().includes(q)) return true
     const hasMatchingDescendant = (id: string): boolean => {
-      return accounts.some((c: any) => c.parentId === id && (c.name.toLowerCase().includes(q) || c.code.includes(q) || hasMatchingDescendant(c.id)))
+      return accounts.some((c: any) => c.parentId === id && (c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q) || hasMatchingDescendant(c.id)))
     }
     return hasMatchingDescendant(a.id)
   }
@@ -79,17 +82,21 @@ export function CoaModule() {
     setForm({ ...a })
     setOpen(true)
   }
+  const openView = (a: any) => {
+    setViewing(a)
+    setViewOpen(true)
+  }
   const confirmDelete = async () => {
     if (!deleteTarget) return
     try {
-      const res = await fetch(`/api/accounts/${deleteTarget.id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/charts/${deleteTarget.id}`, { method: 'DELETE' })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed')
-      if (json.softDeleted) toast.success('Account deactivated (has posted transactions)')
-      else toast.success('Account deleted')
+      toast.success('Account deleted')
+      if (selectedId === deleteTarget.id) setSelectedId(null)
       setDeleteTarget(null)
       reload()
-    } catch (e: any) { toast.error(e.message) }
+    } catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
   }
 
   const renderNode = (a: any, depth = 0): ReactNode => {
@@ -99,39 +106,38 @@ export function CoaModule() {
     return (
       <div key={a.id}>
         <div
-          className={`flex items-center gap-2 px-2 py-1.5 hover:bg-muted/40 ${!a.isActive ? 'opacity-50' : ''}`}
+          className={`flex items-center gap-2 px-2 py-1.5 hover:bg-muted/40 cursor-pointer ${selectedId === a.id ? 'bg-muted/60' : ''} ${!a.isActive ? 'opacity-50' : ''}`}
           style={{ paddingLeft: `${depth * 20 + 8}px` }}
+          onClick={() => setSelectedId(a.id)}
         >
-          {/* Actions on LEFT */}
-          <div className="flex items-center gap-0.5 mr-1">
-            {has('finance.coa') && (
-              <button onClick={(e) => { e.stopPropagation(); openEdit(a) }} title="Edit" className="p-1 rounded hover:bg-muted text-foreground/70">
-                <Edit className="h-3 w-3" />
-              </button>
-            )}
-            {has('finance.coa') && (
-              <button onClick={(e) => { e.stopPropagation(); openAdd(a.id, a.accountType) }} title="Add child" className="p-1 rounded hover:bg-muted text-primary">
-                <Plus className="h-3 w-3" />
-              </button>
-            )}
-            {has('finance.coa') && (
-              <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(a) }} title="Delete / Deactivate" className="p-1 rounded hover:bg-muted text-red-600">
-                <Trash2 className="h-3 w-3" />
-              </button>
-            )}
-          </div>
-          {/* expand/collapse toggle */}
+          <button onClick={(e) => { e.stopPropagation(); setSelectedId(a.id); openView(a) }} title="View" className="p-1 rounded hover:bg-muted text-foreground/70">
+            <Eye className="h-3 w-3" />
+          </button>
+          {has('finance.coa') && (
+            <button onClick={(e) => { e.stopPropagation(); setSelectedId(a.id); openEdit(a) }} title="Edit" className="p-1 rounded hover:bg-muted text-foreground/70">
+              <Edit className="h-3 w-3" />
+            </button>
+          )}
+          {has('finance.coa') && (
+            <button onClick={(e) => { e.stopPropagation(); setSelectedId(a.id); openAdd(a.id, a.accountType) }} title="Add child" className="p-1 rounded hover:bg-muted text-primary">
+              <Plus className="h-3 w-3" />
+            </button>
+          )}
+          {has('finance.coa') && (
+            <button onClick={(e) => { e.stopPropagation(); setSelectedId(a.id); setDeleteTarget(a) }} title="Delete" className="p-1 rounded hover:bg-muted text-red-600">
+              <Trash2 className="h-3 w-3" />
+            </button>
+          )}
           <button onClick={() => children.length ? toggle(a.id) : null} className="flex items-center gap-2 flex-1 text-left">
             {children.length ? (
               isExpanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />
             ) : <div className="w-3" />}
-            <span className="font-mono text-xs text-muted-foreground w-20">{a.code}</span>
+            <span className="font-mono text-xs text-muted-foreground w-20">{a.id}</span>
             <span className="flex-1 text-sm">{a.name}</span>
           </button>
+          {a.parentId && <span className="hidden md:inline text-[10px] text-muted-foreground font-mono">↑ {a.parent?.name || a.parentId}</span>}
           <Badge variant="outline" className="text-xs">{a.accountType}</Badge>
-          {a.bookType && <Badge variant="secondary" className="text-xs">{a.bookType}</Badge>}
-          {a.isControl && <Badge className="text-xs">Control</Badge>}
-          {a.accountTag && <Badge variant="secondary" className="text-xs">{a.accountTag}</Badge>}
+          {a.isControl ? <Badge className="text-xs">Control</Badge> : <Badge variant="secondary" className="text-xs">Detail</Badge>}
           {!a.isActive && <Badge variant="destructive" className="text-xs">Inactive</Badge>}
         </div>
         {isExpanded && children.map((c: any) => renderNode(c, depth + 1))}
@@ -157,15 +163,6 @@ export function CoaModule() {
             <SelectItem value="Expense">Expense</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={bookType} onValueChange={setBookType}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="Book Type" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All book types</SelectItem>
-            <SelectItem value="Cash">Cash</SelectItem>
-            <SelectItem value="Bank">Bank</SelectItem>
-            <SelectItem value="General">General</SelectItem>
-          </SelectContent>
-        </Select>
         <Select value={status} onValueChange={setStatus}>
           <SelectTrigger className="w-32"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
@@ -178,6 +175,41 @@ export function CoaModule() {
         <Button variant="outline" size="sm" onClick={collapseAll}>Collapse All</Button>
         <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
       </Toolbar>
+
+      {/* Action panel for the selected account */}
+      {selected && (
+        <Card className="mb-3 border-primary/30">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs text-muted-foreground">{selected.id}</span>
+                  <span className="font-semibold text-sm">{selected.name}</span>
+                  <Badge variant="outline" className="text-xs">{selected.accountType}</Badge>
+                  {selected.isControl ? <Badge className="text-xs">Control</Badge> : <Badge variant="secondary" className="text-xs">Detail</Badge>}
+                  {!selected.isActive && <Badge variant="destructive" className="text-xs">Inactive</Badge>}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {selected.parentId ? `Parent: ${selected.parent?.name || selected.parentId}` : 'Root account'}
+                  {selected.bookType ? ` · Book: ${selected.bookType}` : ''}
+                  {selected.accountTag ? ` · Tag: ${selected.accountTag}` : ''}
+                </div>
+              </div>
+              <div className="flex gap-1.5">
+                <Button size="sm" variant="outline" onClick={() => openView(selected)}><Eye className="h-3.5 w-3.5 mr-1" />View</Button>
+                <Button size="sm" variant="outline" onClick={() => setPrintTarget(selected)}><Printer className="h-3.5 w-3.5 mr-1" />Print</Button>
+                {has('finance.coa') && (
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => openEdit(selected)}><Edit className="h-3.5 w-3.5 mr-1" />Edit</Button>
+                    <Button size="sm" variant="destructive" onClick={() => setDeleteTarget(selected)}><Trash2 className="h-3.5 w-3.5 mr-1" />Delete</Button>
+                  </>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardContent className="p-0">
           {accounts.length === 0 ? <EmptyState message="No accounts" /> : roots.map((a: any) => renderNode(a, 0))}
@@ -193,47 +225,73 @@ export function CoaModule() {
         onSaved={() => { setOpen(false); reload() }}
         accounts={accounts}
       />
+      <AccountViewModal open={viewOpen} account={viewing} onClose={() => setViewOpen(false)} />
+      <AccountPrintModal open={!!printTarget} account={printTarget} onClose={() => setPrintTarget(null)} />
       <ConfirmModal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={confirmDelete}
         title="Delete Account"
-        message={deleteTarget ? `Delete or deactivate account "${deleteTarget.code} — ${deleteTarget.name}"? If the account has posted transactions it will be deactivated (soft delete) instead of removed.` : ''}
+        message={deleteTarget ? `Delete account "${deleteTarget.id} — ${deleteTarget.name}"? Accounts with voucher lines or child accounts cannot be deleted.` : ''}
       />
     </div>
   )
 }
 
 function AccountFormModal({ open, onClose, form, setForm, onSaved, accounts, editingAccount }: any) {
-  const parent = form.parentId ? accounts.find((a: any) => a.id === form.parentId) : null
   const isEdit = !!editingAccount
+  const parent = form.parentId ? accounts.find((a: any) => a.id === form.parentId) : null
+  const isControl = form.isControl === true
   const save = async () => {
+    const code = String(form.id || '').trim().toUpperCase()
+    if (!isEdit) {
+      if (!code) { toast.error('Account Code is required'); return }
+      if (/\s/.test(code)) { toast.error('Account Code cannot contain spaces'); return }
+    }
+    if (!form.name || !String(form.name).trim()) { toast.error('Account Name is required'); return }
+    if (!form.accountType) { toast.error('Account Type is required'); return }
+    if (!isControl && !form.parentId) { toast.error('Detail accounts require a Parent (control) account'); return }
     try {
+      const payload: any = {
+        ...form,
+        id: isEdit ? editingAccount.id : code,
+        isControl,
+        isDetail: !isControl,
+      }
       if (isEdit) {
-        await apiPatch(`/api/accounts/${editingAccount.id}`, form)
+        await apiPatch(`/api/charts/${editingAccount.id}`, payload)
         toast.success('Account updated')
       } else {
-        await apiPost('/api/accounts', form)
+        await apiPost('/api/charts', payload)
         toast.success('Account created')
       }
       onSaved()
     } catch (e: any) { toast.error(e.message) }
   }
   return (
-    <Modal open={open} onClose={onClose} title={isEdit ? `Edit Account ${editingAccount?.code || ''}` : 'Add Account'}
+    <Modal open={open} onClose={onClose} title={isEdit ? `Edit Account ${editingAccount?.id || ''}` : 'Add Account'} size="lg"
       footer={<>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
       </>}>
       <div className="grid grid-cols-2 gap-3">
+        <FormRow label="Account Code" required>
+          <Input
+            value={isEdit ? (editingAccount.id || '') : (form.id || '').toUpperCase()}
+            disabled={isEdit}
+            onChange={e => setForm({ ...form, id: e.target.value.toUpperCase() })}
+            placeholder="e.g. 01 or 01001"
+            className={`font-mono ${isEdit ? 'bg-muted/40' : ''}`}
+          />
+        </FormRow>
         <FormRow label="Account Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
-        <FormRow label="Parent Account">
+        <FormRow label="Parent Account (control accounts)">
           <Select value={form.parentId || '__root__'} onValueChange={v => setForm({ ...form, parentId: v === '__root__' ? null : v })}>
             <SelectTrigger><SelectValue placeholder="Root (no parent)" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__root__">Root (no parent)</SelectItem>
-              {accounts.filter((a: any) => !a.isDetail && a.id !== editingAccount?.id).map((a: any) => (
-                <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>
+              {accounts.filter((a: any) => a.isControl && a.id !== editingAccount?.id).map((a: any) => (
+                <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -247,6 +305,24 @@ function AccountFormModal({ open, onClose, form, setForm, onSaved, accounts, edi
               <SelectItem value="Equity">Capital / Equity</SelectItem>
               <SelectItem value="Revenue">Revenue</SelectItem>
               <SelectItem value="Expense">Expense</SelectItem>
+            </SelectContent>
+          </Select>
+        </FormRow>
+        <FormRow label="Control / Detail">
+          <Select value={isControl ? 'Control' : 'Detail'} onValueChange={v => setForm({ ...form, isControl: v === 'Control' })}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Control">Control Account</SelectItem>
+              <SelectItem value="Detail">Detail Account</SelectItem>
+            </SelectContent>
+          </Select>
+        </FormRow>
+        <FormRow label="Status">
+          <Select value={form.isActive === false ? 'Inactive' : 'Active'} onValueChange={v => setForm({ ...form, isActive: v === 'Active' })}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Active">Active</SelectItem>
+              <SelectItem value="Inactive">Inactive</SelectItem>
             </SelectContent>
           </Select>
         </FormRow>
@@ -272,260 +348,359 @@ function AccountFormModal({ open, onClose, form, setForm, onSaved, accounts, edi
             </SelectContent>
           </Select>
         </FormRow>
-        <FormRow label="Control / Detail">
-          <Select value={form.isControl ? 'Control' : 'Detail'} onValueChange={v => setForm({ ...form, isControl: v === 'Control' })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Control">Control Account</SelectItem>
-              <SelectItem value="Detail">Detail Account</SelectItem>
-            </SelectContent>
-          </Select>
-        </FormRow>
-        <FormRow label="Status">
-          <Select value={form.isActive === false ? 'Inactive' : 'Active'} onValueChange={v => setForm({ ...form, isActive: v === 'Active' })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Active">Active</SelectItem>
-              <SelectItem value="Inactive">Inactive</SelectItem>
-            </SelectContent>
-          </Select>
-        </FormRow>
-        <FormRow label={isEdit ? "Code (re-generated if parent changes)" : "Code (auto-generated)"}><Input value={form.code || 'auto'} disabled className="bg-muted/40" /></FormRow>
+        <FormRow label="STRN"><Input value={form.strn || ''} onChange={e => setForm({ ...form, strn: e.target.value })} /></FormRow>
+        <FormRow label="NTN"><Input value={form.ntn || ''} onChange={e => setForm({ ...form, ntn: e.target.value })} /></FormRow>
+        <FormRow label="FBR"><Input value={form.fbr || ''} onChange={e => setForm({ ...form, fbr: e.target.value })} /></FormRow>
+        <FormRow label="Payment Terms"><Input value={form.paymentTerms || ''} onChange={e => setForm({ ...form, paymentTerms: e.target.value })} /></FormRow>
+        <FormRow label="Bank Name"><Input value={form.bankName || ''} onChange={e => setForm({ ...form, bankName: e.target.value })} /></FormRow>
+        <FormRow label="Bank A/C #"><Input value={form.bankAccountNo || ''} onChange={e => setForm({ ...form, bankAccountNo: e.target.value })} /></FormRow>
+        <FormRow label="Bank Branch"><Input value={form.bankBranch || ''} onChange={e => setForm({ ...form, bankBranch: e.target.value })} /></FormRow>
+        <FormRow label="CNIC"><Input value={form.cnic || ''} onChange={e => setForm({ ...form, cnic: e.target.value })} /></FormRow>
         <FormRow label="Contact Name"><Input value={form.contactName || ''} onChange={e => setForm({ ...form, contactName: e.target.value })} /></FormRow>
         <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
         <FormRow label="Email"><Input value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
-        <FormRow label="CNIC"><Input value={form.cnic || ''} onChange={e => setForm({ ...form, cnic: e.target.value })} /></FormRow>
-        <FormRow label="NTN"><Input value={form.ntn || ''} onChange={e => setForm({ ...form, ntn: e.target.value })} /></FormRow>
-        <FormRow label="Bank Name"><Input value={form.bankName || ''} onChange={e => setForm({ ...form, bankName: e.target.value })} /></FormRow>
-        <FormRow label="Bank A/C #"><Input value={form.bankAccountNo || ''} onChange={e => setForm({ ...form, bankAccountNo: e.target.value })} /></FormRow>
-        <FormRow label="Opening Balance"><Input type="number" value={form.openingBalance || 0} onChange={e => setForm({ ...form, openingBalance: Number(e.target.value) })} /></FormRow>
-        <FormRow label="Opening Type">
-          <Select value={form.openingBalanceType || 'Dr'} onValueChange={v => setForm({ ...form, openingBalanceType: v })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="Dr">Debit</SelectItem><SelectItem value="Cr">Credit</SelectItem></SelectContent>
-          </Select>
-        </FormRow>
+        <div className="col-span-2"><FormRow label="Address"><Input value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></FormRow></div>
         <div className="col-span-2"><FormRow label="Description"><Textarea rows={2} value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow></div>
       </div>
-      {parent && <div className="mt-3 text-xs text-muted-foreground">Parent: <code>{parent.code} — {parent.name}</code>. Code will be auto-generated under this parent.</div>}
+      {parent && <div className="mt-3 text-xs text-muted-foreground">Parent: <code>{parent.id} — {parent.name}</code></div>}
+      {!isEdit && <div className="mt-2 text-xs text-muted-foreground">The Account Code is the unique account id. Opening balances are entered through Opening Trial Balance vouchers, not here.</div>}
+    </Modal>
+  )
+}
+
+function AccountViewModal({ open, account, onClose }: any) {
+  if (!account) return null
+  const rows: Array<[string, any]> = [
+    ['Code', account.id],
+    ['Name', account.name],
+    ['Type', account.accountType],
+    ['Parent', account.parent ? `${account.parent.id} — ${account.parent.name}` : '—'],
+    ['Nature', account.isControl ? 'Control' : 'Detail'],
+    ['Book Type', account.bookType || '—'],
+    ['Account Tag', account.accountTag || '—'],
+    ['Status', account.isActive ? 'Active' : 'Inactive'],
+    ['Contact Name', account.contactName || '—'],
+    ['Phone', account.phone || '—'],
+    ['Email', account.email || '—'],
+    ['CNIC', account.cnic || '—'],
+    ['STRN', account.strn || '—'],
+    ['NTN', account.ntn || '—'],
+    ['FBR', account.fbr || '—'],
+    ['Payment Terms', account.paymentTerms || '—'],
+    ['Bank Name', account.bankName || '—'],
+    ['Bank A/C #', account.bankAccountNo || '—'],
+    ['Bank Branch', account.bankBranch || '—'],
+    ['Address', account.address || '—'],
+    ['Description', account.description || '—'],
+  ]
+  return (
+    <Modal open={open} onClose={onClose} title={`Account ${account.id}`} size="lg"
+      footer={<Button variant="outline" onClick={onClose}>Close</Button>}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+        {rows.map(([k, v]) => (
+          <div key={k} className="flex gap-2 border-b last:border-0 pb-1">
+            <span className="text-xs text-muted-foreground w-28 shrink-0">{k}</span>
+            <span className="text-sm">{v}</span>
+          </div>
+        ))}
+      </div>
+    </Modal>
+  )
+}
+
+function AccountPrintModal({ open, account, onClose }: any) {
+  if (!account) return null
+  return (
+    <Modal open={open} onClose={onClose} title={`Print Account ${account.id}`} size="md"
+      footer={<>
+        <Button variant="outline" onClick={onClose}>Close</Button>
+        <Button onClick={() => window.print()}><Printer className="h-4 w-4 mr-1" />Print</Button>
+      </>}>
+      <div className="text-sm">
+        <div className="text-center mb-4">
+          <div className="text-lg font-semibold">Chart of Accounts — Account Detail</div>
+          <div className="text-xs text-muted-foreground">{account.id} — {account.name}</div>
+        </div>
+        <table className="w-full border">
+          <tbody>
+            {([
+              ['Code', account.id], ['Name', account.name], ['Type', account.accountType],
+              ['Parent', account.parent ? `${account.parent.id} — ${account.parent.name}` : '—'],
+              ['Nature', account.isControl ? 'Control' : 'Detail'],
+              ['Status', account.isActive ? 'Active' : 'Inactive'],
+              ['STRN', account.strn || '—'], ['NTN', account.ntn || '—'], ['FBR', account.fbr || '—'],
+              ['Payment Terms', account.paymentTerms || '—'],
+              ['Bank', [account.bankName, account.bankAccountNo, account.bankBranch].filter(Boolean).join(' · ') || '—'],
+              ['Contact', [account.contactName, account.phone, account.email].filter(Boolean).join(' · ') || '—'],
+              ['Address', account.address || '—'],
+            ] as Array<[string, any]>).map(([k, v]) => (
+              <tr key={k} className="border-b last:border-0">
+                <td className="px-3 py-1.5 text-xs text-muted-foreground w-32">{k}</td>
+                <td className="px-3 py-1.5 text-xs">{String(v)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </Modal>
   )
 }
 
 // =================================================================
-// VOUCHERS
+// BOOK VOUCHERS — cashbook / bankbook / journal / opening TB
+// Voucher id IS the voucher number (e.g. CRV/BR-001/Sep25/000001).
 // =================================================================
-export function VouchersModule({ presetType, presetTitle }: { presetType?: string, presetTitle?: string } = {}) {
-  const { session, has, selectedBranchIds } = useApp()
-  const [type, setType] = useState(presetType || 'all')
-  const [status, setStatus] = useState('all')
+
+export const BOOK_BILL_TYPES: Array<{ name: string; side: 'Debit' | 'Credit' | 'Both' | 'Auto' }> = [
+  { name: 'Sales Bill', side: 'Credit' },
+  { name: 'Sales Return', side: 'Debit' },
+  { name: 'Purchase Bill', side: 'Debit' },
+  { name: 'Purchase Return', side: 'Credit' },
+  { name: 'Receipt', side: 'Debit' },
+  { name: 'Payment', side: 'Credit' },
+  { name: 'Expense Bill', side: 'Debit' },
+  { name: 'Income / Other Income', side: 'Credit' },
+  { name: 'Contra / Adjustment', side: 'Both' },
+  { name: 'Opening Balance', side: 'Auto' },
+]
+
+export function endpointForBook(voucherType: string): string {
+  if (voucherType === 'CRV' || voucherType === 'CPV') return '/api/cashbook'
+  if (voucherType === 'BRV' || voucherType === 'BPV') return '/api/bankbook'
+  if (voucherType === 'JV') return '/api/journal-vouchers'
+  return '/api/opening-tb'
+}
+
+function voucherDr(v: any): number {
+  return v?.totalDebit ?? v?.totalAmount ?? 0
+}
+function voucherCr(v: any): number {
+  return v?.totalCredit ?? v?.totalAmount ?? 0
+}
+
+function voucherTypeLabel(vt: string): string {
+  const m: Record<string, string> = {
+    CRV: 'Cash Receipt Voucher', CPV: 'Cash Payment Voucher',
+    BRV: 'Bank Receipt Voucher', BPV: 'Bank Payment Voucher',
+    JV: 'Journal Voucher', OTV: 'Opening Trial Balance',
+  }
+  return m[vt] || vt
+}
+
+// ----------------------------------------------------------------
+// Generic book voucher screen (list + form + view/print/reverse)
+// ----------------------------------------------------------------
+export function BookVoucherScreen({ voucherType, title }: { voucherType: string, title: string }) {
+  const { has, branches } = useApp()
+  const endpoint = endpointForBook(voucherType)
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [branchFilter, setBranchFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('')
   const [search, setSearch] = useState('')
-  const [open, setOpen] = useState(false)
+  const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<any>(null)
-  const [viewOpen, setViewOpen] = useState(false)
   const [viewing, setViewing] = useState<any>(null)
-  const [reverseTarget, setReverseTarget] = useState<any>(null)
-  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const [viewOpen, setViewOpen] = useState(false)
   const [printTarget, setPrintTarget] = useState<any>(null)
-  const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
-  const { data, reload } = useFetch<any>(`/api/vouchers?voucherType=${type !== 'all' ? type : ''}&status=${status !== 'all' ? status : ''}${branchesParam}`)
+  const [reverseTarget, setReverseTarget] = useState<any>(null)
+  const [lastPosted, setLastPosted] = useState<any>(null)
 
-  const vouchers = (data?.vouchers || []).filter((v: any) =>
-    !search || v.voucherNo.toLowerCase().includes(search.toLowerCase()) || v.description?.toLowerCase().includes(search.toLowerCase()))
+  const qs = [
+    `type=${voucherType}`,
+    from ? `from=${from}` : '',
+    to ? `to=${to}` : '',
+    branchFilter !== 'all' ? `branchId=${branchFilter}` : '',
+    statusFilter ? `status=${statusFilter}` : '',
+    search ? `search=${encodeURIComponent(search)}` : '',
+  ].filter(Boolean).join('&')
+  const { data, reload } = useFetch<any>(`${endpoint}?${qs}`)
 
-  const doPost = async (r: any) => {
-    try {
-      await apiPatch(`/api/vouchers/${r.id}`, { action: 'post' })
-      toast.success('Voucher posted'); reload()
-    } catch (e: any) { toast.error(e.message) }
-  }
-  const doDelete = async () => {
-    if (!deleteTarget) return
-    try {
-      await apiDelete(`/api/vouchers/${deleteTarget.id}`)
-      toast.success('Voucher deleted'); setDeleteTarget(null); reload()
-    } catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
-  }
-  const doPrint = (r: any) => {
-    setPrintTarget(r)
+  const vouchers = data?.vouchers || []
+
+  const onSaved = (saved: any) => {
+    setFormOpen(false)
+    setEditing(null)
+    setLastPosted(saved || null)
+    reload()
   }
 
   return (
     <div>
-      <PageHeader title={presetTitle || 'Vouchers'}
-        action={has('vouchers.add') ? () => { setEditing(null); setOpen(true) } : undefined}
+      <PageHeader title={title}
+        action={has('vouchers.add') ? () => { setEditing(null); setFormOpen(true) } : undefined}
         actionLabel="New Voucher" />
+
+      {lastPosted && (
+        <Card className="mb-3 border-primary/40 bg-primary/5">
+          <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-xs text-muted-foreground">Voucher posted successfully — Voucher Number</div>
+              <div className="font-mono font-semibold text-base">{lastPosted.id}</div>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setPrintTarget(lastPosted)}><Printer className="h-3.5 w-3.5 mr-1" />Print</Button>
+              <Button size="sm" variant="ghost" onClick={() => setLastPosted(null)}>Dismiss</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Toolbar>
         <SearchInput value={search} onChange={setSearch} placeholder="Search voucher no, description…" />
-        {!presetType && (
-          <Select value={type} onValueChange={setType}>
-            <SelectTrigger className="w-40"><SelectValue placeholder="Type" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All types</SelectItem>
-              <SelectItem value="CRV">CRV — Cash Receipt</SelectItem>
-              <SelectItem value="CPV">CPV — Cash Payment</SelectItem>
-              <SelectItem value="BRV">BRV — Bank Receipt</SelectItem>
-              <SelectItem value="BPV">BPV — Bank Payment</SelectItem>
-              <SelectItem value="JV">JV — Journal</SelectItem>
-              <SelectItem value="OTB">OTB — Opening TB</SelectItem>
-              <SelectItem value="POS-SALE">POS Sale</SelectItem>
-              <SelectItem value="FEE">Fee Payment</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-        <Select value={status} onValueChange={setStatus}>
+        <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-36" title="From date" />
+        <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-36" title="To date" />
+        <Select value={branchFilter} onValueChange={setBranchFilter}>
+          <SelectTrigger className="w-40"><SelectValue placeholder="Branch" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All branches</SelectItem>
+            {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter || 'all'} onValueChange={v => setStatusFilter(v === 'all' ? '' : v)}>
           <SelectTrigger className="w-32"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All</SelectItem>
-            <SelectItem value="Draft">Draft</SelectItem>
             <SelectItem value="Posted">Posted</SelectItem>
             <SelectItem value="Reversed">Reversed</SelectItem>
           </SelectContent>
         </Select>
         <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
       </Toolbar>
+
       <DataTable
         columns={[
           { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
             <div className="flex gap-0.5">
               <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setViewing(r); setViewOpen(true) }} title="View"><Eye className="h-3.5 w-3.5" /></Button>
-              {r.status === 'Draft' && has('vouchers.edit') && (
-                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditing(r); setOpen(true) }} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>
+              {r.status !== 'Reversed' && has('vouchers.edit') && (
+                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditing(r); setFormOpen(true) }} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>
               )}
-              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); doPrint(r) }} title="Print"><Printer className="h-3.5 w-3.5" /></Button>
-              {r.status === 'Draft' && has('vouchers.post') && (
-                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); doPost(r) }} title="Post"><CheckCircle2 className="h-3.5 w-3.5 text-green-600" /></Button>
-              )}
-              {r.status === 'Draft' && has('vouchers.delete') && (
-                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r) }} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>
-              )}
+              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setPrintTarget(r) }} title="Print"><Printer className="h-3.5 w-3.5" /></Button>
               {r.status === 'Posted' && has('vouchers.reverse') && (
                 <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setReverseTarget(r) }} title="Reverse"><X className="h-3.5 w-3.5 text-amber-600" /></Button>
               )}
             </div>
           ) },
-          { key: 'voucherNo', label: 'Voucher #', mono: true },
-          { key: 'voucherType', label: 'Type' },
+          { key: 'id', label: 'Voucher #', mono: true },
           { key: 'voucherDate', label: 'Date', render: (r: any) => fmtDateStr(r.voucherDate) },
           { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
           { key: 'description', label: 'Description' },
-          { key: 'totalDebit', label: 'Debit', align: 'right', mono: true, render: (r: any) => fmtMoney(r.totalDebit) },
-          { key: 'totalCredit', label: 'Credit', align: 'right', mono: true, render: (r: any) => fmtMoney(r.totalCredit) },
+          { key: 'paymentMode', label: 'Mode', render: (r: any) => r.paymentMode || '—' },
+          { key: 'dr', label: 'Debit', align: 'right', mono: true, render: (r: any) => fmtMoney(voucherDr(r)) },
+          { key: 'cr', label: 'Credit', align: 'right', mono: true, render: (r: any) => fmtMoney(voucherCr(r)) },
           { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
         ]}
         rows={vouchers}
         onRowClick={(r: any) => { setViewing(r); setViewOpen(true) }}
       />
 
-      <VoucherFormModal open={open} onClose={() => setOpen(false)} defaultType={presetType || (type !== 'all' ? type : 'CRV')} editing={editing} onSaved={() => { setOpen(false); reload() }} />
+      <BookVoucherFormModal
+        open={formOpen}
+        onClose={() => { setFormOpen(false); setEditing(null) }}
+        voucherType={voucherType}
+        editing={editing}
+        onSaved={onSaved}
+      />
       <VoucherViewModal open={viewOpen} voucher={viewing} onClose={() => setViewOpen(false)} />
-      <ReverseModal open={!!reverseTarget} voucher={reverseTarget} onClose={() => setReverseTarget(null)} onDone={() => { setReverseTarget(null); reload() }} />
-      <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={doDelete} title="Delete Voucher" message={deleteTarget ? `Delete draft voucher ${deleteTarget.voucherNo}? Posted vouchers cannot be deleted — reverse instead.` : ''} />
       <VoucherPrintModal open={!!printTarget} voucher={printTarget} onClose={() => setPrintTarget(null)} />
+      <ReverseModal open={!!reverseTarget} voucher={reverseTarget} onClose={() => setReverseTarget(null)} onDone={() => { setReverseTarget(null); reload() }} />
     </div>
   )
 }
 
-function VoucherFormModal({ open, onClose, defaultType, onSaved, editing }: any) {
+// ----------------------------------------------------------------
+// Voucher form modal — handles CRV/CPV/BRV/BPV/JV and OTV
+// ----------------------------------------------------------------
+function BookVoucherFormModal({ open, onClose, voucherType, editing, onSaved }: any) {
   const { session, branches } = useApp()
-  const { data: accountsData } = useFetch<any>('/api/accounts')
-  const { data: taxHeadsData } = useFetch<any>('/api/tax-heads')
-  const accounts = accountsData?.accounts || []
-  const detailAccounts = accounts.filter((a: any) => a.isDetail && a.isActive)
-  const taxHeads = taxHeadsData?.taxHeads || []
-  // Book Accounts: filtered by voucher type
-  //   CRV/CPV → Cash accounts; BRV/BPV → Bank accounts; JV → none
-  const isCashType = defaultType === 'CRV' || defaultType === 'CPV'
-  const isBankType = defaultType === 'BRV' || defaultType === 'BPV'
-  const isJV = defaultType === 'JV' || defaultType === 'OTB'
-  const bookAccounts = accounts.filter((a: any) =>
-    a.isActive && (isCashType ? a.bookType === 'Cash' : isBankType ? a.bookType === 'Bank' : false)
-  )
-  // For CRV/BRV: detail lines are CREDITED (book debited)
-  // For CPV/BPV: detail lines are DEBITED (book credited)
-  // For JV: user enters both Dr and Cr manually
-  const detailIsCredit = defaultType === 'CRV' || defaultType === 'BRV'
+  const endpoint = endpointForBook(voucherType)
+  const isJVorOTB = voucherType === 'JV' || voucherType === 'OTV'
+  const isJV = voucherType === 'JV'
+  const isOTB = voucherType === 'OTV'
+  const isBank = voucherType === 'BRV' || voucherType === 'BPV'
+  const isCash = voucherType === 'CRV' || voucherType === 'CPV'
+  // For CRV/BRV: detail lines are CREDITED (book debited); CPV/BPV: details DEBITED
+  const detailIsCredit = voucherType === 'CRV' || voucherType === 'BRV'
+
   const [form, setForm] = useState<any>({
     voucherDate: new Date().toISOString().slice(0, 10),
-    reference: '',
-    bookAccountId: '',
-    branchId: session?.branchId || branches[0]?.id || '',
+    branchId: '',
+    bookChartId: '',
+    paymentMode: 'Cash',
+    chequeDate: '',
     description: '',
-    lines: [emptyLine()],
+    reference: '',
+    lines: [],
   })
+
+  const { data: chartsData } = useFetch<any>(form.branchId ? `/api/charts?branchId=${form.branchId}` : '/api/charts')
+  const { data: taxHeadsData } = useFetch<any>('/api/tax-heads')
+  const charts = chartsData?.charts || []
+  const detailAccounts = charts.filter((a: any) => a.isDetail && a.isActive)
+  const bookAccounts = charts.filter((a: any) => a.isActive && (isCash
+    ? (a.bookType === 'Cash' || a.accountTag === 'Cash')
+    : (a.bookType === 'Bank' || a.accountTag === 'Bank')))
+  const taxHeads = taxHeadsData?.taxHeads || []
+  const paymentModes = isBank ? ['Cash', 'Cheque', 'Online Transfer'] : ['Cash', 'Cheque']
 
   function emptyLine() {
     return {
       accountId: '',
       lineDescription: '',
-      title: '',
-      reference: '',
       amount: 0,
       debit: 0,
       credit: 0,
-      taxAccountId: '',
+      billType: '',
+      taxHeadId: '',
       taxRate: 0,
       taxAmount: 0,
       chequeNo: '',
-      chequeAmount: 0,
       chequeBankName: '',
-      chequeStatus: '',
-      status: 'Active',
     }
   }
 
-  // Load form when modal opens or editing changes
   useEffect(() => {
     if (!open) return
     if (editing) {
-      // editing existing draft — prefill from voucher + lines
-      const detailLines = (editing.lines || []).filter((l: any) => l.accountId !== editing.bookAccountId).map((l: any) => ({
-        accountId: l.accountId,
-        lineDescription: l.lineDescription || '',
-        title: l.title || '',
-        reference: l.reference || '',
-        amount: l.amount || (l.debit || l.credit) || 0,
-        debit: l.debit || 0,
-        credit: l.credit || 0,
-        taxAccountId: l.taxAccountId || '',
-        taxRate: l.taxRate || 0,
-        taxAmount: l.taxAmount || 0,
-        chequeNo: l.chequeNo || '',
-        chequeAmount: l.chequeAmount || 0,
-        chequeBankName: l.chequeBankName || '',
-        chequeStatus: l.chequeStatus || '',
-        status: l.status || 'Active',
-      }))
+      const detailLines = (editing.lines || [])
+        .filter((l: any) => isJVorOTB || !(l.accountId === editing.bookChartId && !l.billType))
+        .map((l: any) => ({
+          accountId: l.accountId,
+          lineDescription: l.lineDescription || '',
+          amount: l.amount || (l.debit || l.credit) || 0,
+          debit: l.debit || 0,
+          credit: l.credit || 0,
+          billType: l.billType || '',
+          taxHeadId: '',
+          taxRate: l.taxRate || 0,
+          taxAmount: l.taxAmount || 0,
+          chequeNo: l.chequeNo || '',
+          chequeBankName: l.chequeBankName || '',
+        }))
       setForm({
-        voucherDate: editing.voucherDate?.slice(0, 10) || new Date().toISOString().slice(0, 10),
-        reference: editing.reference || '',
-        bookAccountId: editing.bookAccountId || '',
+        voucherDate: new Date(editing.voucherDate).toISOString().slice(0, 10),
         branchId: editing.branchId || '',
+        bookChartId: editing.bookChartId || '',
+        paymentMode: editing.paymentMode || 'Cash',
+        chequeDate: '',
         description: editing.description || '',
+        reference: editing.reference || '',
         lines: detailLines.length ? detailLines : [emptyLine()],
       })
     } else {
       setForm({
         voucherDate: new Date().toISOString().slice(0, 10),
-        reference: '',
-        bookAccountId: '',
         branchId: session?.branchId || branches[0]?.id || '',
+        bookChartId: '',
+        paymentMode: 'Cash',
+        chequeDate: '',
         description: '',
+        reference: '',
         lines: [emptyLine()],
       })
     }
   }, [open, editing])
-
-  // Compute totals.
-  // For CRV/BRV: book is debited total of detail amounts; detail lines are credited.
-  // For CPV/BPV: book is credited total of detail amounts; detail lines are debited.
-  // For JV: detail totals = sum of debit + sum of credit; must equal.
-  const totalDetailAmount = form.lines.reduce((s: number, l: any) => s + (Number(l.amount) || 0), 0)
-  const totalDebitJV = form.lines.reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0)
-  const totalCreditJV = form.lines.reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0)
-  const balancedJV = Math.abs(totalDebitJV - totalCreditJV) < 0.01
-  const bookAccountSideLabel = isJV ? '' : (detailIsCredit ? 'Book Account Debit' : 'Book Account Credit')
-  const balanced = isJV ? balancedJV : (form.bookAccountId && form.lines.length > 0 && form.lines.every((l: any) => l.accountId) && totalDetailAmount > 0)
 
   const setLine = (i: number, patch: any) => {
     setForm((f: any) => ({ ...f, lines: f.lines.map((l: any, idx: number) => idx === i ? { ...l, ...patch } : l) }))
@@ -533,159 +708,124 @@ function VoucherFormModal({ open, onClose, defaultType, onSaved, editing }: any)
   const addLine = () => setForm((f: any) => ({ ...f, lines: [...f.lines, emptyLine()] }))
   const removeLine = (i: number) => setForm((f: any) => ({ ...f, lines: f.lines.filter((_: any, idx: number) => idx !== i) }))
 
-  // Auto-calc tax amount when amount or taxRate changes (for non-JV)
+  const taxCalc = (amount: number, rate: number) => Math.round((Number(amount) || 0) * (Number(rate) || 0)) / 100
+
+  // non-JV amount change: recompute tax live
   const onLineAmountChange = (i: number, amt: number) => {
     const l = form.lines[i]
-    const taxRate = Number(l.taxRate) || 0
-    const taxAmount = Math.round(amt * taxRate) / 100
-    setLine(i, { amount: amt, debit: 0, credit: 0, taxAmount: l.taxAccountId ? taxAmount : 0 })
+    setLine(i, { amount: amt, taxAmount: l.taxHeadId ? taxCalc(amt, l.taxRate) : 0 })
   }
-  const onLineTaxAccountChange = (i: number, taxAccountId: string) => {
+  // tax head change: rate readonly from the head, tax amount recomputed
+  const onLineTaxHeadChange = (i: number, taxHeadId: string) => {
     const l = form.lines[i]
-    // find tax head to get its rate
-    const th = taxHeads.find((t: any) => t.id === taxAccountId)
-    const taxRate = th?.rate || 0
-    const amt = Number(l.amount) || 0
-    const taxAmount = taxAccountId && amt ? Math.round(amt * taxRate) / 100 : 0
-    setLine(i, { taxAccountId, taxRate, taxAmount })
+    const th = taxHeads.find((t: any) => t.id === taxHeadId)
+    const taxRate = taxHeadId ? (th?.rate || 0) : 0
+    setLine(i, { taxHeadId, taxRate, taxAmount: taxHeadId ? taxCalc(l.amount, taxRate) : 0 })
   }
-  const onLineTaxRateChange = (i: number, taxRate: number) => {
+
+  // JV/OTB: bill type auto-sets the side
+  const onLineBillTypeChange = (i: number, billType: string) => {
     const l = form.lines[i]
-    const amt = Number(l.amount) || 0
-    const taxAmount = l.taxAccountId && amt ? Math.round(amt * taxRate) / 100 : 0
-    setLine(i, { taxRate, taxAmount })
+    const entry = BOOK_BILL_TYPES.find(b => b.name === billType)
+    if (!isJVorOTB || !entry) { setLine(i, { billType }); return }
+    const amt = Number(l.amount) || Number(l.debit) || Number(l.credit) || 0
+    if (entry.side === 'Debit') setLine(i, { billType, debit: amt, credit: 0, amount: amt })
+    else if (entry.side === 'Credit') setLine(i, { billType, credit: amt, debit: 0, amount: amt })
+    else setLine(i, { billType })
   }
+  // JV/OTB: entering debit/credit moves the side
+  const onLineDebitChange = (i: number, val: number) => {
+    const l = form.lines[i]
+    const entry = BOOK_BILL_TYPES.find(b => b.name === l.billType)
+    if (entry && entry.side === 'Credit') { setLine(i, { credit: val, debit: 0, amount: val }); return }
+    setLine(i, { debit: val, credit: 0, amount: val })
+  }
+  const onLineCreditChange = (i: number, val: number) => {
+    const l = form.lines[i]
+    const entry = BOOK_BILL_TYPES.find(b => b.name === l.billType)
+    if (entry && entry.side === 'Debit') { setLine(i, { debit: val, credit: 0, amount: val }); return }
+    setLine(i, { credit: val, debit: 0, amount: val })
+  }
+
+  const totalDetailAmount = form.lines.reduce((s: number, l: any) => s + (Number(l.amount) || 0), 0)
+  const totalTax = form.lines.reduce((s: number, l: any) => s + (Number(l.taxAmount) || 0), 0)
+  const totalDebit = form.lines.reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0)
+  const totalCredit = form.lines.reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0)
+  const difference = Math.round((totalDebit - totalCredit) * 100) / 100
+  const balancedJV = Math.abs(difference) < 0.01
+  const chequeMode = !isJVorOTB && form.paymentMode === 'Cheque'
 
   const save = async () => {
-    if (!form.voucherDate || !form.branchId) {
-      toast.error('Date and branch are required'); return
+    if (!form.voucherDate || !form.branchId) { toast.error('Date and branch are required'); return }
+    if (!isJVorOTB && !form.bookChartId) { toast.error('Book Account is required'); return }
+    if (form.lines.length === 0 || !form.lines[0].accountId) { toast.error('At least one detail line with an account is required'); return }
+    if (isJVorOTB && !balancedJV && voucherType === 'JV') {
+      toast.error(`Journal Voucher must balance: Dr ${fmtMoney(totalDebit)} vs Cr ${fmtMoney(totalCredit)}`)
+      return
     }
-    if (!isJV && !form.bookAccountId) {
-      toast.error('Book Account is required for cash/bank vouchers'); return
-    }
-    if (form.lines.length === 0 || !form.lines[0].accountId) {
-      toast.error('At least one detail line is required'); return
-    }
-    if (isJV && !balancedJV) {
-      toast.error(`JV not balanced: Debit ${totalDebitJV} vs Credit ${totalCreditJV}`); return
-    }
-    if (!isJV && totalDetailAmount <= 0) {
-      toast.error('Total amount must be greater than zero'); return
-    }
-    try {
-      const payload: any = {
-        voucherType: defaultType,
-        voucherDate: form.voucherDate,
-        branchId: form.branchId,
-        bookAccountId: isJV ? null : form.bookAccountId,
-        description: form.description,
-        reference: form.reference,
-        status: 'Posted',
-        lines: form.lines.map((l: any) => ({
-          accountId: l.accountId,
-          amount: Number(l.amount) || 0,
-          debit: isJV ? (Number(l.debit) || 0) : 0,
-          credit: isJV ? (Number(l.credit) || 0) : 0,
-          lineDescription: l.lineDescription,
-          title: l.title,
-          reference: l.reference,
-          taxAccountId: l.taxAccountId || null,
-          taxRate: Number(l.taxRate) || 0,
-          taxAmount: Number(l.taxAmount) || 0,
-          chequeNo: l.chequeNo || null,
-          chequeAmount: l.chequeAmount ? Number(l.chequeAmount) : null,
-          chequeBankName: l.chequeBankName || null,
-          chequeStatus: l.chequeStatus || null,
-          status: l.status || 'Active',
-        })),
-      }
-      if (editing) payload.existingVoucherId = editing.id
-      await apiPost('/api/vouchers', payload)
-      toast.success(editing ? 'Voucher updated' : 'Voucher posted')
-      onSaved()
-    } catch (e: any) { toast.error(e.message) }
-  }
+    if (!isJVorOTB && totalDetailAmount <= 0) { toast.error('Total amount must be greater than zero'); return }
+    if (isOTB && form.description && form.description.length > 20) { toast.error('Description must be 20 characters or less for Opening Trial Balance'); return }
 
-  const saveDraft = async () => {
-    if (!form.voucherDate || !form.branchId) {
-      toast.error('Date and branch are required'); return
+    const payload: any = {
+      voucherType,
+      voucherDate: form.voucherDate,
+      branchId: form.branchId,
+      bookChartId: isJVorOTB ? null : form.bookChartId,
+      paymentMode: isJVorOTB ? undefined : form.paymentMode,
+      description: form.description,
+      reference: form.reference,
+      chequeDate: chequeMode && form.chequeDate ? form.chequeDate : null,
+      allowUnbalanced: isOTB,
+      lines: form.lines.map((l: any) => ({
+        accountId: l.accountId,
+        amount: isJVorOTB ? 0 : (Number(l.amount) || 0),
+        debit: isJVorOTB ? (Number(l.debit) || 0) : 0,
+        credit: isJVorOTB ? (Number(l.credit) || 0) : 0,
+        lineDescription: l.lineDescription || undefined,
+        billType: l.billType || undefined,
+        taxRate: Number(l.taxRate) || 0,
+        taxAmount: Number(l.taxAmount) || 0,
+        chequeNo: chequeMode && l.chequeNo ? l.chequeNo : undefined,
+        chequeBankName: chequeMode && l.chequeBankName ? l.chequeBankName : undefined,
+      })),
     }
     try {
-      const payload: any = {
-        voucherType: defaultType,
-        voucherDate: form.voucherDate,
-        branchId: form.branchId,
-        bookAccountId: isJV ? null : form.bookAccountId,
-        description: form.description,
-        reference: form.reference,
-        status: 'Draft',
-        lines: form.lines.map((l: any) => ({
-          accountId: l.accountId,
-          amount: Number(l.amount) || 0,
-          debit: isJV ? (Number(l.debit) || 0) : 0,
-          credit: isJV ? (Number(l.credit) || 0) : 0,
-          lineDescription: l.lineDescription,
-          title: l.title,
-          reference: l.reference,
-          taxAccountId: l.taxAccountId || null,
-          taxRate: Number(l.taxRate) || 0,
-          taxAmount: Number(l.taxAmount) || 0,
-          chequeNo: l.chequeNo || null,
-          chequeAmount: l.chequeAmount ? Number(l.chequeAmount) : null,
-          chequeBankName: l.chequeBankName || null,
-          chequeStatus: l.chequeStatus || null,
-          status: l.status || 'Active',
-        })),
-      }
-      if (editing) payload.existingVoucherId = editing.id
-      await apiPost('/api/vouchers', payload)
-      toast.success('Draft saved')
-      onSaved()
+      const res = editing
+        ? await apiPatch(`${endpoint}/${editing.id}`, payload)
+        : await apiPost(endpoint, payload)
+      toast.success(editing ? 'Voucher updated' : `Voucher posted: ${res.voucher?.id || ''}`)
+      onSaved(res.voucher)
     } catch (e: any) { toast.error(e.message) }
   }
 
   const title = editing
-    ? `Edit ${voucherTypeLabel(defaultType)} ${editing.voucherNo}`
-    : `New ${voucherTypeLabel(defaultType)}`
+    ? `Edit ${voucherTypeLabel(voucherType)} ${editing.id}`
+    : `New ${voucherTypeLabel(voucherType)}`
+
+  const canSave = isJVorOTB ? true : (form.bookChartId && form.branchId && form.lines.some((l: any) => l.accountId && Number(l.amount) > 0))
 
   return (
     <Modal open={open} onClose={onClose} title={title} size="xl"
       footer={<>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
-        {!editing && <Button variant="outline" onClick={saveDraft}><Save className="h-4 w-4 mr-1" />Save as Draft</Button>}
-        <Button onClick={save} disabled={!balanced}>
+        {isOTB && (
+          <span className={`text-xs font-medium mr-2 ${balancedJV ? 'text-green-600' : 'text-amber-600'}`}>
+            Difference (Dr − Cr): {difference > 0 ? '+' : ''}{fmtMoney(difference)} {balancedJV ? '· Balanced' : '· will be saved unbalanced'}
+          </span>
+        )}
+        <Button onClick={save} disabled={!canSave}>
           <Save className="h-4 w-4 mr-1" />
-          {isJV
-            ? (balancedJV ? 'Post Voucher' : `Out of balance: ${Math.abs(totalDebitJV - totalCreditJV).toFixed(2)}`)
-            : (balanced ? 'Post Voucher' : 'Fill all required fields')}
+          {isJV ? (balancedJV ? 'Post Voucher' : `Out of balance: ${fmtMoney(Math.abs(difference))}`) : 'Post Voucher'}
         </Button>
       </>}>
-      {/* HEADER: Date | Reference (small) | Book Account | Branch */}
+      {/* Header fields */}
       <div className="grid grid-cols-2 sm:grid-cols-12 gap-3 items-end">
         <div className="sm:col-span-3">
-          <FormRow label="Date" required><Input type="date" value={form.voucherDate} onChange={e => setForm({ ...form, voucherDate: e.target.value })} /></FormRow>
-        </div>
-        <div className="sm:col-span-3">
-          <FormRow label="Reference #"><Input value={form.reference || ''} onChange={e => setForm({ ...form, reference: e.target.value })} placeholder="Optional" /></FormRow>
-        </div>
-        <div className="sm:col-span-3">
-          {isJV ? (
-            <FormRow label="Book Account"><Input disabled value="— Not required for JV —" className="bg-muted/40 text-xs" /></FormRow>
-          ) : (
-            <FormRow label="Book Account" required>
-              <Select value={form.bookAccountId || '__none__'} onValueChange={v => setForm({ ...form, bookAccountId: v === '__none__' ? '' : v })}>
-                <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">— Select —</SelectItem>
-                  {bookAccounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </FormRow>
-          )}
+          <FormRow label="Voucher Date" required><Input type="date" value={form.voucherDate} onChange={e => setForm({ ...form, voucherDate: e.target.value })} /></FormRow>
         </div>
         <div className="sm:col-span-3">
           <FormRow label="Branch" required>
-            <Select value={form.branchId || '__none__'} onValueChange={v => setForm({ ...form, branchId: v === '__none__' ? '' : v })}>
+            <Select value={form.branchId || '__none__'} onValueChange={v => setForm({ ...form, branchId: v === '__none__' ? '' : v, bookChartId: '' })}>
               <SelectTrigger><SelectValue placeholder="Select branch" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">— Select —</SelectItem>
@@ -694,19 +834,73 @@ function VoucherFormModal({ open, onClose, defaultType, onSaved, editing }: any)
             </Select>
           </FormRow>
         </div>
-        <div className="sm:col-span-12">
-          <FormRow label="Description"><Input value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Voucher description" /></FormRow>
+        <div className="sm:col-span-3">
+          {isJVorOTB ? (
+            <FormRow label="Book Account"><Input disabled value="— Not required —" className="bg-muted/40 text-xs" /></FormRow>
+          ) : (
+            <FormRow label={isBank ? 'Bank Account' : 'Cash Account'} required>
+              <Select value={form.bookChartId || '__none__'} onValueChange={v => setForm({ ...form, bookChartId: v === '__none__' ? '' : v })}>
+                <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— Select —</SelectItem>
+                  {bookAccounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormRow>
+          )}
         </div>
+        <div className="sm:col-span-3">
+          {isJVorOTB ? (
+            <FormRow label="Reference #"><Input value={form.reference || ''} onChange={e => setForm({ ...form, reference: e.target.value })} placeholder="Optional" /></FormRow>
+          ) : (
+            <FormRow label="Payment Mode">
+              <Select value={form.paymentMode || 'Cash'} onValueChange={v => setForm({ ...form, paymentMode: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {paymentModes.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormRow>
+          )}
+        </div>
+        {isJVorOTB ? (
+          <div className="sm:col-span-9">
+            <FormRow label={isOTB ? `Description (${(form.description || '').length}/20)` : 'Description'}>
+              <>
+                <Input
+                  value={form.description || ''}
+                  maxLength={isOTB ? 20 : undefined}
+                  onChange={e => setForm({ ...form, description: e.target.value })}
+                  placeholder={isOTB ? 'Short description (max 20 chars)' : 'Voucher description'}
+                />
+              </>
+            </FormRow>
+          </div>
+        ) : (
+          <>
+            <div className="sm:col-span-6">
+              <FormRow label="Description"><Input value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Voucher description" /></FormRow>
+            </div>
+            <div className="sm:col-span-3">
+              <FormRow label="Reference #"><Input value={form.reference || ''} onChange={e => setForm({ ...form, reference: e.target.value })} placeholder="Optional" /></FormRow>
+            </div>
+            {chequeMode && (
+              <div className="sm:col-span-3">
+                <FormRow label="Cheque Date"><Input type="date" value={form.chequeDate || ''} onChange={e => setForm({ ...form, chequeDate: e.target.value })} /></FormRow>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
+      {/* Detail lines */}
       <div className="mt-4 border rounded">
         <div className="px-3 py-2 bg-muted/40 border-b font-medium text-sm flex items-center justify-between">
-          <span>Detail Lines {isJV ? '(manual Debit / Credit)' : `(${detailIsCredit ? 'Credit side' : 'Debit side'} — Book Account auto-${detailIsCredit ? 'Debited' : 'Credited'})`}</span>
-          <span className={`text-xs ${isJV ? (balancedJV ? 'text-green-600' : 'text-red-600') : 'text-muted-foreground'}`}>
-            {isJV
-              ? `Dr: ${fmtMoney(totalDebitJV)} · Cr: ${fmtMoney(totalCreditJV)} · ${balancedJV ? 'Balanced' : 'Not balanced'}`
-              : `Book ${detailIsCredit ? 'Dr' : 'Cr'}: ${fmtMoney(totalDetailAmount)}`
-            }
+          <span>Detail Lines {isJVorOTB ? '(manual Debit / Credit)' : `(${detailIsCredit ? 'Credit side — Book auto-Debited' : 'Debit side — Book auto-Credited'})`}</span>
+          <span className={`text-xs ${isJVorOTB ? (balancedJV ? 'text-green-600' : 'text-red-600') : 'text-muted-foreground'}`}>
+            {isJVorOTB
+              ? `Dr: ${fmtMoney(totalDebit)} · Cr: ${fmtMoney(totalCredit)} · ${balancedJV ? 'Balanced' : `Difference ${fmtMoney(difference)}`}`
+              : `Total: ${fmtMoney(totalDetailAmount)}${totalTax > 0 ? ` · Tax: ${fmtMoney(totalTax)}` : ''}`}
           </span>
         </div>
         <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
@@ -715,7 +909,7 @@ function VoucherFormModal({ open, onClose, defaultType, onSaved, editing }: any)
               <tr>
                 <th className="px-2 py-1.5 text-left">Account</th>
                 <th className="px-2 py-1.5 text-left">Description</th>
-                {isJV ? (
+                {isJVorOTB ? (
                   <>
                     <th className="px-2 py-1.5 text-right">Debit</th>
                     <th className="px-2 py-1.5 text-right">Credit</th>
@@ -723,14 +917,13 @@ function VoucherFormModal({ open, onClose, defaultType, onSaved, editing }: any)
                 ) : (
                   <th className="px-2 py-1.5 text-right">Amount</th>
                 )}
-                <th className="px-2 py-1.5 text-left">Tax Account</th>
+                <th className="px-2 py-1.5 text-left">Bill Type</th>
+                <th className="px-2 py-1.5 text-left">Tax Head</th>
                 <th className="px-2 py-1.5 text-right">Tax %</th>
                 <th className="px-2 py-1.5 text-right">Tax Amount</th>
-                <th className="px-2 py-1.5 text-left">Cheque No</th>
-                <th className="px-2 py-1.5 text-right">Cheque Amount</th>
-                <th className="px-2 py-1.5 text-left">Bank Name</th>
-                <th className="px-2 py-1.5 text-left">Cheque Status</th>
-                <th className="px-2 py-1.5 text-left">Status</th>
+                {chequeMode && <th className="px-2 py-1.5 text-left">Cheque No</th>}
+                {chequeMode && <th className="px-2 py-1.5 text-right">Cheque Amount</th>}
+                {chequeMode && <th className="px-2 py-1.5 text-left">Cheque Bank</th>}
                 <th className="px-2 py-1.5"></th>
               </tr>
             </thead>
@@ -742,29 +935,38 @@ function VoucherFormModal({ open, onClose, defaultType, onSaved, editing }: any)
                       <SelectTrigger className="h-7"><SelectValue placeholder="Account" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none__">—</SelectItem>
-                        {detailAccounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}
+                        {detailAccounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </td>
                   <td className="px-2 py-1.5 min-w-[140px]">
                     <Input value={l.lineDescription || ''} onChange={e => setLine(i, { lineDescription: e.target.value })} className="h-7" placeholder="Line description" />
                   </td>
-                  {isJV ? (
+                  {isJVorOTB ? (
                     <>
                       <td className="px-2 py-1.5 w-24">
-                        <Input type="number" value={l.debit || 0} onChange={e => setLine(i, { debit: Number(e.target.value), credit: 0, amount: Number(e.target.value) })} className="h-7 text-right" />
+                        <Input type="number" min={0} step="0.01" value={l.debit || ''} onChange={e => onLineDebitChange(i, Number(e.target.value))} className="h-7 text-right" placeholder="0" />
                       </td>
                       <td className="px-2 py-1.5 w-24">
-                        <Input type="number" value={l.credit || 0} onChange={e => setLine(i, { credit: Number(e.target.value), debit: 0, amount: Number(e.target.value) })} className="h-7 text-right" />
+                        <Input type="number" min={0} step="0.01" value={l.credit || ''} onChange={e => onLineCreditChange(i, Number(e.target.value))} className="h-7 text-right" placeholder="0" />
                       </td>
                     </>
                   ) : (
                     <td className="px-2 py-1.5 w-28">
-                      <Input type="number" value={l.amount || 0} onChange={e => onLineAmountChange(i, Number(e.target.value))} className="h-7 text-right" />
+                      <Input type="number" min={0} step="0.01" value={l.amount || ''} onChange={e => onLineAmountChange(i, Number(e.target.value))} className="h-7 text-right" placeholder="0" />
                     </td>
                   )}
                   <td className="px-2 py-1.5 min-w-[160px]">
-                    <Select value={l.taxAccountId || '__none__'} onValueChange={v => onLineTaxAccountChange(i, v === '__none__' ? '' : v)}>
+                    <Select value={l.billType || '__none__'} onValueChange={v => onLineBillTypeChange(i, v === '__none__' ? '' : v)}>
+                      <SelectTrigger className="h-7"><SelectValue placeholder="None" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">None</SelectItem>
+                        {BOOK_BILL_TYPES.map(b => <SelectItem key={b.name} value={b.name}>{b.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  <td className="px-2 py-1.5 min-w-[160px]">
+                    <Select value={l.taxHeadId || '__none__'} onValueChange={v => onLineTaxHeadChange(i, v === '__none__' ? '' : v)}>
                       <SelectTrigger className="h-7"><SelectValue placeholder="None" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none__">None</SelectItem>
@@ -773,41 +975,26 @@ function VoucherFormModal({ open, onClose, defaultType, onSaved, editing }: any)
                     </Select>
                   </td>
                   <td className="px-2 py-1.5 w-20">
-                    <Input type="number" step="0.01" value={l.taxRate || 0} onChange={e => onLineTaxRateChange(i, Number(e.target.value))} className="h-7 text-right" />
+                    <Input type="number" step="0.01" value={l.taxRate || 0} readOnly disabled className="h-7 text-right bg-muted/40" title="Auto from tax head" />
                   </td>
                   <td className="px-2 py-1.5 w-24">
-                    <Input type="number" value={l.taxAmount || 0} onChange={e => setLine(i, { taxAmount: Number(e.target.value) })} className="h-7 text-right" />
+                    <Input type="number" value={l.taxAmount || 0} readOnly disabled className="h-7 text-right bg-muted/40" title="Auto: amount × rate ÷ 100" />
                   </td>
-                  <td className="px-2 py-1.5 min-w-[120px]">
-                    <Input value={l.chequeNo || ''} onChange={e => setLine(i, { chequeNo: e.target.value })} className="h-7" placeholder="Cheque #" />
-                  </td>
-                  <td className="px-2 py-1.5 w-28">
-                    <Input type="number" value={l.chequeAmount || 0} onChange={e => setLine(i, { chequeAmount: Number(e.target.value) })} className="h-7 text-right" />
-                  </td>
-                  <td className="px-2 py-1.5 min-w-[120px]">
-                    <Input value={l.chequeBankName || ''} onChange={e => setLine(i, { chequeBankName: e.target.value })} className="h-7" placeholder="Bank name" />
-                  </td>
-                  <td className="px-2 py-1.5 min-w-[120px]">
-                    <Select value={l.chequeStatus || '__none__'} onValueChange={v => setLine(i, { chequeStatus: v === '__none__' ? '' : v })}>
-                      <SelectTrigger className="h-7"><SelectValue placeholder="—" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">—</SelectItem>
-                        <SelectItem value="Hold">Hold</SelectItem>
-                        <SelectItem value="Clear">Clear</SelectItem>
-                        <SelectItem value="Bounced">Bounced</SelectItem>
-                        <SelectItem value="Deposited">Deposited</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </td>
-                  <td className="px-2 py-1.5 min-w-[100px]">
-                    <Select value={l.status || 'Active'} onValueChange={v => setLine(i, { status: v })}>
-                      <SelectTrigger className="h-7"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Active">Active</SelectItem>
-                        <SelectItem value="Hold">Hold</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </td>
+                  {chequeMode && (
+                    <td className="px-2 py-1.5 min-w-[120px]">
+                      <Input value={l.chequeNo || ''} onChange={e => setLine(i, { chequeNo: e.target.value })} className="h-7" placeholder="Cheque #" />
+                    </td>
+                  )}
+                  {chequeMode && (
+                    <td className="px-2 py-1.5 w-28">
+                      <Input type="number" value={l.amount || 0} readOnly disabled className="h-7 text-right bg-muted/40" title="Auto-synced with Amount" />
+                    </td>
+                  )}
+                  {chequeMode && (
+                    <td className="px-2 py-1.5 min-w-[120px]">
+                      <Input value={l.chequeBankName || ''} onChange={e => setLine(i, { chequeBankName: e.target.value })} className="h-7" placeholder="Bank name" />
+                    </td>
+                  )}
                   <td className="px-2 py-1.5">
                     <Button size="sm" variant="ghost" onClick={() => removeLine(i)} disabled={form.lines.length === 1}><Trash2 className="h-3 w-3" /></Button>
                   </td>
@@ -816,50 +1003,85 @@ function VoucherFormModal({ open, onClose, defaultType, onSaved, editing }: any)
             </tbody>
           </table>
         </div>
-        <div className="p-2 border-t">
+        <div className="p-2 border-t flex items-center justify-between">
           <Button size="sm" variant="outline" onClick={addLine}><Plus className="h-3 w-3 mr-1" />Add Line</Button>
+          {isJVorOTB && !balancedJV && (
+            <span className="text-xs text-red-600">Out of balance by {fmtMoney(Math.abs(difference))}{isOTB ? ' (Open TB may be saved unbalanced)' : ''}</span>
+          )}
         </div>
       </div>
 
-      <div className="mt-2 text-xs text-muted-foreground">
-        {defaultType === 'CRV' && 'CRV: Book Account (cash) is auto-DEBITED. Detail lines are credited (income received).'}
-        {defaultType === 'CPV' && 'CPV: Book Account (cash) is auto-CREDITED. Detail lines are debited (expense paid).'}
-        {defaultType === 'BRV' && 'BRV: Book Account (bank) is auto-DEBITED. Detail lines are credited (income received).'}
-        {defaultType === 'BPV' && 'BPV: Book Account (bank) is auto-CREDITED. Detail lines are debited (expense paid).'}
-        {defaultType === 'JV' && 'JV: Manual Debit and Credit entry. Total Debit must equal Total Credit.'}
-        {defaultType === 'OTB' && 'OTB: Opening balances — manual Debit and Credit entry.'}
+      {/* Totals footer */}
+      <div className="mt-3 border rounded p-3 flex items-center gap-6 flex-wrap bg-muted/20">
+        {isJVorOTB ? (
+          <>
+            <div className="text-sm"><span className="text-muted-foreground">Total Debit: </span><span className="font-mono font-semibold">{fmtMoney(totalDebit)}</span></div>
+            <div className="text-sm"><span className="text-muted-foreground">Total Credit: </span><span className="font-mono font-semibold">{fmtMoney(totalCredit)}</span></div>
+            <div className="text-sm">
+              <span className="text-muted-foreground">Difference (Dr − Cr): </span>
+              <span className={`font-mono font-semibold ${balancedJV ? 'text-green-600' : 'text-red-600'}`}>{difference > 0 ? '+' : ''}{fmtMoney(difference)}</span>
+            </div>
+            <div className="flex-1" />
+            <div className={`text-xs font-medium ${balancedJV ? 'text-green-600' : 'text-amber-600'}`}>
+              {balancedJV ? '✓ Balanced' : `Out of balance by ${fmtMoney(Math.abs(difference))}`}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="text-sm"><span className="text-muted-foreground">Total: </span><span className="font-mono font-semibold">{fmtMoney(totalDetailAmount)}</span></div>
+            {totalTax > 0 && <div className="text-sm"><span className="text-muted-foreground">Tax Total: </span><span className="font-mono font-semibold">{fmtMoney(totalTax)}</span></div>}
+            <div className="flex-1" />
+            <div className="text-xs text-muted-foreground">
+              Book account will be {detailIsCredit ? 'DEBITED' : 'CREDITED'} by {fmtMoney(totalDetailAmount)} automatically
+            </div>
+          </>
+        )}
       </div>
+
+      {isJVorOTB && form.lines.some((l: any) => l.billType === 'Opening Balance') && (
+        <div className="mt-2 text-xs text-muted-foreground">
+          Opening Balance bill type: side follows account nature — <span className="font-medium">Dr for assets/expenses, Cr for others</span> (set the Debit or Credit amount accordingly).
+        </div>
+      )}
+      {!isJVorOTB && (
+        <div className="mt-2 text-xs text-muted-foreground">
+          {voucherType === 'CRV' && 'CRV: the cash account is auto-DEBITED; detail lines are credited (income received).'}
+          {voucherType === 'CPV' && 'CPV: the cash account is auto-CREDITED; detail lines are debited (expense paid).'}
+          {voucherType === 'BRV' && 'BRV: the bank account is auto-DEBITED; detail lines are credited (income received).'}
+          {voucherType === 'BPV' && 'BPV: the bank account is auto-CREDITED; detail lines are debited (expense paid).'}
+          {' '}With Payment Mode = Cheque, one cheque row is created per line with a Cheque No (amount syncs with the line amount).
+        </div>
+      )}
     </Modal>
   )
 }
 
-function voucherTypeLabel(vt: string): string {
-  const m: Record<string, string> = {
-    CRV: 'Cash Receipt Voucher', CPV: 'Cash Payment Voucher',
-    BRV: 'Bank Receipt Voucher', BPV: 'Bank Payment Voucher',
-    JV: 'Journal Voucher', OTB: 'Opening Trial Balance',
-  }
-  return m[vt] || vt
-}
-
-function VoucherPrintModal({ open, voucher, onClose }: any) {
+// ----------------------------------------------------------------
+// Print / View / Reverse modals
+// ----------------------------------------------------------------
+function VoucherPrintModal({ open, voucher, onClose, onKnockOff }: any) {
   if (!voucher) return null
   return (
-    <Modal open={open} onClose={onClose} title={`Print ${voucher.voucherNo}`} size="lg"
+    <Modal open={open} onClose={onClose} title={`Print Voucher ${voucher.id}`} size="lg"
       footer={<>
         <Button variant="outline" onClick={onClose}>Close</Button>
+        {voucher.voucherType === 'OTV' && Math.abs(voucher.difference || 0) >= 0.01 && onKnockOff && (
+          <Button variant="outline" onClick={() => { onClose(); onKnockOff(voucher) }}>Knock Off</Button>
+        )}
         <Button onClick={() => window.print()}><Printer className="h-4 w-4 mr-1" />Print</Button>
       </>}>
       <div className="text-sm">
         <div className="text-center mb-4">
           <div className="text-lg font-semibold">{voucherTypeLabel(voucher.voucherType)}</div>
-          <div className="text-xs text-muted-foreground">Voucher # {voucher.voucherNo}</div>
+          <div className="text-xs text-muted-foreground">Voucher # {voucher.id}</div>
         </div>
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div><span className="text-xs text-muted-foreground">Date:</span> {fmtDateStr(voucher.voucherDate)}</div>
           <div><span className="text-xs text-muted-foreground">Branch:</span> {voucher.branch?.name || '—'}</div>
-          <div><span className="text-xs text-muted-foreground">Book Account:</span> {voucher.bookAccount?.name || '—'}</div>
+          <div><span className="text-xs text-muted-foreground">Book Account:</span> {voucher.bookChart ? `${voucher.bookChart.id} — ${voucher.bookChart.name}` : '—'}</div>
+          <div><span className="text-xs text-muted-foreground">Payment Mode:</span> {voucher.paymentMode || '—'}</div>
           <div><span className="text-xs text-muted-foreground">Reference:</span> {voucher.reference || '—'}</div>
+          <div><span className="text-xs text-muted-foreground">Status:</span> {voucher.status}</div>
           <div className="col-span-2"><span className="text-xs text-muted-foreground">Description:</span> {voucher.description || '—'}</div>
         </div>
         <table className="w-full border">
@@ -874,7 +1096,7 @@ function VoucherPrintModal({ open, voucher, onClose }: any) {
           <tbody>
             {(voucher.lines || []).map((l: any) => (
               <tr key={l.id} className="border-b last:border-0">
-                <td className="px-3 py-2 text-xs">{l.account?.code} — {l.account?.name}</td>
+                <td className="px-3 py-2 text-xs">{l.account?.id} — {l.account?.name}</td>
                 <td className="px-3 py-2 text-xs">{l.lineDescription || '—'}</td>
                 <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(l.debit)}</td>
                 <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(l.credit)}</td>
@@ -884,8 +1106,8 @@ function VoucherPrintModal({ open, voucher, onClose }: any) {
           <tfoot className="border-t bg-muted/30 font-medium">
             <tr>
               <td colSpan={2} className="px-3 py-2 text-right text-xs">Total</td>
-              <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(voucher.totalDebit)}</td>
-              <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(voucher.totalCredit)}</td>
+              <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(voucherDr(voucher))}</td>
+              <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(voucherCr(voucher))}</td>
             </tr>
           </tfoot>
         </table>
@@ -894,18 +1116,25 @@ function VoucherPrintModal({ open, voucher, onClose }: any) {
   )
 }
 
-function VoucherViewModal({ open, voucher, onClose }: any) {
+function VoucherViewModal({ open, voucher, onClose, onKnockOff }: any) {
   if (!voucher) return null
   return (
-    <Modal open={open} onClose={onClose} title={`Voucher ${voucher.voucherNo}`} size="lg">
+    <Modal open={open} onClose={onClose} title={`Voucher ${voucher.id}`} size="lg">
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-        <div><div className="text-xs text-muted-foreground">Type</div><div className="font-medium">{voucher.voucherType}</div></div>
+        <div><div className="text-xs text-muted-foreground">Type</div><div className="font-medium">{voucherTypeLabel(voucher.voucherType)}</div></div>
         <div><div className="text-xs text-muted-foreground">Date</div><div className="font-medium">{fmtDateStr(voucher.voucherDate)}</div></div>
         <div><div className="text-xs text-muted-foreground">Status</div><div><StatusBadge status={voucher.status} /></div></div>
         <div><div className="text-xs text-muted-foreground">Branch</div><div className="font-medium">{voucher.branch?.name}</div></div>
-        <div><div className="text-xs text-muted-foreground">Book Account</div><div className="font-medium">{voucher.bookAccount?.name || '—'}</div></div>
+        <div><div className="text-xs text-muted-foreground">Book Account</div><div className="font-medium">{voucher.bookChart ? `${voucher.bookChart.id} — ${voucher.bookChart.name}` : '—'}</div></div>
+        <div><div className="text-xs text-muted-foreground">Payment Mode</div><div className="font-medium">{voucher.paymentMode || '—'}</div></div>
         <div><div className="text-xs text-muted-foreground">Reference</div><div className="font-medium">{voucher.reference || '—'}</div></div>
-        <div className="col-span-3"><div className="text-xs text-muted-foreground">Description</div><div>{voucher.description || '—'}</div></div>
+        {voucher.voucherType === 'OTV' && (
+          <>
+            <div><div className="text-xs text-muted-foreground">Difference (Dr − Cr)</div><div className="font-medium font-mono">{fmtMoney(voucher.difference)}</div></div>
+            <div><div className="text-xs text-muted-foreground">Balance</div><div>{voucher.isBalanced ? <Badge>Balanced</Badge> : <Badge variant="secondary">Unbalanced</Badge>}</div></div>
+          </>
+        )}
+        <div className="col-span-2 sm:col-span-3"><div className="text-xs text-muted-foreground">Description</div><div>{voucher.description || '—'}</div></div>
       </div>
       <div className="mt-4 border rounded overflow-x-auto">
         <table className="w-full text-sm">
@@ -913,6 +1142,7 @@ function VoucherViewModal({ open, voucher, onClose }: any) {
             <tr>
               <th className="px-3 py-2 text-left">Account</th>
               <th className="px-3 py-2 text-left">Description</th>
+              <th className="px-3 py-2 text-left">Bill Type</th>
               <th className="px-3 py-2 text-right">Debit</th>
               <th className="px-3 py-2 text-right">Credit</th>
             </tr>
@@ -920,8 +1150,9 @@ function VoucherViewModal({ open, voucher, onClose }: any) {
           <tbody>
             {voucher.lines?.map((l: any) => (
               <tr key={l.id} className="border-b last:border-0">
-                <td className="px-3 py-2"><span className="font-mono text-xs">{l.account?.code}</span> · {l.account?.name}</td>
+                <td className="px-3 py-2"><span className="font-mono text-xs">{l.account?.id}</span> · {l.account?.name}</td>
                 <td className="px-3 py-2">{l.lineDescription || '—'}</td>
+                <td className="px-3 py-2 text-xs">{l.billType || '—'}</td>
                 <td className="px-3 py-2 text-right font-mono">{fmtMoney(l.debit)}</td>
                 <td className="px-3 py-2 text-right font-mono">{fmtMoney(l.credit)}</td>
               </tr>
@@ -929,9 +1160,9 @@ function VoucherViewModal({ open, voucher, onClose }: any) {
           </tbody>
           <tfoot className="bg-muted/30 border-t font-medium">
             <tr>
-              <td colSpan={2} className="px-3 py-2 text-right">Total</td>
-              <td className="px-3 py-2 text-right font-mono">{fmtMoney(voucher.totalDebit)}</td>
-              <td className="px-3 py-2 text-right font-mono">{fmtMoney(voucher.totalCredit)}</td>
+              <td colSpan={3} className="px-3 py-2 text-right">Total</td>
+              <td className="px-3 py-2 text-right font-mono">{fmtMoney(voucherDr(voucher))}</td>
+              <td className="px-3 py-2 text-right font-mono">{fmtMoney(voucherCr(voucher))}</td>
             </tr>
           </tfoot>
         </table>
@@ -951,6 +1182,11 @@ function VoucherViewModal({ open, voucher, onClose }: any) {
           </div>
         </div>
       )}
+      {voucher.voucherType === 'OTV' && Math.abs(voucher.difference || 0) >= 0.01 && voucher.status === 'Posted' && onKnockOff && (
+        <div className="mt-3">
+          <Button size="sm" variant="outline" onClick={() => { onClose(); onKnockOff(voucher) }}>Knock Off</Button>
+        </div>
+      )}
     </Modal>
   )
 }
@@ -958,17 +1194,305 @@ function VoucherViewModal({ open, voucher, onClose }: any) {
 function ReverseModal({ open, voucher, onClose, onDone }: any) {
   const [reason, setReason] = useState('')
   if (!voucher) return null
+  const endpoint = endpointForBook(voucher.voucherType)
   return (
-    <Modal open={open} onClose={onClose} title={`Reverse ${voucher.voucherNo}`} size="sm"
+    <Modal open={open} onClose={onClose} title={`Reverse ${voucher.id}`} size="sm"
       footer={<>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button variant="destructive" onClick={async () => {
-          try { await apiPatch(`/api/vouchers/${voucher.id}`, { action: 'reverse', reason }); toast.success('Voucher reversed'); onDone() }
-          catch (e: any) { toast.error(e.message) }
+          try {
+            await apiPost(`${endpoint}/${voucher.id}`, { action: 'reverse', reason })
+            toast.success(`Voucher reversed (${voucher.id}-R)`)
+            setReason('')
+            onDone()
+          } catch (e: any) { toast.error(e.message) }
         }}>Reverse</Button>
       </>}>
-      <p className="text-sm mb-2">This will create a reversal voucher swapping debit and credit sides. The original voucher will be marked as reversed.</p>
+      <p className="text-sm mb-2">This creates a reversal voucher ({voucher.id}-R) with swapped debit/credit sides and marks the original as Reversed.</p>
       <FormRow label="Reason"><Textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} /></FormRow>
+    </Modal>
+  )
+}
+
+// ----------------------------------------------------------------
+// OPENING TRIAL BALANCE (OTV) — may be saved unbalanced + knock-off
+// ----------------------------------------------------------------
+export function OpeningTrialBalanceModule() {
+  const { has, branches } = useApp()
+  const endpoint = '/api/opening-tb'
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [branchFilter, setBranchFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [search, setSearch] = useState('')
+  const [formOpen, setFormOpen] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
+  const [viewing, setViewing] = useState<any>(null)
+  const [viewOpen, setViewOpen] = useState(false)
+  const [printTarget, setPrintTarget] = useState<any>(null)
+  const [reverseTarget, setReverseTarget] = useState<any>(null)
+  const [knockTarget, setKnockTarget] = useState<any>(null)
+  const [lastPosted, setLastPosted] = useState<any>(null)
+
+  const qs = [
+    `type=OTV`,
+    from ? `from=${from}` : '',
+    to ? `to=${to}` : '',
+    branchFilter !== 'all' ? `branchId=${branchFilter}` : '',
+    statusFilter ? `status=${statusFilter}` : '',
+    search ? `search=${encodeURIComponent(search)}` : '',
+  ].filter(Boolean).join('&')
+  const { data, reload } = useFetch<any>(`${endpoint}?${qs}`)
+  const vouchers = data?.vouchers || []
+
+  const onSaved = (saved: any) => {
+    setFormOpen(false)
+    setEditing(null)
+    setLastPosted(saved || null)
+    reload()
+  }
+
+  return (
+    <div>
+      <PageHeader title="Opening Trial Balance"
+        action={has('vouchers.add') ? () => { setEditing(null); setFormOpen(true) } : undefined}
+        actionLabel="New Opening TB" />
+
+      {lastPosted && (
+        <Card className="mb-3 border-primary/40 bg-primary/5">
+          <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-xs text-muted-foreground">Opening TB posted — Voucher Number</div>
+              <div className="font-mono font-semibold text-base">{lastPosted.id}</div>
+              <div className="text-xs mt-0.5">
+                {Math.abs(lastPosted.difference || 0) < 0.01
+                  ? <span className="text-green-600 font-medium">Balanced</span>
+                  : <span className="text-amber-600 font-medium">Unbalanced · Difference {fmtMoney(lastPosted.difference)} — knock off to settle</span>}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {Math.abs(lastPosted.difference || 0) >= 0.01 && has('vouchers.add') && (
+                <Button size="sm" onClick={() => { setKnockTarget(lastPosted) }}>Knock Off</Button>
+              )}
+              <Button size="sm" variant="outline" onClick={() => setPrintTarget(lastPosted)}><Printer className="h-3.5 w-3.5 mr-1" />Print</Button>
+              <Button size="sm" variant="ghost" onClick={() => setLastPosted(null)}>Dismiss</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Toolbar>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search voucher no, description…" />
+        <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-36" title="From date" />
+        <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-36" title="To date" />
+        <Select value={branchFilter} onValueChange={setBranchFilter}>
+          <SelectTrigger className="w-40"><SelectValue placeholder="Branch" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All branches</SelectItem>
+            {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter || 'all'} onValueChange={v => setStatusFilter(v === 'all' ? '' : v)}>
+          <SelectTrigger className="w-32"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="Posted">Posted</SelectItem>
+            <SelectItem value="Reversed">Reversed</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+      </Toolbar>
+
+      <DataTable
+        columns={[
+          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
+            <div className="flex gap-0.5">
+              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setViewing(r); setViewOpen(true) }} title="View"><Eye className="h-3.5 w-3.5" /></Button>
+              {r.status !== 'Reversed' && has('vouchers.edit') && (
+                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditing(r); setFormOpen(true) }} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>
+              )}
+              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setPrintTarget(r) }} title="Print"><Printer className="h-3.5 w-3.5" /></Button>
+              {r.status === 'Posted' && Math.abs(r.difference || 0) >= 0.01 && has('vouchers.add') && (
+                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setKnockTarget(r) }} title="Knock Off"><Banknote className="h-3.5 w-3.5 text-primary" /></Button>
+              )}
+              {r.status === 'Posted' && has('vouchers.reverse') && (
+                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setReverseTarget(r) }} title="Reverse"><X className="h-3.5 w-3.5 text-amber-600" /></Button>
+              )}
+            </div>
+          ) },
+          { key: 'id', label: 'Voucher #', mono: true },
+          { key: 'voucherDate', label: 'Date', render: (r: any) => fmtDateStr(r.voucherDate) },
+          { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
+          { key: 'description', label: 'Description' },
+          { key: 'dr', label: 'Debit', align: 'right', mono: true, render: (r: any) => fmtMoney(r.totalDebit) },
+          { key: 'cr', label: 'Credit', align: 'right', mono: true, render: (r: any) => fmtMoney(r.totalCredit) },
+          { key: 'difference', label: 'Difference', align: 'right', mono: true, render: (r: any) => fmtMoney(r.difference) },
+          { key: 'isBalanced', label: 'Balance', render: (r: any) => r.isBalanced ? <Badge>Balanced</Badge> : <Badge variant="secondary">Unbalanced</Badge> },
+          { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
+        ]}
+        rows={vouchers}
+        onRowClick={(r: any) => { setViewing(r); setViewOpen(true) }}
+      />
+
+      <BookVoucherFormModal
+        open={formOpen}
+        onClose={() => { setFormOpen(false); setEditing(null) }}
+        voucherType="OTV"
+        editing={editing}
+        onSaved={onSaved}
+      />
+      <VoucherViewModal
+        open={viewOpen}
+        voucher={viewing}
+        onClose={() => setViewOpen(false)}
+        onKnockOff={(v: any) => setKnockTarget(v)}
+      />
+      <VoucherPrintModal
+        open={!!printTarget}
+        voucher={printTarget}
+        onClose={() => setPrintTarget(null)}
+        onKnockOff={(v: any) => setKnockTarget(v)}
+      />
+      <ReverseModal open={!!reverseTarget} voucher={reverseTarget} onClose={() => setReverseTarget(null)} onDone={() => { setReverseTarget(null); reload() }} />
+      <KnockOffDialog
+        open={!!knockTarget}
+        voucher={knockTarget}
+        onClose={() => setKnockTarget(null)}
+        onDone={reload}
+      />
+    </div>
+  )
+}
+
+// ----------------------------------------------------------------
+// Knock-off dialog for unbalanced Opening TB vouchers
+// ----------------------------------------------------------------
+function KnockOffDialog({ open, voucher, onClose, onDone }: any) {
+  const [rows, setRows] = useState<any[]>([])
+  const [saving, setSaving] = useState(false)
+  const { data: chartsData } = useFetch<any>(open ? '/api/charts?detailOnly=true&isActive=true' : null)
+  const { data: koData, reload } = useFetch<any>(open && voucher ? `/api/knock-offs?openTbVoucherId=${voucher.id}` : null)
+  const detailAccounts = chartsData?.charts || []
+  const knockOffs = koData?.knockOffs || []
+  const outstanding = koData?.outstanding
+
+  const difference = voucher?.difference || 0
+  // Suggested side is the OPPOSITE of the difference side:
+  // Dr-heavy voucher (difference > 0) → knock off with Credit entries.
+  const suggestedSide = difference > 0 ? 'Credit' : 'Debit'
+
+  useEffect(() => {
+    if (open) setRows([{ accountId: '', amount: 0, side: suggestedSide, description: '' }])
+  }, [open, voucher?.id])
+
+  if (!voucher) return null
+
+  const setRow = (i: number, patch: any) => setRows(prev => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r))
+  const addRow = () => setRows(prev => [...prev, { accountId: '', amount: 0, side: suggestedSide, description: '' }])
+  const removeRow = (i: number) => setRows(prev => prev.filter((_, idx) => idx !== i))
+
+  const submit = async () => {
+    const valid = rows.filter(r => r.accountId && Number(r.amount) > 0 && String(r.description || '').trim())
+    if (!valid.length) { toast.error('Add at least one complete knock-off row (account, amount, description)'); return }
+    setSaving(true)
+    try {
+      for (const r of valid) {
+        await apiPost('/api/knock-offs', {
+          openTbVoucherId: voucher.id,
+          accountId: r.accountId,
+          amount: Number(r.amount),
+          side: r.side,
+          description: String(r.description).trim(),
+        })
+      }
+      toast.success('Knock-off entries created')
+      setRows([{ accountId: '', amount: 0, side: suggestedSide, description: '' }])
+      reload()
+      onDone?.()
+    } catch (e: any) { toast.error(e.message) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Knock Off — ${voucher.id}`} size="lg"
+      footer={<>
+        <Button variant="outline" onClick={onClose}>Close</Button>
+        <Button onClick={submit} disabled={saving}><Save className="h-4 w-4 mr-1" />{saving ? 'Saving…' : 'Save Knock Off'}</Button>
+      </>}>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <div><div className="text-xs text-muted-foreground">Voucher</div><div className="font-mono text-sm font-medium">{voucher.id}</div></div>
+        <div><div className="text-xs text-muted-foreground">Dr Total</div><div className="font-mono text-sm font-medium">{fmtMoney(voucher.totalDebit)}</div></div>
+        <div><div className="text-xs text-muted-foreground">Cr Total</div><div className="font-mono text-sm font-medium">{fmtMoney(voucher.totalCredit)}</div></div>
+        <div><div className="text-xs text-muted-foreground">Difference (Dr − Cr)</div>
+          <div className={`font-mono text-sm font-semibold ${Math.abs(difference) < 0.01 ? 'text-green-600' : 'text-red-600'}`}>{fmtMoney(difference)}</div>
+        </div>
+      </div>
+      {outstanding !== null && outstanding !== undefined && (
+        <div className="text-xs text-muted-foreground mb-3">Outstanding difference after knock-offs: <span className="font-mono font-medium text-foreground">{fmtMoney(outstanding)}</span></div>
+      )}
+
+      <div className="border rounded">
+        <div className="px-3 py-2 bg-muted/40 border-b font-medium text-sm">New knock-off entries</div>
+        <div className="p-3 space-y-2">
+          {rows.map((r, i) => (
+            <div key={i} className="grid grid-cols-12 gap-2 items-end">
+              <div className="col-span-4">
+                <FormRow label="Account">
+                  <Select value={r.accountId || '__none__'} onValueChange={v => setRow(i, { accountId: v === '__none__' ? '' : v })}>
+                    <SelectTrigger className="h-8"><SelectValue placeholder="Select account" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">— Select —</SelectItem>
+                      {detailAccounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </FormRow>
+              </div>
+              <div className="col-span-2">
+                <FormRow label="Amount"><Input type="number" min={0} step="0.01" value={r.amount || ''} onChange={e => setRow(i, { amount: Number(e.target.value) })} className="h-8 text-right" /></FormRow>
+              </div>
+              <div className="col-span-2">
+                <FormRow label="Side">
+                  <Select value={r.side} onValueChange={v => setRow(i, { side: v })}>
+                    <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Debit">Debit</SelectItem>
+                      <SelectItem value="Credit">Credit</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FormRow>
+              </div>
+              <div className="col-span-3">
+                <FormRow label={`Description (${String(r.description || '').length}/20)`}>
+                  <Input value={r.description || ''} maxLength={20} onChange={e => setRow(i, { description: e.target.value })} className="h-8" placeholder="Required (max 20)" />
+                </FormRow>
+              </div>
+              <div className="col-span-1 pb-1">
+                <Button size="sm" variant="ghost" onClick={() => removeRow(i)} disabled={rows.length === 1}><Trash2 className="h-3.5 w-3.5" /></Button>
+              </div>
+            </div>
+          ))}
+          <Button size="sm" variant="outline" onClick={addRow}><Plus className="h-3 w-3 mr-1" />Add Row</Button>
+          <div className="text-xs text-muted-foreground">
+            Suggested side: <span className="font-medium text-foreground">{suggestedSide}</span> (opposite of the {difference > 0 ? 'debit' : 'credit'} excess).
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <div className="font-medium text-sm mb-2">Existing knock-offs ({knockOffs.length})</div>
+        <DataTable
+          columns={[
+            { key: 'billId', label: 'Bill ID', mono: true },
+            { key: 'account', label: 'Account', render: (r: any) => `${r.account?.id} — ${r.account?.name}` },
+            { key: 'description', label: 'Description' },
+            { key: 'amount', label: 'Amount', align: 'right', mono: true, render: (r: any) => fmtMoney(r.amount) },
+            { key: 'side', label: 'Side' },
+            { key: 'knockedOffAt', label: 'Date', render: (r: any) => fmtDateStr(r.knockedOffAt) },
+          ]}
+          rows={knockOffs}
+          empty="No knock-offs yet"
+        />
+      </div>
     </Modal>
   )
 }
@@ -1069,7 +1593,7 @@ export function ChequesModule() {
   const { has, selectedBranchIds } = useApp()
   const [status, setStatus] = useState('all')
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [bulkStatus, setBulkStatus] = useState('Clear')
+  const [bulkStatus, setBulkStatus] = useState('Cleared')
   const branchesParam = selectedBranchIds.length ? `&branchId=${selectedBranchIds.join(',')}` : ''
   const { data, reload } = useFetch<any>(`/api/cheques?status=${status !== 'all' ? status : ''}${branchesParam}`)
   const cheques = data?.cheques || []
@@ -1102,9 +1626,9 @@ export function ChequesModule() {
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
             <SelectItem value="Hold">Hold</SelectItem>
-            <SelectItem value="Clear">Clear</SelectItem>
+            <SelectItem value="Cleared">Cleared</SelectItem>
             <SelectItem value="Bounced">Bounced</SelectItem>
-            <SelectItem value="Deposited">Deposited</SelectItem>
+            <SelectItem value="Cancelled">Cancelled</SelectItem>
           </SelectContent>
         </Select>
         <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
@@ -1115,9 +1639,9 @@ export function ChequesModule() {
               <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="Hold">Hold</SelectItem>
-                <SelectItem value="Clear">Clear</SelectItem>
+                <SelectItem value="Cleared">Cleared</SelectItem>
                 <SelectItem value="Bounced">Bounced</SelectItem>
-                <SelectItem value="Deposited">Deposited</SelectItem>
+                <SelectItem value="Cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>
             <Button size="sm" onClick={bulkUpdate}>Update {selected.size} selected</Button>
@@ -1133,8 +1657,8 @@ export function ChequesModule() {
           { key: 'chequeDate', label: 'Date', render: (r: any) => fmtDateStr(r.chequeDate) },
           { key: 'bankName', label: 'Bank' },
           { key: 'amount', label: 'Amount', align: 'right', mono: true, render: (r: any) => fmtMoney(r.amount) },
-          { key: 'voucher', label: 'Voucher', render: (r: any) => r.voucher?.voucherNo || '—' },
-          { key: 'voucher', label: 'Branch', render: (r: any) => r.voucher?.branch?.name || '—' },
+          { key: 'voucher', label: 'Voucher', render: (r: any) => r.voucher?.id || '—' },
+          { key: 'branch', label: 'Branch', render: (r: any) => r.voucher?.branch?.name || '—' },
           { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
         ]}
         rows={cheques}
@@ -1611,8 +2135,8 @@ export function FeesModule() {
   const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
   const { data, reload } = useFetch<any>(`/api/fees?status=${status !== 'all' ? status : ''}${branchesParam}`)
   const { data: membersData } = useFetch<any>('/api/members' + (branchesParam ? `?${branchesParam.slice(1)}` : ''))
-  const { data: accountsData } = useFetch<any>('/api/accounts?bookType=Cash')
-  const { data: bankAccountsData } = useFetch<any>('/api/accounts?bookType=Bank')
+  const { data: accountsData } = useFetch<any>('/api/charts?bookType=Cash&isActive=true')
+  const { data: bankAccountsData } = useFetch<any>('/api/charts?bookType=Bank&isActive=true')
   const { data: banksData } = useFetch<any>('/api/master-files?type=Banks')
   const { data: cardTypesData } = useFetch<any>('/api/master-files?type=CardTypes')
   const fees = (data?.fees || []).filter((f: any) =>
@@ -1659,8 +2183,8 @@ export function FeesModule() {
       <FeeCreateModal open={open} onClose={() => setOpen(false)} members={membersData?.members || []} onSaved={() => { setOpen(false); reload() }} />
       <FeePayModal
         open={payOpen} fee={payTarget}
-        cashAccounts={accountsData?.accounts || []}
-        bankAccounts={bankAccountsData?.accounts || []}
+        cashAccounts={accountsData?.charts || []}
+        bankAccounts={bankAccountsData?.charts || []}
         banks={(banksData?.records || []).filter((b: any) => b.isActive)}
         cardTypes={(cardTypesData?.records || []).filter((c: any) => c.isActive)}
         onClose={() => setPayOpen(false)} onPaid={() => { setPayOpen(false); reload() }}
@@ -1756,7 +2280,7 @@ function FeePayModal({ open, fee, cashAccounts, bankAccounts, banks, cardTypes, 
         <FormRow label={form.method === 'Cash' ? 'Cash Account' : 'Bank Account'} required>
           <Select value={form.accountId} onValueChange={v => setForm({ ...form, accountId: v })}>
             <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
-            <SelectContent>{accounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}</SelectContent>
+            <SelectContent>{accounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>)}</SelectContent>
           </Select>
         </FormRow>
         <FormRow label="Payment Date"><Input type="date" value={form.paymentDate} onChange={e => setForm({ ...form, paymentDate: e.target.value })} /></FormRow>
@@ -2264,11 +2788,11 @@ export function PosModule() {
   const [paymentAccountId, setPaymentAccountId] = useState('')
   const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
   const { data: invData } = useFetch<any>(`/api/inventory${branchesParam ? `?${branchesParam.slice(1)}` : ''}`)
-  const { data: cashData } = useFetch<any>('/api/accounts?bookType=Cash')
-  const { data: bankData } = useFetch<any>('/api/accounts?bookType=Bank')
+  const { data: cashData } = useFetch<any>('/api/charts?bookType=Cash&isActive=true')
+  const { data: bankData } = useFetch<any>('/api/charts?bookType=Bank&isActive=true')
 
   const items = invData?.items || []
-  const accounts = method === 'Cash' ? (cashData?.accounts || []) : method === 'Bank' ? (bankData?.accounts || []) : [...(cashData?.accounts || []), ...(bankData?.accounts || [])]
+  const accounts = method === 'Cash' ? (cashData?.charts || []) : method === 'Bank' ? (bankData?.charts || []) : [...(cashData?.charts || []), ...(bankData?.charts || [])]
   const total = cart.reduce((s, c) => s + c.unitPrice * c.quantity, 0)
 
   const addToCart = (item: any) => {
@@ -2343,7 +2867,7 @@ export function PosModule() {
               <FormRow label="Account">
                 <Select value={paymentAccountId} onValueChange={setPaymentAccountId}>
                   <SelectTrigger><SelectValue placeholder="Auto" /></SelectTrigger>
-                  <SelectContent>{accounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}</SelectContent>
+                  <SelectContent>{accounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>)}</SelectContent>
                 </Select>
               </FormRow>
               <div className="flex items-center justify-between text-sm font-medium">
@@ -2518,7 +3042,7 @@ export function CalendarModule() {
   const [year, setYear] = useState(new Date().getFullYear())
   const { data, reload } = useFetch<any>(`/api/calendar?year=${year}`)
   const days = data?.records || []
-  const dayMap = new Map(days.map((d: any) => [new Date(d.date).toISOString().slice(0, 10), d]))
+  const dayMap = new Map<string, any>(days.map((d: any) => [new Date(d.date).toISOString().slice(0, 10), d] as [string, any]))
 
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
   const generateYear = async () => {
@@ -3021,9 +3545,9 @@ export function AccountMappingsModule() {
   const { has, branches, session } = useApp()
   const [branchId, setBranchId] = useState<string>('')
   const { data, reload } = useFetch<any>(`/api/account-mappings${branchId ? `?branchId=${branchId}` : ''}`)
-  const { data: accountsData } = useFetch<any>('/api/accounts')
+  const { data: accountsData } = useFetch<any>('/api/charts?isActive=true')
   const mappings = data?.mappings || []
-  const accounts = accountsData?.accounts || []
+  const accounts = accountsData?.charts || []
 
   const KEYS = [
     { key: 'cashAccount', label: 'Cash Account' },
@@ -3073,9 +3597,9 @@ export function AccountMappingsModule() {
                   </div>
                   <Select value={m?.accountId || ''} onValueChange={(v) => save(key, v)}>
                     <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
-                    <SelectContent>{accounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}</SelectContent>
+                    <SelectContent>{accounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>)}</SelectContent>
                   </Select>
-                  <div className="text-xs text-muted-foreground">{m?.account ? `${m.account.code} — ${m.account.name}` : 'Not configured'}</div>
+                  <div className="text-xs text-muted-foreground">{m?.account ? `${m.account.id} — ${m.account.name}` : 'Not configured'}</div>
                 </div>
               )
             })}
@@ -3108,6 +3632,7 @@ export function FinanceReportsModule({ presetReport }: { presetReport?: 'aging' 
     { key: 'cash-book', name: 'Cash Book', filters: ['from', 'to'] },
     { key: 'bank-book', name: 'Bank Book', filters: ['from', 'to'] },
     { key: 'voucher-register', name: 'Voucher Register', filters: ['from', 'to'] },
+    { key: 'day-book', name: 'Day Book', filters: ['from', 'to'] },
     { key: 'tax-report', name: 'Tax Report', filters: ['from', 'to'] },
   ]
   const REPORTS = presetReport === 'aging' ? AGING_REPORTS : FINANCE_REPORTS
@@ -3126,7 +3651,7 @@ export function FinanceReportsModule({ presetReport }: { presetReport?: 'aging' 
     finally { setLoading(false) }
   }
 
-  const { data: accountsData } = useFetch<any>('/api/accounts')
+  const { data: accountsData } = useFetch<any>('/api/charts?isActive=true')
 
   return (
     <div>
@@ -3153,7 +3678,7 @@ export function FinanceReportsModule({ presetReport }: { presetReport?: 'aging' 
               <FormRow label="Account">
                 <Select value={filters.accountId || ''} onValueChange={v => setFilters({ ...filters, accountId: v })}>
                   <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
-                  <SelectContent>{(accountsData?.accounts || []).map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}</SelectContent>
+                  <SelectContent>{(accountsData?.charts || []).map((a: any) => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>)}</SelectContent>
                 </Select>
               </FormRow>
             )}
@@ -3244,12 +3769,62 @@ function ReportRenderer({ report }: any) {
       </CardContent></Card>
     )
   }
+  if (report.title === 'Day Book') {
+    const BOOK_LABELS: Record<string, string> = { CASHBOOK: 'Cash Book', BANKBOOK: 'Bank Book', JV: 'Journal Vouchers', OTB: 'Opening TB' }
+    return (
+      <div className="mt-4 space-y-4">
+        {report.groups?.map((g: any) => (
+          <Card key={g.bookType}><CardContent className="p-0">
+            <div className="px-4 py-2 border-b font-medium">{BOOK_LABELS[g.bookType] || g.bookType} ({g.vouchers?.length || 0} vouchers)</div>
+            <DataTable
+              columns={[
+                { key: 'voucherNo', label: 'Voucher #', mono: true },
+                { key: 'voucherType', label: 'Type' },
+                { key: 'voucherDate', label: 'Date', render: (r: any) => fmtDateStr(r.voucherDate) },
+                { key: 'branch', label: 'Branch' },
+                { key: 'description', label: 'Description' },
+                { key: 'totalDebit', label: 'Debit', align: 'right', mono: true, render: (r: any) => fmtMoney(r.totalDebit) },
+                { key: 'totalCredit', label: 'Credit', align: 'right', mono: true, render: (r: any) => fmtMoney(r.totalCredit) },
+              ]}
+              rows={g.vouchers}
+              empty={`No ${BOOK_LABELS[g.bookType] || g.bookType} entries in period`}
+            />
+          </CardContent></Card>
+        ))}
+      </div>
+    )
+  }
+  if (report.rows && report.summary && (report.title.includes('Aging') || report.title === 'Aging')) {
+    return (
+      <Card className="mt-4"><CardContent className="p-0">
+        <div className="px-4 py-2 border-b font-medium">{report.title} — as at {fmtDateStr(report.asOf)}</div>
+        <DataTable
+          columns={[
+            { key: 'member', label: 'Member / Supplier' },
+            { key: 'memberId', label: 'ID', render: (r: any) => r.memberId || r.purchaseNo || '—' },
+            { key: 'feeNo', label: 'Doc #', render: (r: any) => r.feeNo || r.purchaseNo || '—' },
+            { key: 'dueDate', label: 'Due Date', render: (r: any) => fmtDateStr(r.dueDate || r.purchaseDate) },
+            { key: 'daysPastDue', label: 'Days Past Due', align: 'right', mono: true },
+            { key: 'bucket', label: 'Bucket' },
+            { key: 'balance', label: 'Outstanding', align: 'right', mono: true, render: (r: any) => fmtMoney(r.balance ?? r.outstanding) },
+          ]}
+          rows={report.rows}
+          empty="Nothing outstanding"
+        />
+        <div className="px-4 py-3 border-t flex items-center gap-4 flex-wrap text-xs">
+          {Object.entries(report.summary).map(([bucket, amount]) => (
+            <div key={bucket}><span className="text-muted-foreground">{bucket}: </span><span className="font-mono font-medium">{fmtMoney(Number(amount))}</span></div>
+          ))}
+        </div>
+      </CardContent></Card>
+    )
+  }
   if (report.accounts) {
     return (
       <div className="mt-4 space-y-4">
         {report.accounts.map((a: any, i: number) => (
           <Card key={i}><CardContent className="p-0">
-            <div className="px-4 py-2 border-b font-medium">{a.account.code} — {a.account.name} · Opening: {fmtMoney(a.openingBalance)} · Closing: {fmtMoney(a.closingBalance)}</div>
+            <div className="px-4 py-2 border-b font-medium">{a.account.code ?? a.account.id} — {a.account.name} · Opening: {fmtMoney(a.openingBalance)} · Closing: {fmtMoney(a.closingBalance)}</div>
             <DataTable columns={[
               { key: 'date', label: 'Date', render: (r: any) => fmtDateStr(r.date) },
               { key: 'voucherNo', label: 'Voucher', mono: true },
