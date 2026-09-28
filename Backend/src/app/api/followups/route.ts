@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, getSelectedBranchIds } from '@/lib/auth'
+import { makeFollowUpId } from '@/lib/ids'
 
 export async function GET(req: NextRequest) {
   const session = await getSession()
@@ -23,18 +24,31 @@ export async function POST(req: NextRequest) {
   const data = await req.json()
   if (!data.type) return NextResponse.json({ error: 'Type required' }, { status: 400 })
 
-  // branchId inferred from member if provided
+  // branchId inferred from member/prospect if provided, else the user's branch
   let branchId = data.branchId
   if (!branchId && data.memberId) {
     const member = await db.member.findUnique({ where: { id: data.memberId } })
     branchId = member?.branchId
   }
+  if (!branchId && data.prospectId) {
+    const prospect = await db.prospect.findUnique({ where: { id: data.prospectId } })
+    branchId = prospect?.branchId
+  }
+  if (!branchId) branchId = session.branchId
+  if (!branchId) return NextResponse.json({ error: 'Branch is required' }, { status: 400 })
+
+  const branch = await db.branch.findUnique({ where: { id: branchId } })
+  if (!branch) return NextResponse.json({ error: 'Invalid branch' }, { status: 400 })
+
+  // Business id: {branchCode}/fw-000001 (the follow-up id IS the business id)
+  const id = await makeFollowUpId(branch.code)
 
   const record = await db.followUp.create({
     data: {
+      id,
       memberId: data.memberId || null,
       prospectId: data.prospectId || null,
-      branchId: branchId || null,
+      branchId,
       date: data.date ? new Date(data.date) : new Date(),
       type: data.type,
       userId: session.id,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, getSelectedBranchIds } from '@/lib/auth'
+import { makeBranchPeriodId } from '@/lib/ids'
 import { validateAttendanceDate, validateCheckOutAfterCheckIn } from '@/lib/attendance'
 
 export async function GET(req: NextRequest) {
@@ -59,8 +60,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Already checked in for this date', record: existing }, { status: 400 })
   }
 
+  // Business id: {branchCode}/{MMMyy}/{00001} (the attendance id IS the business id)
+  const branch = await db.branch.findUnique({ where: { id: member.branchId } })
+  if (!branch) return NextResponse.json({ error: 'Member branch not found' }, { status: 400 })
+  const attendanceId = await makeBranchPeriodId('ATTENDANCE', branch.code, date)
+
   const record = await db.attendance.create({
     data: {
+      id: attendanceId,
       memberId: data.memberId,
       branchId: member.branchId,
       date,

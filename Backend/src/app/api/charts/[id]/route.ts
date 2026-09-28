@@ -16,7 +16,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     },
   })
   if (!chart) return NextResponse.json({ error: 'Account not found' }, { status: 404 })
-  const children = await db.chart.findMany({ where: { parentId: id }, orderBy: { id: 'asc' } })
+  const children = await db.chart.findMany({ where: { parentCode: id }, orderBy: { id: 'asc' } })
   const balance = await getChartBalance(id)
   return NextResponse.json({ chart, children, balance })
 }
@@ -34,11 +34,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const existing = await db.chart.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: 'Account not found' }, { status: 404 })
 
-  const lineCount = await db.bookVoucherLine.count({ where: { accountId: id } })
+  const lineCount = await countChartLines(id)
   const hasLines = lineCount > 0
 
   if (hasLines) {
-    // Locked: parentId, accountType, isControl/isDetail, bookType, accountTag
+    // Locked: parentCode, accountType, isControl/isDetail, bookType, accountTag
     const chart = await db.chart.update({
       where: { id },
       data: {
@@ -50,7 +50,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         strn: data.strn,
         ntn: data.ntn,
         fbr: data.fbr,
+        otherName: data.otherName,
+        referenceNumber: data.referenceNumber,
+        faxNumber: data.faxNumber,
+        city: data.city,
+        country: data.country,
+        website: data.website,
         paymentTerms: data.paymentTerms,
+        registrationNumber: data.registrationNumber,
         isActive: data.isActive !== undefined ? data.isActive : undefined,
       },
     })
@@ -61,18 +68,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   // No lines yet — structural fields may still change
-  let parentId = existing.parentId
-  if (data.parentId !== undefined) {
-    parentId = data.parentId || null
-    if (parentId === id) return NextResponse.json({ error: 'Account cannot be its own parent' }, { status: 400 })
-    if (parentId) {
+  // Final schema: single NOT NULL parentCode column ('ROOT' = tree root);
+  // `parentId` is still accepted from callers and mapped onto parentCode.
+  let parentCode = existing.parentCode
+  if (data.parentCode !== undefined || data.parentId !== undefined) {
+    parentCode = String(data.parentCode ?? data.parentId ?? '').trim().toUpperCase() || 'ROOT'
+    if (parentCode === id) return NextResponse.json({ error: 'Account cannot be its own parent' }, { status: 400 })
+    if (parentCode !== 'ROOT') {
       // walk up the hierarchy to prevent cycles
-      let p = await db.chart.findUnique({ where: { id: parentId } })
+      let p = await db.chart.findUnique({ where: { id: parentCode } })
       if (!p) return NextResponse.json({ error: 'Parent account not found' }, { status: 400 })
       let guard = 0
       while (p) {
         if (p.id === id) return NextResponse.json({ error: 'Cannot move an account under one of its own descendants' }, { status: 400 })
-        p = p.parentId ? await db.chart.findUnique({ where: { id: p.parentId } }) : null
+        p = p.parentCode !== 'ROOT' ? await db.chart.findUnique({ where: { id: p.parentCode } }) : null
         if (++guard > 20) return NextResponse.json({ error: 'Invalid parent hierarchy' }, { status: 400 })
       }
     }
@@ -81,8 +90,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const isControl = data.isControl !== undefined ? data.isControl === true : existing.isControl
   const isDetail = data.isControl !== undefined ? !isControl : (data.isDetail !== undefined ? data.isDetail === true : existing.isDetail)
 
-  if (isDetail && parentId) {
-    const parent = await db.chart.findUnique({ where: { id: parentId } })
+  if (isDetail && parentCode && parentCode !== 'ROOT') {
+    const parent = await db.chart.findUnique({ where: { id: parentCode } })
     if (parent && !parent.isControl) {
       return NextResponse.json({ error: 'Detail accounts must sit under a control account' }, { status: 400 })
     }
@@ -93,7 +102,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       where: { id },
       data: {
         name: data.name !== undefined ? String(data.name).trim() : undefined,
-        parentId,
+        parentCode,
         accountType: data.accountType,
         bookType: data.bookType,
         accountTag: data.accountTag,
@@ -112,7 +121,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         strn: data.strn,
         ntn: data.ntn,
         fbr: data.fbr,
+        otherName: data.otherName,
+        referenceNumber: data.referenceNumber,
+        faxNumber: data.faxNumber,
+        city: data.city,
+        country: data.country,
+        website: data.website,
         paymentTerms: data.paymentTerms,
+        registrationNumber: data.registrationNumber,
         description: data.description,
       },
     })
@@ -136,20 +152,20 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const existing = await db.chart.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: 'Account not found' }, { status: 404 })
 
-  const childCount = await db.chart.count({ where: { parentId: id } })
+  const childCount = await db.chart.count({ where: { parentCode: id } })
   if (childCount > 0) {
     return NextResponse.json({ error: `Cannot delete: ${childCount} child account(s) exist. Move or delete children first.` }, { status: 400 })
   }
 
-  const lineCount = await db.bookVoucherLine.count({ where: { accountId: id } })
+  const lineCount = await countChartLines(id)
   if (lineCount > 0) {
     return NextResponse.json({ error: 'Account has voucher lines and cannot be deleted. Set it inactive instead.' }, { status: 400 })
   }
 
   // Referential guards (book account usage, knock-offs, mappings)
   const [cashUse, bankUse, knockUse] = await Promise.all([
-    db.cashbookVoucher.count({ where: { bookChartId: id } }),
-    db.bankbookVoucher.count({ where: { bookChartId: id } }),
+    db.cashBook.count({ where: { bookChartId: id } }),
+    db.bankBook.count({ where: { bookChartId: id } }),
     db.knockOff.count({ where: { accountId: id } }),
   ])
   if (cashUse + bankUse + knockUse > 0) {
@@ -166,4 +182,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   } catch (e: any) {
     return NextResponse.json({ error: e.message || 'Cannot delete account (referenced by other records)' }, { status: 400 })
   }
+}
+
+/** Total voucher lines (all four books) posted against one account. */
+async function countChartLines(chartId: string): Promise<number> {
+  const [c, b, j, o] = await Promise.all([
+    db.cashBookLine.count({ where: { accountId: chartId } }),
+    db.bankBookLine.count({ where: { accountId: chartId } }),
+    db.journalVoucherLine.count({ where: { accountId: chartId } }),
+    db.openingTbLine.count({ where: { accountId: chartId } }),
+  ])
+  return c + b + j + o
 }

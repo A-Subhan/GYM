@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: 'desc' }
     })
     const rows = members.map(m => ({
-      memberId: m.memberId,
+      memberId: m.id,
       name: `${m.firstName} ${m.lastName || ''}`,
       gender: m.gender || '—',
       phone: m.phone || '—',
@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
       include: { branch: true, membershipPlan: true },
     })
     const rows = members.map(m => ({
-      memberId: m.memberId,
+      memberId: m.id,
       name: `${m.firstName} ${m.lastName || ''}`,
       plan: m.membershipPlan?.name || '—',
       branch: m.branch?.name || '—',
@@ -115,7 +115,7 @@ export async function GET(req: NextRequest) {
       include: { branch: true, membershipPlan: true },
     })
     const rows = members.map(m => ({
-      memberId: m.memberId,
+      memberId: m.id,
       name: `${m.firstName} ${m.lastName || ''}`,
       plan: m.membershipPlan?.name || '—',
       branch: m.branch?.name || '—',
@@ -135,8 +135,8 @@ export async function GET(req: NextRequest) {
       take: 300,
     })
     const rows = fees.map(f => ({
-      feeNo: f.feeNo,
-      memberId: f.member.memberId,
+      feeNo: f.id,
+      memberId: f.member.id,
       memberName: `${f.member.firstName} ${f.member.lastName || ''}`,
       plan: f.member.membershipPlan?.name || '—',
       branch: f.member.branch?.name || '—',
@@ -154,7 +154,7 @@ export async function GET(req: NextRequest) {
       orderBy: { joiningDate: 'desc' },
     })
     const rows = members.map(m => ({
-      memberId: m.memberId,
+      memberId: m.id,
       name: `${m.firstName} ${m.lastName || ''}`,
       plan: m.membershipPlan?.name || '—',
       branch: m.branch?.name || '—',
@@ -172,7 +172,7 @@ export async function GET(req: NextRequest) {
       take: 300,
     })
     const rows = freezes.map(f => ({
-      memberId: f.member.memberId,
+      memberId: f.member.id,
       memberName: `${f.member.firstName} ${f.member.lastName || ''}`,
       branch: f.branch?.name || '—',
       freezeFrom: f.freezeFrom,
@@ -192,7 +192,7 @@ export async function GET(req: NextRequest) {
       take: 500,
     })
     const rows = records.map(r => ({
-      memberId: r.member.memberId,
+      memberId: r.member.id,
       memberName: `${r.member.firstName} ${r.member.lastName || ''}`,
       branch: r.branch?.name || '—',
       date: r.date,
@@ -237,7 +237,7 @@ export async function GET(req: NextRequest) {
     const rows = members.map(m => {
       const t = trainerMap.get(m.assignedTrainerId || '')
       return {
-        memberId: m.memberId,
+        memberId: m.id,
         memberName: `${m.firstName} ${m.lastName || ''}`,
         branch: m.branch?.name || '—',
         trainer: t ? `${t.firstName} ${t.lastName || ''}` : '—',
@@ -273,7 +273,7 @@ export async function GET(req: NextRequest) {
       const t = trainerMap.get(r.trainerId)
       return {
         memberName: `${r.member.firstName} ${r.member.lastName || ''}`,
-        memberId: r.member.memberId,
+        memberId: r.member.id,
         trainer: t ? `${t.firstName} ${t.lastName || ''}` : '—',
         sessionsPurchased: r.sessionsPurchased,
         sessionsUsed: r.sessionsUsed,
@@ -294,7 +294,7 @@ export async function GET(req: NextRequest) {
       take: 300,
     })
     const rows = records.map(r => ({
-      memberId: r.member.memberId,
+      memberId: r.member.id,
       memberName: `${r.member.firstName} ${r.member.lastName || ''}`,
       plan: r.plan?.name || '—',
       startDate: r.startDate,
@@ -312,7 +312,7 @@ export async function GET(req: NextRequest) {
       take: 300,
     })
     const rows = records.map(r => ({
-      memberId: r.member.memberId,
+      memberId: r.member.id,
       memberName: `${r.member.firstName} ${r.member.lastName || ''}`,
       plan: r.plan?.name || '—',
       startDate: r.startDate,
@@ -330,7 +330,7 @@ export async function GET(req: NextRequest) {
       take: 300,
     })
     const rows = records.map(r => ({
-      memberId: r.member.memberId,
+      memberId: r.member.id,
       memberName: `${r.member.firstName} ${r.member.lastName || ''}`,
       date: r.date,
       weight: r.weight,
@@ -351,8 +351,8 @@ export async function GET(req: NextRequest) {
       take: 500,
     })
     const rows = fees.map(f => ({
-      feeNo: f.feeNo,
-      memberId: f.member.memberId,
+      feeNo: f.id,
+      memberId: f.member.id,
       memberName: `${f.member.firstName} ${f.member.lastName || ''}`,
       branch: f.branch?.name || '—',
       amount: f.amount,
@@ -374,8 +374,8 @@ export async function GET(req: NextRequest) {
       take: 500,
     })
     const rows = fees.map(f => ({
-      feeNo: f.feeNo,
-      memberId: f.member.memberId,
+      feeNo: f.id,
+      memberId: f.member.id,
       memberName: `${f.member.firstName} ${f.member.lastName || ''}`,
       branch: f.branch?.name || '—',
       amount: f.amount,

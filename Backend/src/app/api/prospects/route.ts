@@ -16,16 +16,16 @@ export async function GET(req: NextRequest) {
     where: {
       ...(status ? { status } : {}),
       ...(source ? { source } : {}),
-      ...(allowed ? { OR: [{ preferredBranchId: { in: allowed } }, { preferredBranchId: null }] } : {}),
+      ...(allowed ? { OR: [{ branchId: { in: allowed } }, { branchId: null }] } : {}),
       ...(search ? {
         OR: [
-          { prospectId: { contains: search } },
+          { id: { contains: search } },
           { name: { contains: search } },
           { phone: { contains: search } },
         ]
       } : {}),
     },
-    include: { preferredBranch: true },
+    include: { branch: true },
     orderBy: { createdAt: 'desc' },
     take: 200,
   })
@@ -40,12 +40,17 @@ export async function POST(req: NextRequest) {
   const data = await req.json()
   if (!data.name) return NextResponse.json({ error: 'Name required' }, { status: 400 })
 
-  // Business ID: p-00001, p-00002, … (IdSequence-backed)
-  const prospectId = await makeProspectId()
+  // Business id: {branchCode}/p-00001 (the prospect id IS the business id —
+  // there is no separate prospectId column). A branch is required to build it.
+  const branchId = (data.branchId as string) || session.branchId
+  if (!branchId) return NextResponse.json({ error: 'Branch is required' }, { status: 400 })
+  const branch = await db.branch.findUnique({ where: { id: branchId } })
+  if (!branch) return NextResponse.json({ error: 'Invalid branch' }, { status: 400 })
+  const prospectId = await makeProspectId(branch.code)
 
   const prospect = await db.prospect.create({
     data: {
-      prospectId,
+      id: prospectId,
       name: data.name,
       phone: data.phone,
       whatsapp: data.whatsapp,
@@ -53,7 +58,7 @@ export async function POST(req: NextRequest) {
       age: data.age ? Number(data.age) : null,
       dob: data.dob ? new Date(data.dob) : null,
       interestedMembership: data.interestedMembership,
-      preferredBranchId: data.preferredBranchId || null,
+      branchId: branchId || null,
       source: data.source || 'WalkIn',
       status: data.status || 'New',
       inquiryDate: data.inquiryDate ? new Date(data.inquiryDate) : new Date(),

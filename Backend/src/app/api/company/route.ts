@@ -2,11 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 
+// Admin Defaults — backed by the dbo.Defaults table (the legacy Company table
+// was removed by the SQL Server migration). companyName is WRITE-ONCE:
+// the DB trigger trg_Defaults_CompanyNameLock blocks changes once set, and the
+// API enforces the same rule up front.
 export async function GET() {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const company = await db.company.findFirst()
-  return NextResponse.json({ company })
+  const defaults = await db.defaults.findFirst()
+  // keep the historical `company` response shape; mirror companyName as name
+  const company = defaults ? { ...defaults, name: defaults.companyName } : null
+  return NextResponse.json({ company, defaults })
 }
 
 export async function PATCH(req: NextRequest) {
@@ -14,24 +20,32 @@ export async function PATCH(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!session.permissions.includes('company.edit')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const data = await req.json()
-  const existing = await db.company.findFirst()
-  if (!existing) return NextResponse.json({ error: 'Company not initialized' }, { status: 404 })
 
-  // Company name can only be set ONCE (Defaults page rule):
-  // - when nameLocked=true, any attempt to change the name is rejected
-  // - when unlocked, saving with a non-empty name locks it from then on
-  const submittedName = data.name !== undefined && data.name !== null ? String(data.name).trim() : existing.name
-  if (existing.nameLocked && submittedName !== existing.name) {
-    return NextResponse.json({ error: 'Company name is locked' }, { status: 400 })
+  let defaults = await db.defaults.findFirst()
+  if (!defaults) {
+    // single-row table — create on first save
+    defaults = await db.defaults.create({ data: {} })
   }
-  const shouldLockName = existing.nameLocked || !!submittedName
 
-  // companyId, accountingType are NOT changeable after setup per spec §38
-  const company = await db.company.update({
-    where: { id: existing.id },
+  // Write-once company name: if a non-empty name is already stored and the
+  // submitted value differs, reject (mirrors trg_Defaults_CompanyNameLock).
+  const submittedName =
+    data.companyName !== undefined && data.companyName !== null
+      ? String(data.companyName).trim()
+      : data.name !== undefined && data.name !== null
+        ? String(data.name).trim()
+        : undefined
+  if (submittedName !== undefined) {
+    const existingName = (defaults.companyName || '').trim()
+    if (existingName && submittedName !== existingName) {
+      return NextResponse.json({ error: 'Company name is locked' }, { status: 400 })
+    }
+  }
+
+  const updated = await db.defaults.update({
+    where: { id: defaults.id },
     data: {
-      name: submittedName,
-      nameLocked: shouldLockName,
+      companyName: submittedName,
       address: data.address,
       phone: data.phone,
       email: data.email,
@@ -39,8 +53,12 @@ export async function PATCH(req: NextRequest) {
       logo: data.logo,
       strn: data.strn,
       ntn: data.ntn,
+      fbr: data.fbr,
+      financeType: data.financeType ?? data.accountingType,
+      coaLevelDigits: data.coaLevelDigits,
+      coaLocked: data.coaLocked,
     },
   })
-  await db.auditLog.create({ data: { userId: session.id, action: 'UPDATE', module: 'company', details: JSON.stringify({ id: company.id, nameLocked: company.nameLocked }) } })
-  return NextResponse.json({ company })
+  await db.auditLog.create({ data: { userId: session.id, action: 'UPDATE', module: 'company', details: JSON.stringify({ id: updated.id }) } })
+  return NextResponse.json({ company: { ...updated, name: updated.companyName }, defaults: updated })
 }

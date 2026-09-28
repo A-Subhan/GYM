@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, getSelectedBranchIds } from '@/lib/auth'
-import { makeBranchPeriodId } from '@/lib/ids'
+import { makeFeeId } from '@/lib/ids'
 
 export async function GET(req: NextRequest) {
   const session = await getSession()
@@ -41,13 +41,13 @@ export async function POST(req: NextRequest) {
   const discount = Number(data.discount) || 0
   const dueDate = data.dueDate ? new Date(data.dueDate) : billingPeriodEnd
 
-  // Business fee number: {branchCode}/{MMMyy}/{00001}
+  // Business fee id: {branchCode}/{MMMyy}/{00001} — the fee id IS the business id
   const branchCode = member.branch?.code || 'MAIN'
-  const feeNo = await makeBranchPeriodId('FEE', branchCode, billingPeriodStart)
+  const feeNo = await makeFeeId(branchCode, billingPeriodStart)
 
   const fee = await db.fee.create({
     data: {
-      feeNo,
+      id: feeNo,
       memberId: member.id,
       branchId: member.branchId,
       billingPeriodStart,

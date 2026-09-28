@@ -50,21 +50,25 @@ export async function POST(req: NextRequest) {
   if (to < from) return NextResponse.json({ error: 'toDate must be on or after fromDate' }, { status: 400 })
   const days = Math.ceil((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)) + 1
 
-  // Leave types now live in universal MasterFile (masterType='LeaveType')
-  const leaveType = await db.masterFile.findFirst({
-    where: { masterType: 'LeaveType', name: data.leaveType, isActive: true },
+  // Leave types live in payrollmasterfile (masterType = 'Leave Type');
+  // Leave.leaveType keeps storing the type NAME.
+  const leaveType = await db.payrollMasterFile.findFirst({
+    where: { masterType: 'Leave Type', name: data.leaveType, isActive: true },
   })
   if (!leaveType) {
-    return NextResponse.json({ error: `Invalid leave type "${data.leaveType}" — pick one from Leave Type master` }, { status: 400 })
+    return NextResponse.json({ error: `Invalid leave type "${data.leaveType}" — pick one from the HR Leave Type master` }, { status: 400 })
   }
 
-  // Branch: explicit body branchId wins, otherwise the staff member's branch
+  // Branch: explicit body branchId wins, otherwise the staff member's branch (NOT NULL in the final schema)
   const branchId = (data.branchId as string) || staff.branchId
+  const branch = await db.branch.findUnique({ where: { id: branchId } })
+  if (!branch) return NextResponse.json({ error: 'Invalid branch' }, { status: 400 })
 
-  const leaveNo = await makeLeaveId()
+  // Business id: LV-0001 (the leave id IS the business id — no separate leaveNo)
+  const id = await makeLeaveId()
   const leave = await db.leave.create({
     data: {
-      leaveNo,
+      id,
       staffId: staff.id,
       branchId,
       leaveType: leaveType.name,
@@ -77,7 +81,7 @@ export async function POST(req: NextRequest) {
     include: { staff: STAFF_SELECT, branch: { select: { id: true, name: true, code: true } } },
   })
   await db.auditLog.create({
-    data: { userId: session.id, action: 'CREATE', module: 'leaves', details: JSON.stringify({ id: leave.id, leaveNo }) },
+    data: { userId: session.id, action: 'CREATE', module: 'leaves', details: JSON.stringify({ id: leave.id, leaveNo: id }) },
   })
   return NextResponse.json({ leave })
 }

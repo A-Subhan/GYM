@@ -92,14 +92,14 @@ export async function POST(req: NextRequest) {
       branchId: fee.branchId,
       branchCode: fee.branch.code,
       bookChartId,
-      description: `Fee payment — ${fee.feeNo} — ${fee.member.firstName} ${fee.member.lastName || ''} — ${method}${cardTypeName ? ` (${cardTypeName})` : ''}${bankMasterName ? ` (${bankMasterName})` : ''}`.slice(0, 250),
-      reference: reference || fee.feeNo,
+      description: `Fee payment — ${fee.id} — ${fee.member.firstName} ${fee.member.lastName || ''} — ${method}${cardTypeName ? ` (${cardTypeName})` : ''}${bankMasterName ? ` (${bankMasterName})` : ''}`.slice(0, 250),
+      reference: reference || fee.id,
       paymentMode: method === 'Cash' ? 'Cash' : 'Online Transfer',
       lines: [
         {
           accountId: detailMapping.accountId,
           amount: payAmount,
-          lineDescription: `Fee payment ${fee.feeNo}`,
+          lineDescription: `Fee payment ${fee.id}`,
           billType: 'Receipt',
         },
       ],
