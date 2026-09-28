@@ -1,8 +1,8 @@
 -- ============================================================================
 -- Contoura Gym Management System — STEP 1: Create the GymDB database
 -- ============================================================================
--- Run this FIRST (order: 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08)
--- Requires: SQL Server 2019+ (works on Express / Developer / Standard)
+-- Run this FIRST (order: 01 → 02 → 03 → 04 → 05 → 06 → 07)
+-- Requires: SQL Server 2016+ (works on Express / Developer / Standard)
 -- No SQLCMD mode needed — data/log files use the server's default locations.
 -- ============================================================================
 

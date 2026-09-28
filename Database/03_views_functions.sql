@@ -1,17 +1,27 @@
 -- ============================================================================
--- Contoura Gym Management System — STEP 3: Views and Functions
+-- Contoura Gym Management System — STEP 3: Views and Functions (FINAL design)
 -- ============================================================================
--- Reporting views and scalar functions for analytics and convenience.
--- Matches the FINAL schema (charts id = account code; CashBook/BankBook/JV/
--- OpenTB books; bookVoucherId references). Identical to the objects created
--- by Database/migrations/12_views_procedures_rebuild.sql.
+-- Reporting views and scalar functions over the FINAL schema:
+--   * charts.id IS the account code (no separate Account/code columns)
+--   * ledger data lives in the four book tables CashBook/BankBook/JV/OpenTB
+--     joined to their line tables (CashBookLine/BankBookLine/JVLine/OpenTBLine)
+--   * fee payments reference book vouchers via FeePayment.bookVoucherId
+--
+-- Every CREATE ... statement is the first statement in its own batch (GO).
 -- Safe to re-run (CREATE OR ALTER).
+-- Run after 02_schema_tables.sql on the GymDB database.
 -- ============================================================================
 
 USE [GymDB];
 GO
 
--- ---- batch 2: functions (gated) ---------------------------------------------
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_NULLS ON;
+GO
+
+-- ---------------------------------------------------------------------------
+-- Scalar functions
+-- ---------------------------------------------------------------------------
 
 CREATE OR ALTER FUNCTION dbo.fn_CalculateAge (@dob DATETIME2)
 RETURNS INT AS
@@ -64,7 +74,9 @@ BEGIN
 END
 GO
 
--- ---- batch 3: views (gated, one gate per GO-separated sub-batch) -------------
+-- ---------------------------------------------------------------------------
+-- Views
+-- ---------------------------------------------------------------------------
 
 -- Trial balance over the four books (charts.id = account code)
 CREATE OR ALTER VIEW dbo.vw_TrialBalance
@@ -176,7 +188,7 @@ LEFT JOIN dbo.Branch b ON b.id = i.branchId
 WHERE i.status <> N'Deleted';
 GO
 
--- unified ledger across the four books
+-- unified ledger across the four books (line types vary per book)
 CREATE OR ALTER VIEW dbo.vw_BookLedger
 AS
 SELECT 'CASHBOOK' AS bookType, cl.id AS lineId, cl.voucherId, cb.voucherType, cb.voucherDate,
@@ -206,7 +218,7 @@ SELECT 'OTB', ol.id, ol.voucherId, o.voucherType, o.voucherDate,
        NULL, NULL, NULL, ol.lineDescription, ol.status, o.status
 FROM dbo.OpenTB o JOIN dbo.OpenTBLine ol ON ol.voucherId = o.id
 JOIN dbo.charts c ON c.id = ol.accountId;
-
 GO
+
 PRINT 'Step 03 complete: final views and functions created.';
 GO

@@ -1,24 +1,22 @@
 -- ============================================================================
--- Contoura Gym Management System — STEP 6: Master Data (FINAL schema)
--- ============================================================================
--- Seeds the final-schema tables: Defaults (company write-once), charts
--- (id = account code, parentCode hierarchy), branches, roles/permissions
--- (removed-module screens excluded), master files (gymmasterfile,
--- payrollmasterfile), staff, shifts, allowances.
--- Account ids ARE the account CODES; AccountMapping/FinanceDefaults reference
--- codes. Use on an EMPTY database created by steps 01-05 (plain INSERTs).
--- ============================================================================
--- ============================================================================
 -- Contoura Gym Management System — STEP 6: Master Data (required to run)
 -- ============================================================================
--- Seeds everything the application needs to boot and to pass authentication:
---   Company, Branches, Roles, Permissions (148), Role assignments, the admin
---   user, Chart of Accounts, Financial Years + periods, Tax Heads, Account
---   Mappings, Finance defaults, Membership plans, Shifts, Leave types,
---   Allowances, Master files, base staff (trainer) and Food items.
+-- Seeds everything the application needs to boot and to pass authentication,
+-- against the FINAL schema:
+--   Defaults (company settings, write-once name), Branches (hierarchy),
+--   Roles, Permissions (148), RolePermission grants, the admin user
+--   (login: admin / admin123), Chart of Accounts ([charts], id = account
+--   code, parentCode='ROOT' for tree roots), Financial Years + periods,
+--   Tax Heads, Account Mappings + Finance Defaults, Membership plans
+--   (business ids BR-001/SEP26/000xx), Shifts, payrollmasterfile Leave Types,
+--   Allowances, MasterFile departments/designations/educations, gymmasterfile
+--   categories (001 Exercise / 002 Equipment / 003 Exercise Type), base
+--   staff (trainer EMP-0001) and Food items.
 --
--- Login created here:  admin / admin123
--- ============================================================================
+-- Plain INSERTs intended for an EMPTY database created by steps 01-05.
+-- Account ids ARE the account codes; AccountMapping/FinanceDefaults
+-- reference codes directly.
+-- ===========================================================================
 
 USE [GymDB];
 GO

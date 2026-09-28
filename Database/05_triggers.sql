@@ -1,22 +1,31 @@
 -- ============================================================================
--- Contoura Gym Management System — STEP 5: Triggers
+-- Contoura Gym Management System — STEP 5: Triggers (FINAL design)
 -- ============================================================================
--- updatedAt maintenance, payroll audit trail. NOTE: there is deliberately NO balance-check trigger on the book tables - OpenTB must allow unbalanced saves.
--- Matches the FINAL schema (charts id = account code; CashBook/BankBook/JV/
--- OpenTB books; bookVoucherId references). Identical to the objects created
--- by Database/migrations/12_views_procedures_rebuild.sql.
+-- * updatedAt maintenance triggers for the hot tables
+-- * payroll status audit trail
+-- * trg_Defaults_CompanyNameLock — Defaults.companyName is WRITE-ONCE
+--   (documented in Backend/prisma/schema.prisma): once a company name is set
+--   it cannot be changed or cleared. First INSERT may set it freely.
+--
+-- There is deliberately NO balance-check trigger on the book tables:
+--   OpenTB must allow saving an unbalanced trial balance; cash/bank voucher
+--   balance rules are enforced by the application.
+--
+-- Every CREATE TRIGGER statement is the first statement in its own batch (GO).
 -- Safe to re-run (CREATE OR ALTER).
+-- Run after 02_schema_tables.sql.
 -- ============================================================================
 
 USE [GymDB];
 GO
 
--- NOTE: there is deliberately NO balance-check trigger on the book tables:
--- OpenTB must allow saving an unbalanced trial balance; cash/bank voucher
--- balance rules are enforced by the application.
-PRINT '  functions, views, procedures and triggers rebuilt';
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_NULLS ON;
+GO
 
--- ---- batch 5: triggers --------------------------------------------------------
+-- ---------------------------------------------------------------------------
+-- updatedAt maintenance
+-- ---------------------------------------------------------------------------
 
 CREATE OR ALTER TRIGGER dbo.trg_Member_touchUpdatedAt ON dbo.Member AFTER UPDATE AS
 BEGIN
@@ -73,6 +82,9 @@ BEGIN
 END
 GO
 
+-- ---------------------------------------------------------------------------
+-- Payroll status audit trail
+-- ---------------------------------------------------------------------------
 CREATE OR ALTER TRIGGER dbo.trg_Payroll_Audit ON dbo.Payroll AFTER UPDATE AS
 BEGIN
     SET NOCOUNT ON;
@@ -85,7 +97,28 @@ BEGIN
     INNER JOIN deleted d ON d.id = i.id
     WHERE ISNULL(d.status, N'') <> ISNULL(i.status, N'');
 END
-
 GO
-PRINT 'Step 05 complete: final triggers created.';
+
+-- ---------------------------------------------------------------------------
+-- Admin Defaults: companyName is WRITE-ONCE
+-- (Backend/prisma/schema.prisma — model Defaults, see trg_Defaults_CompanyNameLock)
+-- ---------------------------------------------------------------------------
+CREATE OR ALTER TRIGGER dbo.trg_Defaults_CompanyNameLock ON dbo.Defaults AFTER UPDATE AS
+BEGIN
+    SET NOCOUNT ON;
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        INNER JOIN deleted d ON d.id = i.id
+        WHERE d.companyName IS NOT NULL            -- a name was already set
+          AND (i.companyName IS NULL               -- ... and is being cleared
+               OR i.companyName <> d.companyName)  -- ... or is being changed
+    )
+    BEGIN
+        ;THROW 55100, 'Company Name is locked by Admin Defaults: it cannot be changed once set.', 1;
+    END
+END
+GO
+
+PRINT 'Step 05 complete: final triggers created (updatedAt touch, payroll audit, Defaults company-name lock).';
 GO

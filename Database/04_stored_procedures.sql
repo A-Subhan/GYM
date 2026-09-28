@@ -1,18 +1,26 @@
 -- ============================================================================
--- Contoura Gym Management System — STEP 4: Stored Procedures
+-- Contoura Gym Management System — STEP 4: Stored Procedures (FINAL design)
 -- ============================================================================
--- Server-side helpers for reporting and administration.
--- Matches the FINAL schema (charts id = account code; CashBook/BankBook/JV/
--- OpenTB books; bookVoucherId references). Identical to the objects created
--- by Database/migrations/12_views_procedures_rebuild.sql.
+-- Server-side helpers for reporting and administration over the FINAL schema:
+--   * dashboards, trial balance, income statement (over the four book tables)
+--   * member statement (Fee + FeePayment.bookVoucherId)
+--   * payroll calculation helper, admin password reset
+--
+-- Every CREATE ... statement is the first statement in its own batch (GO).
 -- Safe to re-run (CREATE OR ALTER).
+-- Run after 02_schema_tables.sql (and ideally after 03 for vw_TrialBalance).
 -- ============================================================================
 
 USE [GymDB];
 GO
 
--- ---- batch 4: stored procedures ----------------------------------------------
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_NULLS ON;
+GO
 
+-- ---------------------------------------------------------------------------
+-- Dashboard counters (members, attendance, receivables, revenue, staff, stock)
+-- ---------------------------------------------------------------------------
 CREATE OR ALTER PROCEDURE dbo.sp_GetDashboardStats
     @branchId NVARCHAR(50) = NULL
 AS
@@ -55,6 +63,9 @@ BEGIN
 END
 GO
 
+-- ---------------------------------------------------------------------------
+-- Trial balance (thin wrapper over vw_TrialBalance)
+-- ---------------------------------------------------------------------------
 CREATE OR ALTER PROCEDURE dbo.sp_GetTrialBalance
     @asOfDate DATETIME2 = NULL
 AS
@@ -67,6 +78,9 @@ BEGIN
 END
 GO
 
+-- ---------------------------------------------------------------------------
+-- Income statement (Revenue/Expense movement between two dates)
+-- ---------------------------------------------------------------------------
 CREATE OR ALTER PROCEDURE dbo.sp_GetIncomeStatement
     @fromDate DATETIME2,
     @toDate   DATETIME2
@@ -98,6 +112,9 @@ BEGIN
 END
 GO
 
+-- ---------------------------------------------------------------------------
+-- Member statement: fee invoices + payments (with the book voucher posted)
+-- ---------------------------------------------------------------------------
 CREATE OR ALTER PROCEDURE dbo.sp_GetMemberStatement
     @memberId NVARCHAR(50)
 AS
@@ -112,10 +129,10 @@ BEGIN
 
     SELECT fp.createdAt AS paidAt, fp.amount, fp.[method],
            fp.bookVoucherId AS voucherNo,
-           CASE WHEN fp.bookVoucherId LIKE 'CRV/%' THEN N'CRV'
-                WHEN fp.bookVoucherId LIKE 'CPV/%' THEN N'CPV'
-                WHEN fp.bookVoucherId LIKE 'BRV/%' THEN N'BRV'
-                WHEN fp.bookVoucherId LIKE 'BPV/%' THEN N'BPV'
+           CASE WHEN fp.bookVoucherId LIKE N'CRV/%' THEN N'CRV'
+                WHEN fp.bookVoucherId LIKE N'CPV/%' THEN N'CPV'
+                WHEN fp.bookVoucherId LIKE N'BRV/%' THEN N'BRV'
+                WHEN fp.bookVoucherId LIKE N'BPV/%' THEN N'BPV'
                 ELSE N'BOOK' END AS voucherType,
            a.name AS paidIntoAccount
     FROM dbo.FeePayment fp
@@ -126,6 +143,9 @@ BEGIN
 END
 GO
 
+-- ---------------------------------------------------------------------------
+-- Payroll calculation helper (earnings only; deductions handled by the app)
+-- ---------------------------------------------------------------------------
 CREATE OR ALTER PROCEDURE dbo.sp_CalculatePayroll
     @[month] INT,
     @[year]  INT,
@@ -153,6 +173,9 @@ BEGIN
 END
 GO
 
+-- ---------------------------------------------------------------------------
+-- Emergency admin password reset (hash below = 'admin123')
+-- ---------------------------------------------------------------------------
 CREATE OR ALTER PROCEDURE dbo.sp_ResetAdminPassword
 AS
 BEGIN
@@ -163,7 +186,7 @@ BEGIN
     WHERE username = N'admin';
     PRINT 'Admin password reset to: admin123';
 END
-
 GO
+
 PRINT 'Step 04 complete: final stored procedures created.';
 GO
