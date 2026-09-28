@@ -190,7 +190,7 @@ export async function postBookVoucher(input: PostBookVoucherInput) {
         taxRate: Number(l.taxRate) || 0,
         taxAmount: r2(l.taxAmount ?? 0),
         chequeNo: l.chequeNo,
-        chequeAmount: l.chequeNo ? r2(l.amount ?? debit || credit) : null,
+        chequeAmount: l.chequeNo ? r2(l.amount ?? (debit || credit)) : null,
         chequeBankName: l.chequeBankName,
         status: l.status || 'Active',
       }

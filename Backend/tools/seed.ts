@@ -30,13 +30,14 @@ async function main() {
   }
   console.log(`  ✓ ${Object.keys(SYSTEM_ROLE_PERMISSIONS).length} system roles`)
 
-  // 3. Company
+  // 3. Company — name left unlocked so the Defaults page performs the one-time set + lock
   const company = await db.company.upsert({
     where: { companyId: 'CTR-01' },
     update: {},
     create: {
       companyId: 'CTR-01',
-      name: 'Contoura Gym',
+      name: '',
+      nameLocked: false,
       address: 'Main Boulevard, Karachi',
       phone: '+92 21 0000000',
       email: 'info@contouragym.com',
@@ -45,11 +46,11 @@ async function main() {
   })
   console.log(`  ✓ Company ${company.companyId}`)
 
-  // 4. Branch
+  // 4. Branch (root Control node)
   const branch = await db.branch.upsert({
     where: { code: 'BR-001' },
     update: {},
-    create: { code: 'BR-001', name: 'Head Office', city: 'Karachi', phone: '+92 21 0000000', email: 'hq@contouragym.com' },
+    create: { code: 'BR-001', name: 'Head Office', nodeType: 'Control', city: 'Karachi', phone: '+92 21 0000000', email: 'hq@contouragym.com' },
   })
   console.log(`  ✓ Branch ${branch.code}`)
 
@@ -79,7 +80,7 @@ async function main() {
     console.log('  ✓ admin user updated with verified hash')
   }
 
-  // 6. COA root heads + detail accounts
+  // 6. COA root heads + detail accounts — table `charts`, id = account code
   const rootHeads = [
     { code: '01', name: 'Assets', accountType: 'Asset', isControl: true, isDetail: false },
     { code: '02', name: 'Liabilities', accountType: 'Liability', isControl: true, isDetail: false },
@@ -88,31 +89,51 @@ async function main() {
     { code: '05', name: 'Expense', accountType: 'Expense', isControl: true, isDetail: false },
   ]
   for (const h of rootHeads) {
-    const existing = await db.account.findFirst({ where: { code: h.code, branchId: branch.id } })
-    if (!existing) await db.account.create({ data: { ...h, branchId: branch.id, openingBalance: 0 } })
+    await db.chart.upsert({
+      where: { id: h.code },
+      update: {},
+      create: { id: h.code, name: h.name, accountType: h.accountType, isControl: h.isControl, isDetail: h.isDetail, branchId: branch.id },
+    })
   }
-  const assets = await db.account.findFirst({ where: { code: '01', branchId: branch.id } })
+  const assets = await db.chart.findUnique({ where: { id: '01' } })
   if (assets) {
-    let cashAcc = await db.account.findFirst({ where: { code: '01001', branchId: branch.id } })
-    if (!cashAcc) cashAcc = await db.account.create({ data: { code: '01001', name: 'Cash in Hand', accountType: 'Asset', bookType: 'Cash', accountTag: 'Cash', isControl: false, isDetail: true, parentId: assets.id, branchId: branch.id } })
-    let bankAcc = await db.account.findFirst({ where: { code: '01002', branchId: branch.id } })
-    if (!bankAcc) bankAcc = await db.account.create({ data: { code: '01002', name: 'Bank — Current A/C', accountType: 'Asset', bookType: 'Bank', accountTag: 'Bank', isControl: false, isDetail: true, parentId: assets.id, bankName: 'HBL', bankAccountNo: '0000000000000000', branchId: branch.id } })
-    let recvAcc = await db.account.findFirst({ where: { code: '01003', branchId: branch.id } })
-    if (!recvAcc) recvAcc = await db.account.create({ data: { code: '01003', name: 'Membership Receivable', accountType: 'Asset', accountTag: 'Customer', isControl: false, isDetail: true, parentId: assets.id, branchId: branch.id } })
+    const details = [
+      { id: '01001', name: 'Cash in Hand', accountType: 'Asset', bookType: 'Cash', accountTag: 'Cash' },
+      { id: '01002', name: 'Bank — Current A/C', accountType: 'Asset', bookType: 'Bank', accountTag: 'Bank', bankName: 'HBL', bankAccountNo: '0000000000000000' },
+      { id: '01003', name: 'Membership Receivable', accountType: 'Asset', accountTag: 'Customer' },
+      { id: '01004', name: 'Equipment Supplier', accountType: 'Asset', accountTag: 'Vendor', contactName: 'ABC Supplies', phone: '+92 21 9999999', paymentTerms: 'Net 30' },
+    ]
+    for (const d of details) {
+      await db.chart.upsert({
+        where: { id: d.id },
+        update: {},
+        create: { ...d, isControl: false, isDetail: true, parentId: assets.id, branchId: branch.id },
+      })
+    }
   }
-  const rev = await db.account.findFirst({ where: { code: '04', branchId: branch.id } })
+  const rev = await db.chart.findUnique({ where: { id: '04' } })
   if (rev) {
-    let feeInc = await db.account.findFirst({ where: { code: '04001', branchId: branch.id } })
-    if (!feeInc) feeInc = await db.account.create({ data: { code: '04001', name: 'Membership Fee Income', accountType: 'Revenue', isControl: false, isDetail: true, parentId: rev.id, branchId: branch.id } })
-    let posInc = await db.account.findFirst({ where: { code: '04002', branchId: branch.id } })
-    if (!posInc) posInc = await db.account.create({ data: { code: '04002', name: 'POS Sales Income', accountType: 'Revenue', isControl: false, isDetail: true, parentId: rev.id, branchId: branch.id } })
+    const details = [
+      { id: '04001', name: 'Membership Fee Income', accountType: 'Revenue' },
+      { id: '04002', name: 'POS Sales Income', accountType: 'Revenue' },
+    ]
+    for (const d of details) {
+      await db.chart.upsert({
+        where: { id: d.id },
+        update: {},
+        create: { ...d, isControl: false, isDetail: true, parentId: rev.id, branchId: branch.id },
+      })
+    }
   }
-  const lia = await db.account.findFirst({ where: { code: '02', branchId: branch.id } })
+  const lia = await db.chart.findUnique({ where: { id: '02' } })
   if (lia) {
-    let taxPay = await db.account.findFirst({ where: { code: '02001', branchId: branch.id } })
-    if (!taxPay) taxPay = await db.account.create({ data: { code: '02001', name: 'Sales Tax Payable', accountType: 'Liability', isControl: false, isDetail: true, parentId: lia.id, branchId: branch.id } })
+    await db.chart.upsert({
+      where: { id: '02001' },
+      update: {},
+      create: { id: '02001', name: 'Sales Tax Payable', accountType: 'Liability', isControl: false, isDetail: true, parentId: lia.id, branchId: branch.id },
+    })
   }
-  console.log('  ✓ COA root heads + default detail accounts')
+  console.log('  ✓ charts (COA) root heads + default detail accounts')
 
   // 7. Default Tax Heads
   for (const code of ['001', '002']) {
@@ -133,15 +154,15 @@ async function main() {
   }
   console.log('  ✓ default tax heads')
 
-  // 8. Account Mappings
-  const cash = await db.account.findFirst({ where: { code: '01001', branchId: branch.id } })
-  const bank = await db.account.findFirst({ where: { code: '01002', branchId: branch.id } })
-  const feeIncome = await db.account.findFirst({ where: { code: '04001', branchId: branch.id } })
-  const posIncome = await db.account.findFirst({ where: { code: '04002', branchId: branch.id } })
-  const taxPayable = await db.account.findFirst({ where: { code: '02001', branchId: branch.id } })
-  const feeReceivable = await db.account.findFirst({ where: { code: '01003', branchId: branch.id } })
+  // 8. Account Mappings (per-branch account mapping tab of Defaults)
+  const cash = await db.chart.findUnique({ where: { id: '01001' } })
+  const bank = await db.chart.findUnique({ where: { id: '01002' } })
+  const feeIncome = await db.chart.findUnique({ where: { id: '04001' } })
+  const posIncome = await db.chart.findUnique({ where: { id: '04002' } })
+  const taxPayable = await db.chart.findUnique({ where: { id: '02001' } })
+  const feeReceivable = await db.chart.findUnique({ where: { id: '01003' } })
 
-  const mappings: Array<{ key: string; accountId: string; branchId?: string }> = []
+  const mappings: Array<{ key: string; accountId?: string }> = []
   if (cash) mappings.push({ key: 'cashAccount', accountId: cash.id })
   if (bank) mappings.push({ key: 'bankAccount', accountId: bank.id })
   if (feeIncome) mappings.push({ key: 'feeIncome', accountId: feeIncome.id })
@@ -152,10 +173,9 @@ async function main() {
   if (bank) mappings.push({ key: 'posBank', accountId: bank.id })
 
   for (const m of mappings) {
-    const existing = m.branchId
-      ? await db.accountMapping.findUnique({ where: { branchId_key: { branchId: m.branchId, key: m.key } } })
-      : await db.accountMapping.findFirst({ where: { key: m.key, branchId: null } })
-    if (!existing) await db.accountMapping.create({ data: { key: m.key, accountId: m.accountId, branchId: m.branchId ?? null } })
+    if (!m.accountId) continue
+    const existing = await db.accountMapping.findFirst({ where: { key: m.key, branchId: null } })
+    if (!existing) await db.accountMapping.create({ data: { key: m.key, accountId: m.accountId, branchId: null } })
     else await db.accountMapping.update({ where: { id: existing.id }, data: { accountId: m.accountId } })
   }
   console.log(`  ✓ ${mappings.length} account mappings`)
@@ -205,16 +225,21 @@ async function main() {
   }
   console.log('  ✓ default shifts')
 
-  // 12. Leave types
+  // 12. Leave types — LeaveType table removed; now MasterFile(masterType='LeaveType')
   for (const lt of [
     { name: 'Casual', allowedDays: 10, isPaid: true },
     { name: 'Sick', allowedDays: 10, isPaid: true },
     { name: 'Paid', allowedDays: 5, isPaid: true },
     { name: 'Unpaid', allowedDays: 0, isPaid: false },
   ]) {
-    await db.leaveType.upsert({ where: { name: lt.name }, update: {}, create: lt })
+    const extra = JSON.stringify(lt)
+    await db.masterFile.upsert({
+      where: { masterType_name: { masterType: 'LeaveType', name: lt.name } },
+      update: { extra },
+      create: { masterType: 'LeaveType', code: lt.name.toUpperCase().slice(0, 3), name: lt.name, extra, isActive: true },
+    })
   }
-  console.log('  ✓ leave types')
+  console.log('  ✓ leave types (master files)')
 
   // 13. Allowances
   for (const a of [
@@ -227,7 +252,7 @@ async function main() {
   }
   console.log('  ✓ allowances')
 
-  // 14. Default trainer staff (so the Member "Assigned Trainer" required dropdown is populated)
+  // 14. Default trainer staff
   const existingTrainer = await db.staff.findFirst({ where: { employeeId: 'EMP-0001' } })
   if (!existingTrainer) {
     await db.staff.create({
@@ -249,30 +274,39 @@ async function main() {
     console.log('  ✓ default trainer (EMP-0001)')
   }
 
-  // 15. Default vendor account (so the BPV/CPV detail line has something to debit)
-  const vendorAccount = await db.account.findFirst({ where: { code: '01004', branchId: branch.id } })
-  if (!vendorAccount) {
-    const assets2 = await db.account.findFirst({ where: { code: '01', branchId: branch.id } })
-    if (assets2) {
-      await db.account.create({
-        data: { code: '01004', name: 'Equipment Supplier', accountType: 'Asset', accountTag: 'Vendor', isControl: false, isDetail: true, parentId: assets2.id, branchId: branch.id, contactName: 'ABC Supplies', phone: '+92 21 9999999' },
-      })
-      console.log('  ✓ default vendor account (01004)')
-    }
+  // 15. Payroll master file defaults (earnings / deductions heads)
+  for (const p of [
+    { code: 'PMF-001', name: 'Basic Salary', type: 'Earning', calcType: 'Fixed', amount: 0, isActive: true },
+    { code: 'PMF-002', name: 'Fuel Allowance', type: 'Earning', calcType: 'Fixed', amount: 0, isActive: true },
+    { code: 'PMF-003', name: 'House Rent Allowance', type: 'Earning', calcType: 'Fixed', amount: 0, isActive: true },
+    { code: 'PMF-004', name: 'Overtime', type: 'Earning', calcType: 'Percent', amount: 0, isActive: true },
+    { code: 'PMF-005', name: 'SESSI', type: 'Deduction', calcType: 'Percent', amount: 6, isActive: true },
+    { code: 'PMF-006', name: 'EOBI', type: 'Deduction', calcType: 'Fixed', amount: 1000, isActive: true },
+    { code: 'PMF-007', name: 'Advance Recovery', type: 'Deduction', calcType: 'Fixed', amount: 0, isActive: true },
+  ]) {
+    await db.payrollMasterFile.upsert({
+      where: { code: p.code },
+      update: {},
+      create: p,
+    })
   }
+  console.log('  ✓ payroll master file defaults')
 
   console.log('\n✅ Seed complete. Login: admin / admin123')
 }
 
 main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1) })
 
-// 14. Universal Master Files defaults
+// 16. Universal Master Files defaults
 async function seedMasterFiles() {
   const defaults: Record<string, string[]> = {
     Department: ['Management', 'Operations', 'Trainers', 'Reception', 'Housekeeping', 'Finance', 'Sales'],
     Designation: ['Manager', 'Trainer', 'Receptionist', 'Accountant', 'Cleaner', 'Salesperson'],
     Education: ['Matric', 'Intermediate', 'Bachelor', 'Master', 'Certification'],
     Currency: ['PKR', 'USD', 'EUR', 'GBP'],
+    Equipment: ['Treadmill', 'Exercise Bike', 'Elliptical', 'Rowing Machine', 'Dumbbells', 'Bench Press', 'Squat Rack', 'Leg Press'],
+    CardTypes: ['Credit Card', 'Debit Card'],
+    Banks: ['HBL', 'UBL', 'MCB', 'Allied Bank', 'Bank Alfalah', 'Meezan Bank'],
   }
   for (const [type, names] of Object.entries(defaults)) {
     for (let i = 0; i < names.length; i++) {
@@ -287,7 +321,7 @@ async function seedMasterFiles() {
 }
 await seedMasterFiles()
 
-// 16. Trainer Specializations
+// 17. Trainer Specializations
 async function seedTrainerSpecs() {
   const specs = ['Weight Loss', 'Muscle Building', 'Strength Training', 'Bodybuilding', 'Functional Training', 'Cardio', 'Cross Training', 'Other']
   for (const s of specs) {
@@ -301,7 +335,7 @@ async function seedTrainerSpecs() {
 }
 await seedTrainerSpecs()
 
-// 17. Food Items
+// 18. Food Items
 async function seedFoodItems() {
   const foods = [
     { code: 'FOOD-0001', name: 'Chicken Breast', category: 'Protein', calories: 165, protein: 31, carbs: 0, fat: 3.6, servingSize: '100g', unit: 'g' },

@@ -82,6 +82,7 @@ model Branch {
   openTbVouchers      OpenTbVoucher[]   @relation("OpenTbBranch")
   leaves              Leave[]           @relation("LeaveBranch")
   masterFiles         MasterFile[]      @relation("MasterFileBranch")
+  payrollMasterFiles  PayrollMasterFile[] @relation("PayrollMasterFileBranch")
 }
 
 model Role {
@@ -1088,6 +1089,23 @@ model Allowance {
   description String? @db.NVarChar(MAX)
   isStatutory Boolean @default(false)
   createdAt  DateTime @default(now())
+}
+
+// Payroll master file — earning/deduction heads used by the payroll engine
+model PayrollMasterFile {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  code       String @db.NVarChar(50)   @unique
+  name       String @db.NVarChar(255)
+  type       String @db.NVarChar(255)   // Earning | Deduction
+  calcType   String @db.NVarChar(255)   @default("Fixed")  // Fixed | Percent
+  amount     Float  @default(0)              // fixed amount or percent value
+  isActive   Boolean  @default(true)
+  branchId   String? @db.NVarChar(50)
+  branch     Branch?  @relation("PayrollMasterFileBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([type])
 }
 
 // =================================================================

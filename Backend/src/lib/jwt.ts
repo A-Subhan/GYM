@@ -52,7 +52,7 @@ export async function verifyToken(token: string): Promise<TokenPayload | null> {
     if (parts.length !== 3) return null
     const [headerB, bodyB, sigB] = parts
     const key = await getKey()
-    const ok = await crypto.subtle.verify('HMAC', key, b64urlDecode(sigB), new TextEncoder().encode(`${headerB}.${bodyB}`))
+    const ok = await crypto.subtle.verify('HMAC', key, b64urlDecode(sigB) as unknown as BufferSource, new TextEncoder().encode(`${headerB}.${bodyB}`).buffer as ArrayBuffer)
     if (!ok) return null
     const payload = JSON.parse(new TextDecoder().decode(b64urlDecode(bodyB))) as TokenPayload
     if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null
