@@ -235,6 +235,8 @@ model Chart {
   @@index([parentId])
   @@index([branchId])
   @@index([accountType])
+
+  @@map("charts")
 }
 
 // =================================================================
