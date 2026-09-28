@@ -17,6 +17,7 @@ model Company {
   id             String @db.NVarChar(50)   @id @default(cuid())
   companyId      String @db.NVarChar(50)   @unique
   name           String @db.NVarChar(255)
+  nameLocked     Boolean  @default(false)  // company name can only be set once (Defaults page)
   address        String? @db.NVarChar(MAX)
   phone          String? @db.NVarChar(255)
   email          String? @db.NVarChar(255)
@@ -33,6 +34,10 @@ model Branch {
   id        String @db.NVarChar(50)   @id @default(cuid())
   code      String @db.NVarChar(191)   @unique
   name      String @db.NVarChar(255)
+  parentId  String? @db.NVarChar(50)
+  parent    Branch?  @relation("BranchHierarchy", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children  Branch[] @relation("BranchHierarchy")
+  nodeType  String   @default("Detail")  // Control | Detail (hierarchical Branch File)
   address   String? @db.NVarChar(MAX)
   city      String? @db.NVarChar(255)
   phone     String? @db.NVarChar(255)
@@ -46,7 +51,7 @@ model Branch {
   isDeleted Boolean  @default(false)
 
   users              User[]
-  accounts           Account[]
+  charts             Chart[]
   members            Member[]
   attendance         Attendance[]
   fees               Fee[]
@@ -59,21 +64,25 @@ model Branch {
   staff              Staff[]
   shifts             Shift[]
   calendar           CalendarDay[]
-  vouchers           Voucher[]
   taxHeads           TaxHead[]
   payroll            Payroll[]
   posSales           PosSale[]
   followUps          FollowUp[]
   freezes            MembershipFreeze[]
   // New relations from extended models
-  fitnessAssessments  FitnessAssessment[]
   trainerAvailabilities TrainerAvailability[] @relation("TrainerAvailBranch")
   trainerSchedules   TrainerSchedule[] @relation("TrainerSchedBranch")
   ptSessions         PersonalTrainingSession[] @relation("PTSessionBranch")
-  gymClasses          GymClass[] @relation("ClassBranch")
   suppliers           Supplier[] @relation("SupplierBranch")
   purchases           Purchase[] @relation("PurchaseBranch")
   stockMovements      StockMovement[] @relation("StockMoveBranch")
+  cashbookVouchers    CashbookVoucher[] @relation("CashbookBranch")
+  bankbookVouchers    BankbookVoucher[] @relation("BankbookBranch")
+  journalVouchers     JournalVoucher[]  @relation("JournalBranch")
+  openTbVouchers      OpenTbVoucher[]   @relation("OpenTbBranch")
+  leaves              Leave[]           @relation("LeaveBranch")
+  masterFiles         MasterFile[]      @relation("MasterFileBranch")
+  payrollMasterFiles  PayrollMasterFile[] @relation("PayrollMasterFileBranch")
 }
 
 model Role {
@@ -86,6 +95,23 @@ model Role {
 
   users       User[]
   permissions RolePermission[]
+  screenPermissions ScreenPermission[]
+}
+
+// Per-screen permissions: 52 screens x View/Add/Edit/Delete/Print, applied at session level
+model ScreenPermission {
+  id       String @db.NVarChar(50) @id @default(cuid())
+  roleId   String @db.NVarChar(50)
+  role     Role   @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  screenKey String @db.NVarChar(255)
+  canView   Boolean @default(false)
+  canAdd    Boolean @default(false)
+  canEdit   Boolean @default(false)
+  canDelete Boolean @default(false)
+  canPrint  Boolean @default(false)
+
+  @@unique([roleId, screenKey])
+  @@index([screenKey])
 }
 
 model Permission {
@@ -169,43 +195,224 @@ model AuditLog {
 // FINANCE
 // =================================================================
 
-model Account {
-  id                 String @db.NVarChar(50)   @id @default(cuid())
-  code               String @db.NVarChar(255)
+// Chart of Accounts - table renamed to "charts" per spec; id IS the account code.
+model Chart {
+  id                 String @db.NVarChar(50)   @id   // id = account code (e.g. 1000, 1000-001)
   name               String @db.NVarChar(255)
   parentId           String? @db.NVarChar(50)
-  parent             Account? @relation("AccountHierarchy", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  children           Account[] @relation("AccountHierarchy")
+  parent             Chart? @relation("ChartHierarchy", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children           Chart[] @relation("ChartHierarchy")
   accountType        String @db.NVarChar(255)
   bookType           String? @db.NVarChar(255)
   accountTag         String? @db.NVarChar(255)
-  isControl         Boolean  @default(false)
-  isDetail          Boolean  @default(true)
-  isActive          Boolean  @default(true)
-  branchId          String? @db.NVarChar(50)
-  branch            Branch?  @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  contactName       String? @db.NVarChar(255)
-  phone             String? @db.NVarChar(255)
-  email             String? @db.NVarChar(255)
-  address           String? @db.NVarChar(MAX)
-  bankName          String? @db.NVarChar(255)
-  bankAccountNo     String? @db.NVarChar(255)
-  bankBranch        String? @db.NVarChar(255)
-  cnic              String? @db.NVarChar(255)
-  ntn               String? @db.NVarChar(255)
-  description       String? @db.NVarChar(MAX)
-  openingBalance    Float    @default(0)
-  openingBalanceType String? @db.NVarChar(255)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  isControl          Boolean  @default(false)
+  isDetail           Boolean  @default(true)
+  isActive           Boolean  @default(true)
+  branchId           String? @db.NVarChar(50)
+  branch             Branch?  @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  contactName        String? @db.NVarChar(255)
+  phone              String? @db.NVarChar(255)
+  email              String? @db.NVarChar(255)
+  address            String? @db.NVarChar(MAX)
+  bankName           String? @db.NVarChar(255)
+  bankAccountNo      String? @db.NVarChar(255)
+  bankBranch         String? @db.NVarChar(255)
+  cnic               String? @db.NVarChar(255)
+  strn               String? @db.NVarChar(255)
+  ntn                String? @db.NVarChar(255)
+  fbr                String? @db.NVarChar(255)
+  paymentTerms       String? @db.NVarChar(255)
+  description        String? @db.NVarChar(MAX)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  lines             VoucherLine[]
-  bookVouchers      Voucher[] @relation("VoucherBookAccount")
+  lines             BookVoucherLine[]
   mappings          AccountMapping[]
+  cashbookBookVouchers CashbookVoucher[] @relation("CashbookBookAccount")
+  bankbookBookVouchers BankbookVoucher[] @relation("BankbookBookAccount")
+  knockOffs         KnockOff[]
 
-  @@index([code])
   @@index([parentId])
   @@index([branchId])
+  @@index([accountType])
+
+  @@map("charts")
+}
+
+// =================================================================
+// DEDICATED BOOK VOUCHERS (replace generic Voucher)
+// id = voucher number, format {TYPE}/{branchCode}/{MMMyy}/{000001}
+// CashbookVoucher: CRV (Cash Receipt) + CPV (Cash Payment)
+// BankbookVoucher: BRV (Bank Receipt) + BPV (Bank Payment)
+// JournalVoucher : JV
+// OpenTbVoucher  : OTV (Opening Trial Balance; allows unbalanced save + knock-off)
+// Reversals append -R to the id.
+// =================================================================
+
+model CashbookVoucher {
+  id           String @db.NVarChar(50)   @id   // voucher number, e.g. CRV/MAIN/Sep25/000001
+  voucherType  String @db.NVarChar(255)   // CRV | CPV
+  voucherDate  DateTime
+  branchId     String @db.NVarChar(50)
+  branch       Branch   @relation("CashbookBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  bookChartId  String   @db.NVarChar(50)   // cash book account (charts.id)
+  bookChart    Chart    @relation("CashbookBookAccount", fields: [bookChartId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  description  String? @db.NVarChar(MAX)
+  reference    String? @db.NVarChar(255)
+  paymentMode  String? @db.NVarChar(255)   // Cash | Cheque
+  totalAmount  Float    @default(0)
+  status       String @db.NVarChar(255)   @default("Posted")  // Posted | Reversed
+  reversedById String? @db.NVarChar(50)
+  reversedAt   DateTime?
+  reversalReason String? @db.NVarChar(255)
+  postedById   String? @db.NVarChar(50)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  lines      BookVoucherLine[] @relation("CashbookLines")
+
+  @@index([voucherType])
+  @@index([voucherDate])
+  @@index([branchId])
+}
+
+model BankbookVoucher {
+  id           String @db.NVarChar(50)   @id   // voucher number, e.g. BPV/MAIN/Sep25/000001
+  voucherType  String @db.NVarChar(255)   // BRV | BPV
+  voucherDate  DateTime
+  branchId     String @db.NVarChar(50)
+  branch       Branch   @relation("BankbookBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  bookChartId  String   @db.NVarChar(50)   // bank book account (charts.id)
+  bookChart    Chart    @relation("BankbookBookAccount", fields: [bookChartId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  description  String? @db.NVarChar(MAX)
+  reference    String? @db.NVarChar(255)
+  paymentMode  String? @db.NVarChar(255)   // Cash (at counter) | Cheque | Online Transfer
+  totalAmount  Float    @default(0)
+  status       String @db.NVarChar(255)   @default("Posted")  // Posted | Reversed
+  reversedById String? @db.NVarChar(50)
+  reversedAt   DateTime?
+  reversalReason String? @db.NVarChar(255)
+  postedById   String? @db.NVarChar(50)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  lines      BookVoucherLine[] @relation("BankbookLines")
+  cheques    Cheque[]
+
+  @@index([voucherType])
+  @@index([voucherDate])
+  @@index([branchId])
+}
+
+model JournalVoucher {
+  id           String @db.NVarChar(50)   @id   // voucher number, e.g. JV/MAIN/Sep25/000001
+  voucherType  String @db.NVarChar(255)   @default("JV")
+  voucherDate  DateTime
+  branchId     String @db.NVarChar(50)
+  branch       Branch   @relation("JournalBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  description  String? @db.NVarChar(MAX)
+  reference    String? @db.NVarChar(255)
+  totalDebit   Float    @default(0)
+  totalCredit  Float    @default(0)
+  status       String @db.NVarChar(255)   @default("Posted")  // Posted | Reversed
+  reversedById String? @db.NVarChar(50)
+  reversedAt   DateTime?
+  reversalReason String? @db.NVarChar(255)
+  postedById   String? @db.NVarChar(50)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  lines      BookVoucherLine[] @relation("JournalLines")
+
+  @@index([voucherDate])
+  @@index([branchId])
+}
+
+model OpenTbVoucher {
+  id           String @db.NVarChar(50)   @id   // voucher number, e.g. OTV/MAIN/Sep25/000001
+  voucherType  String @db.NVarChar(255)   @default("OTV")
+  voucherDate  DateTime
+  branchId     String @db.NVarChar(50)
+  branch       Branch   @relation("OpenTbBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  description  String? @db.NVarChar(255)   // short description (<= 20 chars per spec)
+  reference    String? @db.NVarChar(255)
+  totalDebit   Float    @default(0)
+  totalCredit  Float    @default(0)
+  difference   Float    @default(0)        // totalDebit - totalCredit (allowed non-zero)
+  isBalanced   Boolean  @default(false)
+  status       String @db.NVarChar(255)   @default("Posted")  // Posted | Reversed
+  reversedById String? @db.NVarChar(50)
+  reversedAt   DateTime?
+  reversalReason String? @db.NVarChar(255)
+  postedById   String? @db.NVarChar(50)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  lines      BookVoucherLine[] @relation("OpenTbLines")
+  knockOffs  KnockOff[]
+
+  @@index([voucherDate])
+  @@index([branchId])
+}
+
+// Shared line table for all four book voucher tables (integrity enforced in app layer)
+model BookVoucherLine {
+  id          String @db.NVarChar(50) @id @default(cuid())
+  voucherId   String @db.NVarChar(50)      // = book voucher id (voucher number)
+  voucherType String @db.NVarChar(255)     // CRV | CPV | BRV | BPV | JV | OTV
+  bookType    String @db.NVarChar(255)     // CASHBOOK | BANKBOOK | JV | OTB
+  accountId   String @db.NVarChar(50)
+  account     Chart    @relation(fields: [accountId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lineDescription String? @db.NVarChar(255)
+  title       String? @db.NVarChar(255)
+  reference   String? @db.NVarChar(255)
+  amount      Float    @default(0)
+  debit       Float    @default(0)
+  credit      Float    @default(0)
+  billType    String?  @db.NVarChar(255)  // Sales Bill, Purchase Bill, ... (Dr/Cr side auto-applied)
+  taxAccountId String? @db.NVarChar(50)
+  taxRate     Float    @default(0)
+  taxAmount   Float    @default(0)
+  chequeNo    String? @db.NVarChar(255)
+  chequeAmount Float?                 // kept in sync with amount (readonly)
+  chequeBankName String? @db.NVarChar(255)
+  chequeStatus String? @db.NVarChar(255)
+  status      String @db.NVarChar(255)   @default("Active")
+  createdAt   DateTime @default(now())
+
+  cashbookVoucher CashbookVoucher? @relation("CashbookLines", map: "BKVL_cashbook_fkey", fields: [voucherId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  bankbookVoucher BankbookVoucher? @relation("BankbookLines", map: "BKVL_bankbook_fkey", fields: [voucherId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  journalVoucher  JournalVoucher?  @relation("JournalLines",  map: "BKVL_journal_fkey", fields: [voucherId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  openTbVoucher   OpenTbVoucher?   @relation("OpenTbLines",   map: "BKVL_opentb_fkey", fields: [voucherId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([voucherId])
+  @@index([accountId])
+  @@index([bookType])
+}
+
+// Knock-off entries for unbalanced Opening Trial Balance vouchers
+model KnockOff {
+  id          String @db.NVarChar(50) @id @default(cuid())
+  billId      String @db.NVarChar(50)   // auto: OTB-{branchCode}/{0000001}
+  openTbVoucherId String @db.NVarChar(50)
+  openTbVoucher OpenTbVoucher @relation(fields: [openTbVoucherId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  accountId   String @db.NVarChar(50)
+  account     Chart @relation(fields: [accountId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  description String @db.NVarChar(255)   // max 20 characters
+  amount      Float
+  side        String @db.NVarChar(10)    // Debit | Credit
+  knockedOffAt DateTime @default(now())
+  createdById String? @db.NVarChar(50)
+  createdAt   DateTime @default(now())
+
+  @@index([openTbVoucherId])
+}
+
+// Atomic sequence counter for business ID generation, key like "CRV/MAIN/Sep25"
+model IdSequence {
+  key      String @db.NVarChar(191) @id
+  next     Int    @default(1)
+  updatedAt DateTime @updatedAt
 }
 
 model FinancialYear {
@@ -249,70 +456,10 @@ model TaxHead {
   @@index([code])
 }
 
-model Voucher {
-  id           String @db.NVarChar(50)   @id @default(cuid())
-  voucherNo    String @db.NVarChar(191)   @unique
-  voucherType  String @db.NVarChar(255)
-  voucherDate  DateTime
-  branchId     String @db.NVarChar(50)
-  branch       Branch   @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  bookAccountId String? @db.NVarChar(50)
-  bookAccount  Account? @relation("VoucherBookAccount", fields: [bookAccountId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  description  String? @db.NVarChar(MAX)
-  reference    String? @db.NVarChar(255)
-  status       String @db.NVarChar(255)   @default("Draft")
-  postedById   String? @db.NVarChar(50)
-  postedAt     DateTime?
-  reversedById String? @db.NVarChar(50)
-  reversedAt   DateTime?
-  reversalReason String? @db.NVarChar(255)
-  totalDebit   Float    @default(0)
-  totalCredit  Float    @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  lines      VoucherLine[]
-  cheques    Cheque[]
-  feePayments FeePayment[]
-  fees       Fee[]     @relation("FeeVoucher")
-  payrolls   Payroll[]
-
-  @@index([voucherType])
-  @@index([voucherDate])
-  @@index([branchId])
-  @@index([status])
-}
-
-model VoucherLine {
-  id         String @db.NVarChar(50)   @id @default(cuid())
-  voucherId  String @db.NVarChar(50)
-  voucher    Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  accountId  String @db.NVarChar(50)
-  account    Account  @relation(fields: [accountId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  lineDescription String? @db.NVarChar(255)
-  title      String? @db.NVarChar(255)
-  reference  String? @db.NVarChar(255)
-  amount     Float    @default(0)
-  debit      Float    @default(0)
-  credit     Float    @default(0)
-  taxAccountId String? @db.NVarChar(50)
-  taxRate    Float    @default(0)
-  taxAmount  Float    @default(0)
-  chequeNo   String? @db.NVarChar(255)
-  chequeAmount Float?
-  chequeBankName String? @db.NVarChar(255)
-  chequeStatus String? @db.NVarChar(255)
-  status     String @db.NVarChar(255)   @default("Active")
-  createdAt  DateTime @default(now())
-
-  @@index([voucherId])
-  @@index([accountId])
-}
-
 model Cheque {
   id         String @db.NVarChar(50)   @id @default(cuid())
-  voucherId  String @db.NVarChar(50)
-  voucher    Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  voucherId  String @db.NVarChar(50)          // = BankbookVoucher id (BRV/BPV voucher number)
+  voucher    BankbookVoucher @relation(fields: [voucherId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   chequeNo   String @db.NVarChar(255)
   chequeDate DateTime
   bankName   String? @db.NVarChar(255)
@@ -333,7 +480,7 @@ model AccountMapping {
   branchId    String? @db.NVarChar(50)
   key         String @db.NVarChar(255)
   accountId   String @db.NVarChar(50)
-  account     Account  @relation(fields: [accountId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  account     Chart  @relation(fields: [accountId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   description String? @db.NVarChar(MAX)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -409,10 +556,7 @@ model Member {
   workoutAssignments WorkoutAssignment[]
   dietAssignments    DietAssignment[]
   fitnessGoals       FitnessGoal[]
-  fitnessAssessments  FitnessAssessment[]
   ptSessions         PersonalTrainingSession[]
-  classEnrollments   ClassEnrollment[] @relation("ClassEnrollmentMember")
-  memberDocuments    MemberDocument[]
 
   @@index([branchId])
   @@index([status])
@@ -468,8 +612,7 @@ model Fee {
   paymentAccountId String? @db.NVarChar(50)
   paymentDate  DateTime?
   reference    String? @db.NVarChar(255)
-  voucherId    String? @db.NVarChar(50)
-  voucher      Voucher? @relation("FeeVoucher", fields: [voucherId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  bookVoucherId String? @db.NVarChar(50)  // CRV/CPV/BRV/BPV voucher number posted on payment
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -485,8 +628,7 @@ model FeePayment {
   id         String @db.NVarChar(50)   @id @default(cuid())
   feeId      String @db.NVarChar(50)
   fee        Fee       @relation(fields: [feeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  voucherId  String @db.NVarChar(50)
-  voucher    Voucher   @relation(fields: [voucherId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  bookVoucherId String @db.NVarChar(50) // CRV (cash) or BRV (bank) voucher number
   amount     Float
   method     String @db.NVarChar(255)   // Cash | Card | Bank Transfer | Online
   accountId  String @db.NVarChar(50)
@@ -781,7 +923,7 @@ model PosSale {
   total      Float
   paymentMethod String @db.NVarChar(255)
   paymentAccountId String? @db.NVarChar(50)
-  voucherId  String? @db.NVarChar(50)
+  bookVoucherId String? @db.NVarChar(50) // CRV/BRV voucher number auto-posted on sale
   status     String @db.NVarChar(255)   @default("Completed")
   notes      String? @db.NVarChar(MAX)
   createdAt  DateTime @default(now())
@@ -880,8 +1022,11 @@ model CalendarDay {
 
 model Leave {
   id         String @db.NVarChar(50)   @id @default(cuid())
+  leaveNo    String @db.NVarChar(50)   @unique   // business id, format LV-0001
   staffId    String @db.NVarChar(50)
   staff      Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  branchId   String? @db.NVarChar(50)
+  branch     Branch?  @relation("LeaveBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   leaveType  String @db.NVarChar(255)
   fromDate   DateTime
   toDate     DateTime
@@ -932,21 +1077,12 @@ model Payroll {
   totalDeductions Float
   netPay     Float
   status     String @db.NVarChar(255)   @default("Draft")
-  voucherId  String? @db.NVarChar(50)
-  voucher    Voucher? @relation(fields: [voucherId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  bookVoucherId String? @db.NVarChar(50) // CPV/BPV voucher number when salary posted
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   @@unique([staffId, month, year])
   @@index([branchId])
-}
-
-model LeaveType {
-  id         String @db.NVarChar(50)   @id @default(cuid())
-  name       String @db.NVarChar(191)   @unique
-  allowedDays Int
-  isPaid     Boolean  @default(false)
-  createdAt  DateTime @default(now())
 }
 
 model Allowance {
@@ -957,14 +1093,33 @@ model Allowance {
   createdAt  DateTime @default(now())
 }
 
+// Payroll master file — earning/deduction heads used by the payroll engine
+model PayrollMasterFile {
+  id         String @db.NVarChar(50)   @id @default(cuid())
+  code       String @db.NVarChar(50)   @unique
+  name       String @db.NVarChar(255)
+  type       String @db.NVarChar(255)   // Earning | Deduction
+  calcType   String @db.NVarChar(255)   @default("Fixed")  // Fixed | Percent
+  amount     Float  @default(0)              // fixed amount or percent value
+  isActive   Boolean  @default(true)
+  branchId   String? @db.NVarChar(50)
+  branch     Branch?  @relation("PayrollMasterFileBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([type])
+}
+
 // =================================================================
 // UNIVERSAL MASTER FILES — generic master record (Department, Designation, Education, Currency, etc.)
 // =================================================================
 model MasterFile {
   id         String @db.NVarChar(50)   @id @default(cuid())
-  masterType String @db.NVarChar(255)   // Department, Designation, Education, Currency, Allowance, LeaveType, etc.
+  masterType String @db.NVarChar(255)   // Department, Designation, Education, Currency, Allowance, LeaveType, Equipment, etc.
   code       String @db.NVarChar(255)   // auto-generated per masterType
   name       String @db.NVarChar(255)
+  branchId   String? @db.NVarChar(50)   // optional branch scoping (e.g. gym equipment master per branch)
+  branch     Branch?  @relation("MasterFileBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   description String? @db.NVarChar(MAX)
   isActive   Boolean  @default(true)
   // optional extra fields stored as JSON for masters that need more (e.g. Currency has symbol, ExchangeRate)
@@ -998,30 +1153,6 @@ model FitnessGoal {
   @@index([memberId])
 }
 
-model FitnessAssessment {
-  id         String @db.NVarChar(50)   @id @default(cuid())
-  memberId   String @db.NVarChar(50)
-  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  trainerId  String? @db.NVarChar(50)
-  branchId   String? @db.NVarChar(50)
-  branch     Branch?  @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  assessmentDate DateTime @default(now())
-  height     Float?
-  weight     Float?
-  bmi        Float?
-  bodyFat    Float?
-  chest      Float?
-  waist      Float?
-  arms       Float?
-  thighs     Float?
-  fitnessLevel String? @db.NVarChar(255)
-  goal       String? @db.NVarChar(255)
-  notes      String? @db.NVarChar(MAX)
-  createdAt  DateTime @default(now())
-
-  @@index([memberId, assessmentDate])
-}
-
 model PersonalTrainingSession {
   id         String @db.NVarChar(50)   @id @default(cuid())
   memberId   String @db.NVarChar(50)
@@ -1043,40 +1174,6 @@ model PersonalTrainingSession {
 
   @@index([memberId])
   @@index([trainerId])
-}
-
-model GymClass {
-  id         String @db.NVarChar(50)   @id @default(cuid())
-  name       String @db.NVarChar(255)
-  trainerId  String? @db.NVarChar(50)
-  branchId   String @db.NVarChar(50)
-  branch     Branch   @relation("ClassBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  capacity   Int      @default(20)
-  dayOfWeek  String @db.NVarChar(255)
-  startTime  String @db.NVarChar(255)
-  endTime    String @db.NVarChar(255)
-  status     String @db.NVarChar(255)   @default("Active")
-  notes      String? @db.NVarChar(MAX)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  enrollments ClassEnrollment[]
-}
-
-model ClassEnrollment {
-  id         String @db.NVarChar(50)   @id @default(cuid())
-  classId    String @db.NVarChar(50)
-  gymClass   GymClass @relation(fields: [classId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  memberId   String @db.NVarChar(50)
-  member     Member   @relation("ClassEnrollmentMember", fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  enrollmentDate DateTime @default(now())
-  status     String @db.NVarChar(255)   @default("Enrolled") // Enrolled, Cancelled, Completed
-  attended   Boolean  @default(false)
-  notes      String? @db.NVarChar(MAX)
-  createdAt  DateTime @default(now())
-
-  @@index([classId])
-  @@index([memberId])
 }
 
 model TrainerAvailability {
@@ -1112,24 +1209,6 @@ model TrainerSchedule {
   createdAt  DateTime @default(now())
 
   @@index([staffId, date])
-}
-
-model MemberDocument {
-  id         String @db.NVarChar(50)   @id @default(cuid())
-  memberId   String @db.NVarChar(50)
-  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  documentType String @db.NVarChar(255) // ID, Medical, Contract, Photo, Other
-  documentName String @db.NVarChar(255)
-  fileUrl    String @db.NVarChar(255)
-  issueDate  DateTime?
-  expiryDate DateTime?
-  status     String @db.NVarChar(255)   @default("Active")
-  notes      String? @db.NVarChar(MAX)
-  uploadedBy String? @db.NVarChar(255)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  @@index([memberId])
 }
 
 model StaffDocument {

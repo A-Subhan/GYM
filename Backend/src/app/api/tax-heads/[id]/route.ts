@@ -38,9 +38,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const existing = await db.taxHead.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: 'Tax head not found' }, { status: 404 })
 
-  // Check if tax head is used in any posted voucher line
-  const lineCount = await db.voucherLine.count({
-    where: { taxAccountId: id, voucher: { status: 'Posted' } },
+  // Check if tax head is used in any posted book voucher line
+  const lineCount = await db.bookVoucherLine.count({
+    where: { taxAccountId: id },
   })
   if (lineCount > 0) {
     // Soft delete (deactivate)

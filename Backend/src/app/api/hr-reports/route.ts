@@ -52,7 +52,8 @@ export async function GET(req: NextRequest) {
 
   if (report === 'overtime-report') {
     const records = await db.overtime.findMany({
-      where: { status: 'Approved', ...branchFilter },
+      // Overtime has no branchId — scope via the staff member's branch
+      where: { status: 'Approved', staff: { isDeleted: false, ...(allowed ? { branchId: { in: allowed } } : {}) } },
       include: { staff: true },
       orderBy: { date: 'desc' }
     })

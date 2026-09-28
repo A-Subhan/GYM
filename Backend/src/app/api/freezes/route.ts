@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const memberId = url.searchParams.get('memberId')
   const freezes = await db.membershipFreeze.findMany({
-    where: { ...(memberId ? { memberId } : {}) },
+    where: { ...(memberId ? { memberId } : {}), member: { isDeleted: false } },
     include: { member: true, branch: true },
     orderBy: { createdAt: 'desc' },
     take: 200,

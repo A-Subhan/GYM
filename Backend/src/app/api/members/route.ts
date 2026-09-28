@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, getSelectedBranchIds } from '@/lib/auth'
+import { makeBranchPeriodId } from '@/lib/ids'
+
+type FeeRow = Awaited<ReturnType<typeof db.fee.create>>
 
 export async function GET(req: NextRequest) {
   const session = await getSession()
@@ -63,40 +66,83 @@ export async function POST(req: NextRequest) {
   // Fee Relaxation Days: 0..27
   const feeRelaxationDays = Math.max(0, Math.min(27, Number(data.feeRelaxationDays) || 0))
 
-  // Auto-generate member ID
-  const count = await db.member.count()
-  const memberId = `M-${String(count + 1).padStart(5, '0')}`
+  const joiningDate = data.joiningDate ? new Date(data.joiningDate) : new Date()
+  const billingStartDate = data.billingStartDate ? new Date(data.billingStartDate) : joiningDate
 
-  const member = await db.member.create({
-    data: {
-      memberId,
-      firstName: data.firstName,
-      lastName: data.lastName,
-      gender: data.gender,
-      dob: data.dob ? new Date(data.dob) : null,
-      phone: data.phone,
-      whatsapp: data.whatsapp,
-      email: data.email,
-      address: data.address,
-      emergencyContact: data.emergencyContact,
-      emergencyContactNo: data.emergencyContactNo,
-      photo: data.photo,
-      cnic: data.cnic,
-      joiningDate: data.joiningDate ? new Date(data.joiningDate) : new Date(),
-      billingStartDate: data.billingStartDate ? new Date(data.billingStartDate) : (data.joiningDate ? new Date(data.joiningDate) : new Date()),
-      feeRelaxationDays,
-      status: data.status || 'Active',
-      membershipPlanId: data.membershipPlanId || null,
-      branchId: data.branchId,
-      assignedTrainerId: data.assignedTrainerId || null,
-      notes: data.notes,
-      isActive: data.isActive !== false,
-    },
-    include: { branch: true, membershipPlan: true },
+  // Branch code is required for the business member ID: {branchCode}/{MMMyy}/{00001}
+  const branch = await db.branch.findUnique({ where: { id: data.branchId } })
+  if (!branch) return NextResponse.json({ error: 'Invalid branch' }, { status: 400 })
+  const memberId = await makeBranchPeriodId('MEMBER', branch.code, joiningDate)
+
+  // Auto-generate the first period fee row (same transaction as member creation)
+  let feeNo: string | null = null
+  if (data.membershipPlanId) {
+    feeNo = await makeBranchPeriodId('FEE', branch.code, billingStartDate)
+  }
+
+  const { member, fee } = await db.$transaction(async (tx) => {
+    const created = await tx.member.create({
+      data: {
+        memberId,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        gender: data.gender,
+        dob: data.dob ? new Date(data.dob) : null,
+        phone: data.phone,
+        whatsapp: data.whatsapp,
+        email: data.email,
+        address: data.address,
+        emergencyContact: data.emergencyContact,
+        emergencyContactNo: data.emergencyContactNo,
+        photo: data.photo,
+        cnic: data.cnic,
+        joiningDate,
+        billingStartDate,
+        feeRelaxationDays,
+        status: data.status || 'Active',
+        membershipPlanId: data.membershipPlanId || null,
+        branchId: data.branchId,
+        assignedTrainerId: data.assignedTrainerId || null,
+        notes: data.notes,
+        isActive: data.isActive !== false,
+      },
+    })
+
+    let createdFee: FeeRow | null = null
+    if (feeNo && plan) {
+      // Billing period: [start, start + durationDays - 1]
+      const periodEnd = new Date(billingStartDate)
+      periodEnd.setDate(periodEnd.getDate() + plan.durationDays - 1)
+      periodEnd.setHours(23, 59, 59, 999)
+      // Due date: billing start + fee relaxation days + 10 days
+      const dueDate = new Date(billingStartDate)
+      dueDate.setDate(dueDate.getDate() + feeRelaxationDays + 10)
+      createdFee = await tx.fee.create({
+        data: {
+          feeNo,
+          memberId: created.id,
+          branchId: created.branchId,
+          billingPeriodStart: billingStartDate,
+          billingPeriodEnd: periodEnd,
+          amount: plan.amount,
+          discount: 0,
+          paidAmount: 0,
+          balance: plan.amount,
+          dueDate,
+          status: 'Unpaid',
+        },
+      })
+    }
+    return { member: created, fee: createdFee }
   })
 
   await db.auditLog.create({
-    data: { userId: session.id, action: 'CREATE', module: 'members', details: JSON.stringify({ id: member.id, memberId }) },
+    data: { userId: session.id, action: 'CREATE', module: 'members', details: JSON.stringify({ id: member.id, memberId, feeNo }) },
   })
-  return NextResponse.json({ member })
+
+  const full = await db.member.findUnique({
+    where: { id: member.id },
+    include: { branch: true, membershipPlan: true, fees: true },
+  })
+  return NextResponse.json({ member: full, fee })
 }

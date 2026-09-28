@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
+import { makeMembershipPlanId } from '@/lib/ids'
 
 export async function GET() {
   const session = await getSession()
@@ -14,18 +15,33 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!session.permissions.includes('memberships.add')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const data = await req.json()
-  if (!data.name || !data.durationDays) return NextResponse.json({ error: 'Name and duration required' }, { status: 400 })
-  const count = await db.membershipPlan.count()
-  const code = data.code || `MP-${String(count + 1).padStart(3, '0')}`
-  const plan = await db.membershipPlan.create({
-    data: {
-      code,
-      name: data.name,
-      durationDays: Number(data.durationDays),
-      amount: Number(data.amount) || 0,
-      description: data.description,
-      isActive: data.isActive !== false,
-    },
-  })
-  return NextResponse.json({ plan })
+  if (!data.name || !String(data.name).trim()) return NextResponse.json({ error: 'Name is required' }, { status: 400 })
+  const durationDays = Number(data.durationDays)
+  if (!durationDays || durationDays < 1) return NextResponse.json({ error: 'Duration must be at least 1 day' }, { status: 400 })
+  const amount = Number(data.amount)
+  if (isNaN(amount) || amount < 0) return NextResponse.json({ error: 'Amount must be a non-negative number' }, { status: 400 })
+
+  // Auto-generate the plan code (MP-0001, MP-0002, …) unless explicitly supplied.
+  // Previously a count-based code was used, which collided with existing rows and
+  // made plan creation fail with a unique-constraint error — that is the add bug.
+  const code = (data.code && String(data.code).trim()) || await makeMembershipPlanId()
+
+  try {
+    const plan = await db.membershipPlan.create({
+      data: {
+        code,
+        name: String(data.name).trim(),
+        durationDays,
+        amount,
+        description: data.description,
+        isActive: data.isActive !== false,
+      },
+    })
+    return NextResponse.json({ plan })
+  } catch (e: any) {
+    if (e?.code === 'P2002') {
+      return NextResponse.json({ error: `Plan code "${code}" already exists — please try again` }, { status: 400 })
+    }
+    throw e
+  }
 }

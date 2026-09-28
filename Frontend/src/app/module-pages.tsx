@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, type ReactNode } from 'react'
+import { useEffect, useState, useCallback, Fragment, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -17,7 +17,8 @@ import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { Plus, Search, Edit, Trash2, Eye, X, Save, ChevronDown, ChevronRight, Download, Printer, Banknote, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Eye, X, Save, ChevronDown, ChevronRight, Download, Printer, Banknote, AlertCircle, CheckCircle2, CalendarCheck, Snowflake, HandHeart, Copy, ImagePlus, Lock } from 'lucide-react'
+import { SCREENS } from '@/lib/screens'
 import {
   useApp, useFetch, apiPost, apiPatch, apiDelete,
   fmtMoney, fmtDateStr, fmtDateTime, PageHeader, SearchInput, EmptyState,
@@ -25,30 +26,33 @@ import {
 } from './modules'
 
 // =================================================================
-// CHART OF ACCOUNTS
+// CHART OF ACCOUNTS — /api/charts (id IS the account code)
 // =================================================================
 export function CoaModule() {
-  const { session, has } = useApp()
+  const { has } = useApp()
   const [search, setSearch] = useState('')
   const [type, setType] = useState('all')
-  const [bookType, setBookType] = useState('all')
   const [status, setStatus] = useState('all')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<any>({})
   const [editingAccount, setEditingAccount] = useState<any>(null)
+  const [viewing, setViewing] = useState<any>(null)
+  const [viewOpen, setViewOpen] = useState(false)
+  const [printTarget, setPrintTarget] = useState<any>(null)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
-  const { data, reload } = useFetch<any>(`/api/accounts?accountType=${type !== 'all' ? type : ''}&bookType=${bookType !== 'all' ? bookType : ''}`)
+  const { data, reload } = useFetch<any>(`/api/charts?${type !== 'all' ? `type=${type}&` : ''}${status !== 'all' ? `isActive=${status === 'active' ? 'true' : 'false'}` : ''}`)
 
-  const accounts = data?.accounts || []
+  const accounts = data?.charts || []
+  const selected = accounts.find((a: any) => a.id === selectedId) || null
   const roots = accounts.filter(a => !a.parentId)
   const matches = (a: any) => {
     if (!search) return true
     const q = search.toLowerCase()
-    if (a.name.toLowerCase().includes(q) || a.code.includes(q)) return true
-    // also match if any descendant matches
+    if (a.name.toLowerCase().includes(q) || a.id.toLowerCase().includes(q)) return true
     const hasMatchingDescendant = (id: string): boolean => {
-      return accounts.some((c: any) => c.parentId === id && (c.name.toLowerCase().includes(q) || c.code.includes(q) || hasMatchingDescendant(c.id)))
+      return accounts.some((c: any) => c.parentId === id && (c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q) || hasMatchingDescendant(c.id)))
     }
     return hasMatchingDescendant(a.id)
   }
@@ -79,17 +83,21 @@ export function CoaModule() {
     setForm({ ...a })
     setOpen(true)
   }
+  const openView = (a: any) => {
+    setViewing(a)
+    setViewOpen(true)
+  }
   const confirmDelete = async () => {
     if (!deleteTarget) return
     try {
-      const res = await fetch(`/api/accounts/${deleteTarget.id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/charts/${deleteTarget.id}`, { method: 'DELETE' })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Failed')
-      if (json.softDeleted) toast.success('Account deactivated (has posted transactions)')
-      else toast.success('Account deleted')
+      toast.success('Account deleted')
+      if (selectedId === deleteTarget.id) setSelectedId(null)
       setDeleteTarget(null)
       reload()
-    } catch (e: any) { toast.error(e.message) }
+    } catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
   }
 
   const renderNode = (a: any, depth = 0): ReactNode => {
@@ -99,39 +107,38 @@ export function CoaModule() {
     return (
       <div key={a.id}>
         <div
-          className={`flex items-center gap-2 px-2 py-1.5 hover:bg-muted/40 ${!a.isActive ? 'opacity-50' : ''}`}
+          className={`flex items-center gap-2 px-2 py-1.5 hover:bg-muted/40 cursor-pointer ${selectedId === a.id ? 'bg-muted/60' : ''} ${!a.isActive ? 'opacity-50' : ''}`}
           style={{ paddingLeft: `${depth * 20 + 8}px` }}
+          onClick={() => setSelectedId(a.id)}
         >
-          {/* Actions on LEFT */}
-          <div className="flex items-center gap-0.5 mr-1">
-            {has('finance.coa') && (
-              <button onClick={(e) => { e.stopPropagation(); openEdit(a) }} title="Edit" className="p-1 rounded hover:bg-muted text-foreground/70">
-                <Edit className="h-3 w-3" />
-              </button>
-            )}
-            {has('finance.coa') && (
-              <button onClick={(e) => { e.stopPropagation(); openAdd(a.id, a.accountType) }} title="Add child" className="p-1 rounded hover:bg-muted text-primary">
-                <Plus className="h-3 w-3" />
-              </button>
-            )}
-            {has('finance.coa') && (
-              <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(a) }} title="Delete / Deactivate" className="p-1 rounded hover:bg-muted text-red-600">
-                <Trash2 className="h-3 w-3" />
-              </button>
-            )}
-          </div>
-          {/* expand/collapse toggle */}
+          <button onClick={(e) => { e.stopPropagation(); setSelectedId(a.id); openView(a) }} title="View" className="p-1 rounded hover:bg-muted text-foreground/70">
+            <Eye className="h-3 w-3" />
+          </button>
+          {has('finance.coa') && (
+            <button onClick={(e) => { e.stopPropagation(); setSelectedId(a.id); openEdit(a) }} title="Edit" className="p-1 rounded hover:bg-muted text-foreground/70">
+              <Edit className="h-3 w-3" />
+            </button>
+          )}
+          {has('finance.coa') && (
+            <button onClick={(e) => { e.stopPropagation(); setSelectedId(a.id); openAdd(a.id, a.accountType) }} title="Add child" className="p-1 rounded hover:bg-muted text-primary">
+              <Plus className="h-3 w-3" />
+            </button>
+          )}
+          {has('finance.coa') && (
+            <button onClick={(e) => { e.stopPropagation(); setSelectedId(a.id); setDeleteTarget(a) }} title="Delete" className="p-1 rounded hover:bg-muted text-red-600">
+              <Trash2 className="h-3 w-3" />
+            </button>
+          )}
           <button onClick={() => children.length ? toggle(a.id) : null} className="flex items-center gap-2 flex-1 text-left">
             {children.length ? (
               isExpanded ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />
             ) : <div className="w-3" />}
-            <span className="font-mono text-xs text-muted-foreground w-20">{a.code}</span>
+            <span className="font-mono text-xs text-muted-foreground w-20">{a.id}</span>
             <span className="flex-1 text-sm">{a.name}</span>
           </button>
+          {a.parentId && <span className="hidden md:inline text-[10px] text-muted-foreground font-mono">↑ {a.parent?.name || a.parentId}</span>}
           <Badge variant="outline" className="text-xs">{a.accountType}</Badge>
-          {a.bookType && <Badge variant="secondary" className="text-xs">{a.bookType}</Badge>}
-          {a.isControl && <Badge className="text-xs">Control</Badge>}
-          {a.accountTag && <Badge variant="secondary" className="text-xs">{a.accountTag}</Badge>}
+          {a.isControl ? <Badge className="text-xs">Control</Badge> : <Badge variant="secondary" className="text-xs">Detail</Badge>}
           {!a.isActive && <Badge variant="destructive" className="text-xs">Inactive</Badge>}
         </div>
         {isExpanded && children.map((c: any) => renderNode(c, depth + 1))}
@@ -157,15 +164,6 @@ export function CoaModule() {
             <SelectItem value="Expense">Expense</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={bookType} onValueChange={setBookType}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="Book Type" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All book types</SelectItem>
-            <SelectItem value="Cash">Cash</SelectItem>
-            <SelectItem value="Bank">Bank</SelectItem>
-            <SelectItem value="General">General</SelectItem>
-          </SelectContent>
-        </Select>
         <Select value={status} onValueChange={setStatus}>
           <SelectTrigger className="w-32"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
@@ -178,6 +176,41 @@ export function CoaModule() {
         <Button variant="outline" size="sm" onClick={collapseAll}>Collapse All</Button>
         <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
       </Toolbar>
+
+      {/* Action panel for the selected account */}
+      {selected && (
+        <Card className="mb-3 border-primary/30">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs text-muted-foreground">{selected.id}</span>
+                  <span className="font-semibold text-sm">{selected.name}</span>
+                  <Badge variant="outline" className="text-xs">{selected.accountType}</Badge>
+                  {selected.isControl ? <Badge className="text-xs">Control</Badge> : <Badge variant="secondary" className="text-xs">Detail</Badge>}
+                  {!selected.isActive && <Badge variant="destructive" className="text-xs">Inactive</Badge>}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {selected.parentId ? `Parent: ${selected.parent?.name || selected.parentId}` : 'Root account'}
+                  {selected.bookType ? ` · Book: ${selected.bookType}` : ''}
+                  {selected.accountTag ? ` · Tag: ${selected.accountTag}` : ''}
+                </div>
+              </div>
+              <div className="flex gap-1.5">
+                <Button size="sm" variant="outline" onClick={() => openView(selected)}><Eye className="h-3.5 w-3.5 mr-1" />View</Button>
+                <Button size="sm" variant="outline" onClick={() => setPrintTarget(selected)}><Printer className="h-3.5 w-3.5 mr-1" />Print</Button>
+                {has('finance.coa') && (
+                  <>
+                    <Button size="sm" variant="outline" onClick={() => openEdit(selected)}><Edit className="h-3.5 w-3.5 mr-1" />Edit</Button>
+                    <Button size="sm" variant="destructive" onClick={() => setDeleteTarget(selected)}><Trash2 className="h-3.5 w-3.5 mr-1" />Delete</Button>
+                  </>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardContent className="p-0">
           {accounts.length === 0 ? <EmptyState message="No accounts" /> : roots.map((a: any) => renderNode(a, 0))}
@@ -193,47 +226,73 @@ export function CoaModule() {
         onSaved={() => { setOpen(false); reload() }}
         accounts={accounts}
       />
+      <AccountViewModal open={viewOpen} account={viewing} onClose={() => setViewOpen(false)} />
+      <AccountPrintModal open={!!printTarget} account={printTarget} onClose={() => setPrintTarget(null)} />
       <ConfirmModal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={confirmDelete}
         title="Delete Account"
-        message={deleteTarget ? `Delete or deactivate account "${deleteTarget.code} — ${deleteTarget.name}"? If the account has posted transactions it will be deactivated (soft delete) instead of removed.` : ''}
+        message={deleteTarget ? `Delete account "${deleteTarget.id} — ${deleteTarget.name}"? Accounts with voucher lines or child accounts cannot be deleted.` : ''}
       />
     </div>
   )
 }
 
 function AccountFormModal({ open, onClose, form, setForm, onSaved, accounts, editingAccount }: any) {
-  const parent = form.parentId ? accounts.find((a: any) => a.id === form.parentId) : null
   const isEdit = !!editingAccount
+  const parent = form.parentId ? accounts.find((a: any) => a.id === form.parentId) : null
+  const isControl = form.isControl === true
   const save = async () => {
+    const code = String(form.id || '').trim().toUpperCase()
+    if (!isEdit) {
+      if (!code) { toast.error('Account Code is required'); return }
+      if (/\s/.test(code)) { toast.error('Account Code cannot contain spaces'); return }
+    }
+    if (!form.name || !String(form.name).trim()) { toast.error('Account Name is required'); return }
+    if (!form.accountType) { toast.error('Account Type is required'); return }
+    if (!isControl && !form.parentId) { toast.error('Detail accounts require a Parent (control) account'); return }
     try {
+      const payload: any = {
+        ...form,
+        id: isEdit ? editingAccount.id : code,
+        isControl,
+        isDetail: !isControl,
+      }
       if (isEdit) {
-        await apiPatch(`/api/accounts/${editingAccount.id}`, form)
+        await apiPatch(`/api/charts/${editingAccount.id}`, payload)
         toast.success('Account updated')
       } else {
-        await apiPost('/api/accounts', form)
+        await apiPost('/api/charts', payload)
         toast.success('Account created')
       }
       onSaved()
     } catch (e: any) { toast.error(e.message) }
   }
   return (
-    <Modal open={open} onClose={onClose} title={isEdit ? `Edit Account ${editingAccount?.code || ''}` : 'Add Account'}
+    <Modal open={open} onClose={onClose} title={isEdit ? `Edit Account ${editingAccount?.id || ''}` : 'Add Account'} size="lg"
       footer={<>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
       </>}>
       <div className="grid grid-cols-2 gap-3">
+        <FormRow label="Account Code" required>
+          <Input
+            value={isEdit ? (editingAccount.id || '') : (form.id || '').toUpperCase()}
+            disabled={isEdit}
+            onChange={e => setForm({ ...form, id: e.target.value.toUpperCase() })}
+            placeholder="e.g. 01 or 01001"
+            className={`font-mono ${isEdit ? 'bg-muted/40' : ''}`}
+          />
+        </FormRow>
         <FormRow label="Account Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
-        <FormRow label="Parent Account">
+        <FormRow label="Parent Account (control accounts)">
           <Select value={form.parentId || '__root__'} onValueChange={v => setForm({ ...form, parentId: v === '__root__' ? null : v })}>
             <SelectTrigger><SelectValue placeholder="Root (no parent)" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__root__">Root (no parent)</SelectItem>
-              {accounts.filter((a: any) => !a.isDetail && a.id !== editingAccount?.id).map((a: any) => (
-                <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>
+              {accounts.filter((a: any) => a.isControl && a.id !== editingAccount?.id).map((a: any) => (
+                <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -247,6 +306,24 @@ function AccountFormModal({ open, onClose, form, setForm, onSaved, accounts, edi
               <SelectItem value="Equity">Capital / Equity</SelectItem>
               <SelectItem value="Revenue">Revenue</SelectItem>
               <SelectItem value="Expense">Expense</SelectItem>
+            </SelectContent>
+          </Select>
+        </FormRow>
+        <FormRow label="Control / Detail">
+          <Select value={isControl ? 'Control' : 'Detail'} onValueChange={v => setForm({ ...form, isControl: v === 'Control' })}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Control">Control Account</SelectItem>
+              <SelectItem value="Detail">Detail Account</SelectItem>
+            </SelectContent>
+          </Select>
+        </FormRow>
+        <FormRow label="Status">
+          <Select value={form.isActive === false ? 'Inactive' : 'Active'} onValueChange={v => setForm({ ...form, isActive: v === 'Active' })}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Active">Active</SelectItem>
+              <SelectItem value="Inactive">Inactive</SelectItem>
             </SelectContent>
           </Select>
         </FormRow>
@@ -272,260 +349,359 @@ function AccountFormModal({ open, onClose, form, setForm, onSaved, accounts, edi
             </SelectContent>
           </Select>
         </FormRow>
-        <FormRow label="Control / Detail">
-          <Select value={form.isControl ? 'Control' : 'Detail'} onValueChange={v => setForm({ ...form, isControl: v === 'Control' })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Control">Control Account</SelectItem>
-              <SelectItem value="Detail">Detail Account</SelectItem>
-            </SelectContent>
-          </Select>
-        </FormRow>
-        <FormRow label="Status">
-          <Select value={form.isActive === false ? 'Inactive' : 'Active'} onValueChange={v => setForm({ ...form, isActive: v === 'Active' })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Active">Active</SelectItem>
-              <SelectItem value="Inactive">Inactive</SelectItem>
-            </SelectContent>
-          </Select>
-        </FormRow>
-        <FormRow label={isEdit ? "Code (re-generated if parent changes)" : "Code (auto-generated)"}><Input value={form.code || 'auto'} disabled className="bg-muted/40" /></FormRow>
+        <FormRow label="STRN"><Input value={form.strn || ''} onChange={e => setForm({ ...form, strn: e.target.value })} /></FormRow>
+        <FormRow label="NTN"><Input value={form.ntn || ''} onChange={e => setForm({ ...form, ntn: e.target.value })} /></FormRow>
+        <FormRow label="FBR"><Input value={form.fbr || ''} onChange={e => setForm({ ...form, fbr: e.target.value })} /></FormRow>
+        <FormRow label="Payment Terms"><Input value={form.paymentTerms || ''} onChange={e => setForm({ ...form, paymentTerms: e.target.value })} /></FormRow>
+        <FormRow label="Bank Name"><Input value={form.bankName || ''} onChange={e => setForm({ ...form, bankName: e.target.value })} /></FormRow>
+        <FormRow label="Bank A/C #"><Input value={form.bankAccountNo || ''} onChange={e => setForm({ ...form, bankAccountNo: e.target.value })} /></FormRow>
+        <FormRow label="Bank Branch"><Input value={form.bankBranch || ''} onChange={e => setForm({ ...form, bankBranch: e.target.value })} /></FormRow>
+        <FormRow label="CNIC"><Input value={form.cnic || ''} onChange={e => setForm({ ...form, cnic: e.target.value })} /></FormRow>
         <FormRow label="Contact Name"><Input value={form.contactName || ''} onChange={e => setForm({ ...form, contactName: e.target.value })} /></FormRow>
         <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
         <FormRow label="Email"><Input value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
-        <FormRow label="CNIC"><Input value={form.cnic || ''} onChange={e => setForm({ ...form, cnic: e.target.value })} /></FormRow>
-        <FormRow label="NTN"><Input value={form.ntn || ''} onChange={e => setForm({ ...form, ntn: e.target.value })} /></FormRow>
-        <FormRow label="Bank Name"><Input value={form.bankName || ''} onChange={e => setForm({ ...form, bankName: e.target.value })} /></FormRow>
-        <FormRow label="Bank A/C #"><Input value={form.bankAccountNo || ''} onChange={e => setForm({ ...form, bankAccountNo: e.target.value })} /></FormRow>
-        <FormRow label="Opening Balance"><Input type="number" value={form.openingBalance || 0} onChange={e => setForm({ ...form, openingBalance: Number(e.target.value) })} /></FormRow>
-        <FormRow label="Opening Type">
-          <Select value={form.openingBalanceType || 'Dr'} onValueChange={v => setForm({ ...form, openingBalanceType: v })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="Dr">Debit</SelectItem><SelectItem value="Cr">Credit</SelectItem></SelectContent>
-          </Select>
-        </FormRow>
+        <div className="col-span-2"><FormRow label="Address"><Input value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></FormRow></div>
         <div className="col-span-2"><FormRow label="Description"><Textarea rows={2} value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow></div>
       </div>
-      {parent && <div className="mt-3 text-xs text-muted-foreground">Parent: <code>{parent.code} — {parent.name}</code>. Code will be auto-generated under this parent.</div>}
+      {parent && <div className="mt-3 text-xs text-muted-foreground">Parent: <code>{parent.id} — {parent.name}</code></div>}
+      {!isEdit && <div className="mt-2 text-xs text-muted-foreground">The Account Code is the unique account id. Opening balances are entered through Opening Trial Balance vouchers, not here.</div>}
+    </Modal>
+  )
+}
+
+function AccountViewModal({ open, account, onClose }: any) {
+  if (!account) return null
+  const rows: Array<[string, any]> = [
+    ['Code', account.id],
+    ['Name', account.name],
+    ['Type', account.accountType],
+    ['Parent', account.parent ? `${account.parent.id} — ${account.parent.name}` : '—'],
+    ['Nature', account.isControl ? 'Control' : 'Detail'],
+    ['Book Type', account.bookType || '—'],
+    ['Account Tag', account.accountTag || '—'],
+    ['Status', account.isActive ? 'Active' : 'Inactive'],
+    ['Contact Name', account.contactName || '—'],
+    ['Phone', account.phone || '—'],
+    ['Email', account.email || '—'],
+    ['CNIC', account.cnic || '—'],
+    ['STRN', account.strn || '—'],
+    ['NTN', account.ntn || '—'],
+    ['FBR', account.fbr || '—'],
+    ['Payment Terms', account.paymentTerms || '—'],
+    ['Bank Name', account.bankName || '—'],
+    ['Bank A/C #', account.bankAccountNo || '—'],
+    ['Bank Branch', account.bankBranch || '—'],
+    ['Address', account.address || '—'],
+    ['Description', account.description || '—'],
+  ]
+  return (
+    <Modal open={open} onClose={onClose} title={`Account ${account.id}`} size="lg"
+      footer={<Button variant="outline" onClick={onClose}>Close</Button>}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+        {rows.map(([k, v]) => (
+          <div key={k} className="flex gap-2 border-b last:border-0 pb-1">
+            <span className="text-xs text-muted-foreground w-28 shrink-0">{k}</span>
+            <span className="text-sm">{v}</span>
+          </div>
+        ))}
+      </div>
+    </Modal>
+  )
+}
+
+function AccountPrintModal({ open, account, onClose }: any) {
+  if (!account) return null
+  return (
+    <Modal open={open} onClose={onClose} title={`Print Account ${account.id}`} size="md"
+      footer={<>
+        <Button variant="outline" onClick={onClose}>Close</Button>
+        <Button onClick={() => window.print()}><Printer className="h-4 w-4 mr-1" />Print</Button>
+      </>}>
+      <div className="text-sm">
+        <div className="text-center mb-4">
+          <div className="text-lg font-semibold">Chart of Accounts — Account Detail</div>
+          <div className="text-xs text-muted-foreground">{account.id} — {account.name}</div>
+        </div>
+        <table className="w-full border">
+          <tbody>
+            {([
+              ['Code', account.id], ['Name', account.name], ['Type', account.accountType],
+              ['Parent', account.parent ? `${account.parent.id} — ${account.parent.name}` : '—'],
+              ['Nature', account.isControl ? 'Control' : 'Detail'],
+              ['Status', account.isActive ? 'Active' : 'Inactive'],
+              ['STRN', account.strn || '—'], ['NTN', account.ntn || '—'], ['FBR', account.fbr || '—'],
+              ['Payment Terms', account.paymentTerms || '—'],
+              ['Bank', [account.bankName, account.bankAccountNo, account.bankBranch].filter(Boolean).join(' · ') || '—'],
+              ['Contact', [account.contactName, account.phone, account.email].filter(Boolean).join(' · ') || '—'],
+              ['Address', account.address || '—'],
+            ] as Array<[string, any]>).map(([k, v]) => (
+              <tr key={k} className="border-b last:border-0">
+                <td className="px-3 py-1.5 text-xs text-muted-foreground w-32">{k}</td>
+                <td className="px-3 py-1.5 text-xs">{String(v)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </Modal>
   )
 }
 
 // =================================================================
-// VOUCHERS
+// BOOK VOUCHERS — cashbook / bankbook / journal / opening TB
+// Voucher id IS the voucher number (e.g. CRV/BR-001/Sep25/000001).
 // =================================================================
-export function VouchersModule({ presetType, presetTitle }: { presetType?: string, presetTitle?: string } = {}) {
-  const { session, has, selectedBranchIds } = useApp()
-  const [type, setType] = useState(presetType || 'all')
-  const [status, setStatus] = useState('all')
+
+export const BOOK_BILL_TYPES: Array<{ name: string; side: 'Debit' | 'Credit' | 'Both' | 'Auto' }> = [
+  { name: 'Sales Bill', side: 'Credit' },
+  { name: 'Sales Return', side: 'Debit' },
+  { name: 'Purchase Bill', side: 'Debit' },
+  { name: 'Purchase Return', side: 'Credit' },
+  { name: 'Receipt', side: 'Debit' },
+  { name: 'Payment', side: 'Credit' },
+  { name: 'Expense Bill', side: 'Debit' },
+  { name: 'Income / Other Income', side: 'Credit' },
+  { name: 'Contra / Adjustment', side: 'Both' },
+  { name: 'Opening Balance', side: 'Auto' },
+]
+
+export function endpointForBook(voucherType: string): string {
+  if (voucherType === 'CRV' || voucherType === 'CPV') return '/api/cashbook'
+  if (voucherType === 'BRV' || voucherType === 'BPV') return '/api/bankbook'
+  if (voucherType === 'JV') return '/api/journal-vouchers'
+  return '/api/opening-tb'
+}
+
+function voucherDr(v: any): number {
+  return v?.totalDebit ?? v?.totalAmount ?? 0
+}
+function voucherCr(v: any): number {
+  return v?.totalCredit ?? v?.totalAmount ?? 0
+}
+
+function voucherTypeLabel(vt: string): string {
+  const m: Record<string, string> = {
+    CRV: 'Cash Receipt Voucher', CPV: 'Cash Payment Voucher',
+    BRV: 'Bank Receipt Voucher', BPV: 'Bank Payment Voucher',
+    JV: 'Journal Voucher', OTV: 'Opening Trial Balance',
+  }
+  return m[vt] || vt
+}
+
+// ----------------------------------------------------------------
+// Generic book voucher screen (list + form + view/print/reverse)
+// ----------------------------------------------------------------
+export function BookVoucherScreen({ voucherType, title }: { voucherType: string, title: string }) {
+  const { has, branches } = useApp()
+  const endpoint = endpointForBook(voucherType)
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [branchFilter, setBranchFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('')
   const [search, setSearch] = useState('')
-  const [open, setOpen] = useState(false)
+  const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<any>(null)
-  const [viewOpen, setViewOpen] = useState(false)
   const [viewing, setViewing] = useState<any>(null)
-  const [reverseTarget, setReverseTarget] = useState<any>(null)
-  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const [viewOpen, setViewOpen] = useState(false)
   const [printTarget, setPrintTarget] = useState<any>(null)
-  const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
-  const { data, reload } = useFetch<any>(`/api/vouchers?voucherType=${type !== 'all' ? type : ''}&status=${status !== 'all' ? status : ''}${branchesParam}`)
+  const [reverseTarget, setReverseTarget] = useState<any>(null)
+  const [lastPosted, setLastPosted] = useState<any>(null)
 
-  const vouchers = (data?.vouchers || []).filter((v: any) =>
-    !search || v.voucherNo.toLowerCase().includes(search.toLowerCase()) || v.description?.toLowerCase().includes(search.toLowerCase()))
+  const qs = [
+    `type=${voucherType}`,
+    from ? `from=${from}` : '',
+    to ? `to=${to}` : '',
+    branchFilter !== 'all' ? `branchId=${branchFilter}` : '',
+    statusFilter ? `status=${statusFilter}` : '',
+    search ? `search=${encodeURIComponent(search)}` : '',
+  ].filter(Boolean).join('&')
+  const { data, reload } = useFetch<any>(`${endpoint}?${qs}`)
 
-  const doPost = async (r: any) => {
-    try {
-      await apiPatch(`/api/vouchers/${r.id}`, { action: 'post' })
-      toast.success('Voucher posted'); reload()
-    } catch (e: any) { toast.error(e.message) }
-  }
-  const doDelete = async () => {
-    if (!deleteTarget) return
-    try {
-      await apiDelete(`/api/vouchers/${deleteTarget.id}`)
-      toast.success('Voucher deleted'); setDeleteTarget(null); reload()
-    } catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
-  }
-  const doPrint = (r: any) => {
-    setPrintTarget(r)
+  const vouchers = data?.vouchers || []
+
+  const onSaved = (saved: any) => {
+    setFormOpen(false)
+    setEditing(null)
+    setLastPosted(saved || null)
+    reload()
   }
 
   return (
     <div>
-      <PageHeader title={presetTitle || 'Vouchers'}
-        action={has('vouchers.add') ? () => { setEditing(null); setOpen(true) } : undefined}
+      <PageHeader title={title}
+        action={has('vouchers.add') ? () => { setEditing(null); setFormOpen(true) } : undefined}
         actionLabel="New Voucher" />
+
+      {lastPosted && (
+        <Card className="mb-3 border-primary/40 bg-primary/5">
+          <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-xs text-muted-foreground">Voucher posted successfully — Voucher Number</div>
+              <div className="font-mono font-semibold text-base">{lastPosted.id}</div>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setPrintTarget(lastPosted)}><Printer className="h-3.5 w-3.5 mr-1" />Print</Button>
+              <Button size="sm" variant="ghost" onClick={() => setLastPosted(null)}>Dismiss</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Toolbar>
         <SearchInput value={search} onChange={setSearch} placeholder="Search voucher no, description…" />
-        {!presetType && (
-          <Select value={type} onValueChange={setType}>
-            <SelectTrigger className="w-40"><SelectValue placeholder="Type" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All types</SelectItem>
-              <SelectItem value="CRV">CRV — Cash Receipt</SelectItem>
-              <SelectItem value="CPV">CPV — Cash Payment</SelectItem>
-              <SelectItem value="BRV">BRV — Bank Receipt</SelectItem>
-              <SelectItem value="BPV">BPV — Bank Payment</SelectItem>
-              <SelectItem value="JV">JV — Journal</SelectItem>
-              <SelectItem value="OTB">OTB — Opening TB</SelectItem>
-              <SelectItem value="POS-SALE">POS Sale</SelectItem>
-              <SelectItem value="FEE">Fee Payment</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-        <Select value={status} onValueChange={setStatus}>
+        <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-36" title="From date" />
+        <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-36" title="To date" />
+        <Select value={branchFilter} onValueChange={setBranchFilter}>
+          <SelectTrigger className="w-40"><SelectValue placeholder="Branch" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All branches</SelectItem>
+            {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter || 'all'} onValueChange={v => setStatusFilter(v === 'all' ? '' : v)}>
           <SelectTrigger className="w-32"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All</SelectItem>
-            <SelectItem value="Draft">Draft</SelectItem>
             <SelectItem value="Posted">Posted</SelectItem>
             <SelectItem value="Reversed">Reversed</SelectItem>
           </SelectContent>
         </Select>
         <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
       </Toolbar>
+
       <DataTable
         columns={[
           { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
             <div className="flex gap-0.5">
               <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setViewing(r); setViewOpen(true) }} title="View"><Eye className="h-3.5 w-3.5" /></Button>
-              {r.status === 'Draft' && has('vouchers.edit') && (
-                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditing(r); setOpen(true) }} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>
+              {r.status !== 'Reversed' && has('vouchers.edit') && (
+                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditing(r); setFormOpen(true) }} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>
               )}
-              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); doPrint(r) }} title="Print"><Printer className="h-3.5 w-3.5" /></Button>
-              {r.status === 'Draft' && has('vouchers.post') && (
-                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); doPost(r) }} title="Post"><CheckCircle2 className="h-3.5 w-3.5 text-green-600" /></Button>
-              )}
-              {r.status === 'Draft' && has('vouchers.delete') && (
-                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r) }} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>
-              )}
+              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setPrintTarget(r) }} title="Print"><Printer className="h-3.5 w-3.5" /></Button>
               {r.status === 'Posted' && has('vouchers.reverse') && (
                 <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setReverseTarget(r) }} title="Reverse"><X className="h-3.5 w-3.5 text-amber-600" /></Button>
               )}
             </div>
           ) },
-          { key: 'voucherNo', label: 'Voucher #', mono: true },
-          { key: 'voucherType', label: 'Type' },
+          { key: 'id', label: 'Voucher #', mono: true },
           { key: 'voucherDate', label: 'Date', render: (r: any) => fmtDateStr(r.voucherDate) },
           { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
           { key: 'description', label: 'Description' },
-          { key: 'totalDebit', label: 'Debit', align: 'right', mono: true, render: (r: any) => fmtMoney(r.totalDebit) },
-          { key: 'totalCredit', label: 'Credit', align: 'right', mono: true, render: (r: any) => fmtMoney(r.totalCredit) },
+          { key: 'paymentMode', label: 'Mode', render: (r: any) => r.paymentMode || '—' },
+          { key: 'dr', label: 'Debit', align: 'right', mono: true, render: (r: any) => fmtMoney(voucherDr(r)) },
+          { key: 'cr', label: 'Credit', align: 'right', mono: true, render: (r: any) => fmtMoney(voucherCr(r)) },
           { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
         ]}
         rows={vouchers}
         onRowClick={(r: any) => { setViewing(r); setViewOpen(true) }}
       />
 
-      <VoucherFormModal open={open} onClose={() => setOpen(false)} defaultType={presetType || (type !== 'all' ? type : 'CRV')} editing={editing} onSaved={() => { setOpen(false); reload() }} />
+      <BookVoucherFormModal
+        open={formOpen}
+        onClose={() => { setFormOpen(false); setEditing(null) }}
+        voucherType={voucherType}
+        editing={editing}
+        onSaved={onSaved}
+      />
       <VoucherViewModal open={viewOpen} voucher={viewing} onClose={() => setViewOpen(false)} />
-      <ReverseModal open={!!reverseTarget} voucher={reverseTarget} onClose={() => setReverseTarget(null)} onDone={() => { setReverseTarget(null); reload() }} />
-      <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={doDelete} title="Delete Voucher" message={deleteTarget ? `Delete draft voucher ${deleteTarget.voucherNo}? Posted vouchers cannot be deleted — reverse instead.` : ''} />
       <VoucherPrintModal open={!!printTarget} voucher={printTarget} onClose={() => setPrintTarget(null)} />
+      <ReverseModal open={!!reverseTarget} voucher={reverseTarget} onClose={() => setReverseTarget(null)} onDone={() => { setReverseTarget(null); reload() }} />
     </div>
   )
 }
 
-function VoucherFormModal({ open, onClose, defaultType, onSaved, editing }: any) {
+// ----------------------------------------------------------------
+// Voucher form modal — handles CRV/CPV/BRV/BPV/JV and OTV
+// ----------------------------------------------------------------
+function BookVoucherFormModal({ open, onClose, voucherType, editing, onSaved }: any) {
   const { session, branches } = useApp()
-  const { data: accountsData } = useFetch<any>('/api/accounts')
-  const { data: taxHeadsData } = useFetch<any>('/api/tax-heads')
-  const accounts = accountsData?.accounts || []
-  const detailAccounts = accounts.filter((a: any) => a.isDetail && a.isActive)
-  const taxHeads = taxHeadsData?.taxHeads || []
-  // Book Accounts: filtered by voucher type
-  //   CRV/CPV → Cash accounts; BRV/BPV → Bank accounts; JV → none
-  const isCashType = defaultType === 'CRV' || defaultType === 'CPV'
-  const isBankType = defaultType === 'BRV' || defaultType === 'BPV'
-  const isJV = defaultType === 'JV' || defaultType === 'OTB'
-  const bookAccounts = accounts.filter((a: any) =>
-    a.isActive && (isCashType ? a.bookType === 'Cash' : isBankType ? a.bookType === 'Bank' : false)
-  )
-  // For CRV/BRV: detail lines are CREDITED (book debited)
-  // For CPV/BPV: detail lines are DEBITED (book credited)
-  // For JV: user enters both Dr and Cr manually
-  const detailIsCredit = defaultType === 'CRV' || defaultType === 'BRV'
+  const endpoint = endpointForBook(voucherType)
+  const isJVorOTB = voucherType === 'JV' || voucherType === 'OTV'
+  const isJV = voucherType === 'JV'
+  const isOTB = voucherType === 'OTV'
+  const isBank = voucherType === 'BRV' || voucherType === 'BPV'
+  const isCash = voucherType === 'CRV' || voucherType === 'CPV'
+  // For CRV/BRV: detail lines are CREDITED (book debited); CPV/BPV: details DEBITED
+  const detailIsCredit = voucherType === 'CRV' || voucherType === 'BRV'
+
   const [form, setForm] = useState<any>({
     voucherDate: new Date().toISOString().slice(0, 10),
-    reference: '',
-    bookAccountId: '',
-    branchId: session?.branchId || branches[0]?.id || '',
+    branchId: '',
+    bookChartId: '',
+    paymentMode: 'Cash',
+    chequeDate: '',
     description: '',
-    lines: [emptyLine()],
+    reference: '',
+    lines: [],
   })
+
+  const { data: chartsData } = useFetch<any>(form.branchId ? `/api/charts?branchId=${form.branchId}` : '/api/charts')
+  const { data: taxHeadsData } = useFetch<any>('/api/tax-heads')
+  const charts = chartsData?.charts || []
+  const detailAccounts = charts.filter((a: any) => a.isDetail && a.isActive)
+  const bookAccounts = charts.filter((a: any) => a.isActive && (isCash
+    ? (a.bookType === 'Cash' || a.accountTag === 'Cash')
+    : (a.bookType === 'Bank' || a.accountTag === 'Bank')))
+  const taxHeads = taxHeadsData?.taxHeads || []
+  const paymentModes = isBank ? ['Cash', 'Cheque', 'Online Transfer'] : ['Cash', 'Cheque']
 
   function emptyLine() {
     return {
       accountId: '',
       lineDescription: '',
-      title: '',
-      reference: '',
       amount: 0,
       debit: 0,
       credit: 0,
-      taxAccountId: '',
+      billType: '',
+      taxHeadId: '',
       taxRate: 0,
       taxAmount: 0,
       chequeNo: '',
-      chequeAmount: 0,
       chequeBankName: '',
-      chequeStatus: '',
-      status: 'Active',
     }
   }
 
-  // Load form when modal opens or editing changes
   useEffect(() => {
     if (!open) return
     if (editing) {
-      // editing existing draft — prefill from voucher + lines
-      const detailLines = (editing.lines || []).filter((l: any) => l.accountId !== editing.bookAccountId).map((l: any) => ({
-        accountId: l.accountId,
-        lineDescription: l.lineDescription || '',
-        title: l.title || '',
-        reference: l.reference || '',
-        amount: l.amount || (l.debit || l.credit) || 0,
-        debit: l.debit || 0,
-        credit: l.credit || 0,
-        taxAccountId: l.taxAccountId || '',
-        taxRate: l.taxRate || 0,
-        taxAmount: l.taxAmount || 0,
-        chequeNo: l.chequeNo || '',
-        chequeAmount: l.chequeAmount || 0,
-        chequeBankName: l.chequeBankName || '',
-        chequeStatus: l.chequeStatus || '',
-        status: l.status || 'Active',
-      }))
+      const detailLines = (editing.lines || [])
+        .filter((l: any) => isJVorOTB || !(l.accountId === editing.bookChartId && !l.billType))
+        .map((l: any) => ({
+          accountId: l.accountId,
+          lineDescription: l.lineDescription || '',
+          amount: l.amount || (l.debit || l.credit) || 0,
+          debit: l.debit || 0,
+          credit: l.credit || 0,
+          billType: l.billType || '',
+          taxHeadId: '',
+          taxRate: l.taxRate || 0,
+          taxAmount: l.taxAmount || 0,
+          chequeNo: l.chequeNo || '',
+          chequeBankName: l.chequeBankName || '',
+        }))
       setForm({
-        voucherDate: editing.voucherDate?.slice(0, 10) || new Date().toISOString().slice(0, 10),
-        reference: editing.reference || '',
-        bookAccountId: editing.bookAccountId || '',
+        voucherDate: new Date(editing.voucherDate).toISOString().slice(0, 10),
         branchId: editing.branchId || '',
+        bookChartId: editing.bookChartId || '',
+        paymentMode: editing.paymentMode || 'Cash',
+        chequeDate: '',
         description: editing.description || '',
+        reference: editing.reference || '',
         lines: detailLines.length ? detailLines : [emptyLine()],
       })
     } else {
       setForm({
         voucherDate: new Date().toISOString().slice(0, 10),
-        reference: '',
-        bookAccountId: '',
         branchId: session?.branchId || branches[0]?.id || '',
+        bookChartId: '',
+        paymentMode: 'Cash',
+        chequeDate: '',
         description: '',
+        reference: '',
         lines: [emptyLine()],
       })
     }
   }, [open, editing])
-
-  // Compute totals.
-  // For CRV/BRV: book is debited total of detail amounts; detail lines are credited.
-  // For CPV/BPV: book is credited total of detail amounts; detail lines are debited.
-  // For JV: detail totals = sum of debit + sum of credit; must equal.
-  const totalDetailAmount = form.lines.reduce((s: number, l: any) => s + (Number(l.amount) || 0), 0)
-  const totalDebitJV = form.lines.reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0)
-  const totalCreditJV = form.lines.reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0)
-  const balancedJV = Math.abs(totalDebitJV - totalCreditJV) < 0.01
-  const bookAccountSideLabel = isJV ? '' : (detailIsCredit ? 'Book Account Debit' : 'Book Account Credit')
-  const balanced = isJV ? balancedJV : (form.bookAccountId && form.lines.length > 0 && form.lines.every((l: any) => l.accountId) && totalDetailAmount > 0)
 
   const setLine = (i: number, patch: any) => {
     setForm((f: any) => ({ ...f, lines: f.lines.map((l: any, idx: number) => idx === i ? { ...l, ...patch } : l) }))
@@ -533,159 +709,124 @@ function VoucherFormModal({ open, onClose, defaultType, onSaved, editing }: any)
   const addLine = () => setForm((f: any) => ({ ...f, lines: [...f.lines, emptyLine()] }))
   const removeLine = (i: number) => setForm((f: any) => ({ ...f, lines: f.lines.filter((_: any, idx: number) => idx !== i) }))
 
-  // Auto-calc tax amount when amount or taxRate changes (for non-JV)
+  const taxCalc = (amount: number, rate: number) => Math.round((Number(amount) || 0) * (Number(rate) || 0)) / 100
+
+  // non-JV amount change: recompute tax live
   const onLineAmountChange = (i: number, amt: number) => {
     const l = form.lines[i]
-    const taxRate = Number(l.taxRate) || 0
-    const taxAmount = Math.round(amt * taxRate) / 100
-    setLine(i, { amount: amt, debit: 0, credit: 0, taxAmount: l.taxAccountId ? taxAmount : 0 })
+    setLine(i, { amount: amt, taxAmount: l.taxHeadId ? taxCalc(amt, l.taxRate) : 0 })
   }
-  const onLineTaxAccountChange = (i: number, taxAccountId: string) => {
+  // tax head change: rate readonly from the head, tax amount recomputed
+  const onLineTaxHeadChange = (i: number, taxHeadId: string) => {
     const l = form.lines[i]
-    // find tax head to get its rate
-    const th = taxHeads.find((t: any) => t.id === taxAccountId)
-    const taxRate = th?.rate || 0
-    const amt = Number(l.amount) || 0
-    const taxAmount = taxAccountId && amt ? Math.round(amt * taxRate) / 100 : 0
-    setLine(i, { taxAccountId, taxRate, taxAmount })
+    const th = taxHeads.find((t: any) => t.id === taxHeadId)
+    const taxRate = taxHeadId ? (th?.rate || 0) : 0
+    setLine(i, { taxHeadId, taxRate, taxAmount: taxHeadId ? taxCalc(l.amount, taxRate) : 0 })
   }
-  const onLineTaxRateChange = (i: number, taxRate: number) => {
+
+  // JV/OTB: bill type auto-sets the side
+  const onLineBillTypeChange = (i: number, billType: string) => {
     const l = form.lines[i]
-    const amt = Number(l.amount) || 0
-    const taxAmount = l.taxAccountId && amt ? Math.round(amt * taxRate) / 100 : 0
-    setLine(i, { taxRate, taxAmount })
+    const entry = BOOK_BILL_TYPES.find(b => b.name === billType)
+    if (!isJVorOTB || !entry) { setLine(i, { billType }); return }
+    const amt = Number(l.amount) || Number(l.debit) || Number(l.credit) || 0
+    if (entry.side === 'Debit') setLine(i, { billType, debit: amt, credit: 0, amount: amt })
+    else if (entry.side === 'Credit') setLine(i, { billType, credit: amt, debit: 0, amount: amt })
+    else setLine(i, { billType })
   }
+  // JV/OTB: entering debit/credit moves the side
+  const onLineDebitChange = (i: number, val: number) => {
+    const l = form.lines[i]
+    const entry = BOOK_BILL_TYPES.find(b => b.name === l.billType)
+    if (entry && entry.side === 'Credit') { setLine(i, { credit: val, debit: 0, amount: val }); return }
+    setLine(i, { debit: val, credit: 0, amount: val })
+  }
+  const onLineCreditChange = (i: number, val: number) => {
+    const l = form.lines[i]
+    const entry = BOOK_BILL_TYPES.find(b => b.name === l.billType)
+    if (entry && entry.side === 'Debit') { setLine(i, { debit: val, credit: 0, amount: val }); return }
+    setLine(i, { credit: val, debit: 0, amount: val })
+  }
+
+  const totalDetailAmount = form.lines.reduce((s: number, l: any) => s + (Number(l.amount) || 0), 0)
+  const totalTax = form.lines.reduce((s: number, l: any) => s + (Number(l.taxAmount) || 0), 0)
+  const totalDebit = form.lines.reduce((s: number, l: any) => s + (Number(l.debit) || 0), 0)
+  const totalCredit = form.lines.reduce((s: number, l: any) => s + (Number(l.credit) || 0), 0)
+  const difference = Math.round((totalDebit - totalCredit) * 100) / 100
+  const balancedJV = Math.abs(difference) < 0.01
+  const chequeMode = !isJVorOTB && form.paymentMode === 'Cheque'
 
   const save = async () => {
-    if (!form.voucherDate || !form.branchId) {
-      toast.error('Date and branch are required'); return
+    if (!form.voucherDate || !form.branchId) { toast.error('Date and branch are required'); return }
+    if (!isJVorOTB && !form.bookChartId) { toast.error('Book Account is required'); return }
+    if (form.lines.length === 0 || !form.lines[0].accountId) { toast.error('At least one detail line with an account is required'); return }
+    if (isJVorOTB && !balancedJV && voucherType === 'JV') {
+      toast.error(`Journal Voucher must balance: Dr ${fmtMoney(totalDebit)} vs Cr ${fmtMoney(totalCredit)}`)
+      return
     }
-    if (!isJV && !form.bookAccountId) {
-      toast.error('Book Account is required for cash/bank vouchers'); return
-    }
-    if (form.lines.length === 0 || !form.lines[0].accountId) {
-      toast.error('At least one detail line is required'); return
-    }
-    if (isJV && !balancedJV) {
-      toast.error(`JV not balanced: Debit ${totalDebitJV} vs Credit ${totalCreditJV}`); return
-    }
-    if (!isJV && totalDetailAmount <= 0) {
-      toast.error('Total amount must be greater than zero'); return
-    }
-    try {
-      const payload: any = {
-        voucherType: defaultType,
-        voucherDate: form.voucherDate,
-        branchId: form.branchId,
-        bookAccountId: isJV ? null : form.bookAccountId,
-        description: form.description,
-        reference: form.reference,
-        status: 'Posted',
-        lines: form.lines.map((l: any) => ({
-          accountId: l.accountId,
-          amount: Number(l.amount) || 0,
-          debit: isJV ? (Number(l.debit) || 0) : 0,
-          credit: isJV ? (Number(l.credit) || 0) : 0,
-          lineDescription: l.lineDescription,
-          title: l.title,
-          reference: l.reference,
-          taxAccountId: l.taxAccountId || null,
-          taxRate: Number(l.taxRate) || 0,
-          taxAmount: Number(l.taxAmount) || 0,
-          chequeNo: l.chequeNo || null,
-          chequeAmount: l.chequeAmount ? Number(l.chequeAmount) : null,
-          chequeBankName: l.chequeBankName || null,
-          chequeStatus: l.chequeStatus || null,
-          status: l.status || 'Active',
-        })),
-      }
-      if (editing) payload.existingVoucherId = editing.id
-      await apiPost('/api/vouchers', payload)
-      toast.success(editing ? 'Voucher updated' : 'Voucher posted')
-      onSaved()
-    } catch (e: any) { toast.error(e.message) }
-  }
+    if (!isJVorOTB && totalDetailAmount <= 0) { toast.error('Total amount must be greater than zero'); return }
+    if (isOTB && form.description && form.description.length > 20) { toast.error('Description must be 20 characters or less for Opening Trial Balance'); return }
 
-  const saveDraft = async () => {
-    if (!form.voucherDate || !form.branchId) {
-      toast.error('Date and branch are required'); return
+    const payload: any = {
+      voucherType,
+      voucherDate: form.voucherDate,
+      branchId: form.branchId,
+      bookChartId: isJVorOTB ? null : form.bookChartId,
+      paymentMode: isJVorOTB ? undefined : form.paymentMode,
+      description: form.description,
+      reference: form.reference,
+      chequeDate: chequeMode && form.chequeDate ? form.chequeDate : null,
+      allowUnbalanced: isOTB,
+      lines: form.lines.map((l: any) => ({
+        accountId: l.accountId,
+        amount: isJVorOTB ? 0 : (Number(l.amount) || 0),
+        debit: isJVorOTB ? (Number(l.debit) || 0) : 0,
+        credit: isJVorOTB ? (Number(l.credit) || 0) : 0,
+        lineDescription: l.lineDescription || undefined,
+        billType: l.billType || undefined,
+        taxRate: Number(l.taxRate) || 0,
+        taxAmount: Number(l.taxAmount) || 0,
+        chequeNo: chequeMode && l.chequeNo ? l.chequeNo : undefined,
+        chequeBankName: chequeMode && l.chequeBankName ? l.chequeBankName : undefined,
+      })),
     }
     try {
-      const payload: any = {
-        voucherType: defaultType,
-        voucherDate: form.voucherDate,
-        branchId: form.branchId,
-        bookAccountId: isJV ? null : form.bookAccountId,
-        description: form.description,
-        reference: form.reference,
-        status: 'Draft',
-        lines: form.lines.map((l: any) => ({
-          accountId: l.accountId,
-          amount: Number(l.amount) || 0,
-          debit: isJV ? (Number(l.debit) || 0) : 0,
-          credit: isJV ? (Number(l.credit) || 0) : 0,
-          lineDescription: l.lineDescription,
-          title: l.title,
-          reference: l.reference,
-          taxAccountId: l.taxAccountId || null,
-          taxRate: Number(l.taxRate) || 0,
-          taxAmount: Number(l.taxAmount) || 0,
-          chequeNo: l.chequeNo || null,
-          chequeAmount: l.chequeAmount ? Number(l.chequeAmount) : null,
-          chequeBankName: l.chequeBankName || null,
-          chequeStatus: l.chequeStatus || null,
-          status: l.status || 'Active',
-        })),
-      }
-      if (editing) payload.existingVoucherId = editing.id
-      await apiPost('/api/vouchers', payload)
-      toast.success('Draft saved')
-      onSaved()
+      const res = editing
+        ? await apiPatch(`${endpoint}/${editing.id}`, payload)
+        : await apiPost(endpoint, payload)
+      toast.success(editing ? 'Voucher updated' : `Voucher posted: ${res.voucher?.id || ''}`)
+      onSaved(res.voucher)
     } catch (e: any) { toast.error(e.message) }
   }
 
   const title = editing
-    ? `Edit ${voucherTypeLabel(defaultType)} ${editing.voucherNo}`
-    : `New ${voucherTypeLabel(defaultType)}`
+    ? `Edit ${voucherTypeLabel(voucherType)} ${editing.id}`
+    : `New ${voucherTypeLabel(voucherType)}`
+
+  const canSave = isJVorOTB ? true : (form.bookChartId && form.branchId && form.lines.some((l: any) => l.accountId && Number(l.amount) > 0))
 
   return (
     <Modal open={open} onClose={onClose} title={title} size="xl"
       footer={<>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
-        {!editing && <Button variant="outline" onClick={saveDraft}><Save className="h-4 w-4 mr-1" />Save as Draft</Button>}
-        <Button onClick={save} disabled={!balanced}>
+        {isOTB && (
+          <span className={`text-xs font-medium mr-2 ${balancedJV ? 'text-green-600' : 'text-amber-600'}`}>
+            Difference (Dr − Cr): {difference > 0 ? '+' : ''}{fmtMoney(difference)} {balancedJV ? '· Balanced' : '· will be saved unbalanced'}
+          </span>
+        )}
+        <Button onClick={save} disabled={!canSave}>
           <Save className="h-4 w-4 mr-1" />
-          {isJV
-            ? (balancedJV ? 'Post Voucher' : `Out of balance: ${Math.abs(totalDebitJV - totalCreditJV).toFixed(2)}`)
-            : (balanced ? 'Post Voucher' : 'Fill all required fields')}
+          {isJV ? (balancedJV ? 'Post Voucher' : `Out of balance: ${fmtMoney(Math.abs(difference))}`) : 'Post Voucher'}
         </Button>
       </>}>
-      {/* HEADER: Date | Reference (small) | Book Account | Branch */}
+      {/* Header fields */}
       <div className="grid grid-cols-2 sm:grid-cols-12 gap-3 items-end">
         <div className="sm:col-span-3">
-          <FormRow label="Date" required><Input type="date" value={form.voucherDate} onChange={e => setForm({ ...form, voucherDate: e.target.value })} /></FormRow>
-        </div>
-        <div className="sm:col-span-3">
-          <FormRow label="Reference #"><Input value={form.reference || ''} onChange={e => setForm({ ...form, reference: e.target.value })} placeholder="Optional" /></FormRow>
-        </div>
-        <div className="sm:col-span-3">
-          {isJV ? (
-            <FormRow label="Book Account"><Input disabled value="— Not required for JV —" className="bg-muted/40 text-xs" /></FormRow>
-          ) : (
-            <FormRow label="Book Account" required>
-              <Select value={form.bookAccountId || '__none__'} onValueChange={v => setForm({ ...form, bookAccountId: v === '__none__' ? '' : v })}>
-                <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">— Select —</SelectItem>
-                  {bookAccounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </FormRow>
-          )}
+          <FormRow label="Voucher Date" required><Input type="date" value={form.voucherDate} onChange={e => setForm({ ...form, voucherDate: e.target.value })} /></FormRow>
         </div>
         <div className="sm:col-span-3">
           <FormRow label="Branch" required>
-            <Select value={form.branchId || '__none__'} onValueChange={v => setForm({ ...form, branchId: v === '__none__' ? '' : v })}>
+            <Select value={form.branchId || '__none__'} onValueChange={v => setForm({ ...form, branchId: v === '__none__' ? '' : v, bookChartId: '' })}>
               <SelectTrigger><SelectValue placeholder="Select branch" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">— Select —</SelectItem>
@@ -694,19 +835,73 @@ function VoucherFormModal({ open, onClose, defaultType, onSaved, editing }: any)
             </Select>
           </FormRow>
         </div>
-        <div className="sm:col-span-12">
-          <FormRow label="Description"><Input value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Voucher description" /></FormRow>
+        <div className="sm:col-span-3">
+          {isJVorOTB ? (
+            <FormRow label="Book Account"><Input disabled value="— Not required —" className="bg-muted/40 text-xs" /></FormRow>
+          ) : (
+            <FormRow label={isBank ? 'Bank Account' : 'Cash Account'} required>
+              <Select value={form.bookChartId || '__none__'} onValueChange={v => setForm({ ...form, bookChartId: v === '__none__' ? '' : v })}>
+                <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— Select —</SelectItem>
+                  {bookAccounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormRow>
+          )}
         </div>
+        <div className="sm:col-span-3">
+          {isJVorOTB ? (
+            <FormRow label="Reference #"><Input value={form.reference || ''} onChange={e => setForm({ ...form, reference: e.target.value })} placeholder="Optional" /></FormRow>
+          ) : (
+            <FormRow label="Payment Mode">
+              <Select value={form.paymentMode || 'Cash'} onValueChange={v => setForm({ ...form, paymentMode: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {paymentModes.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormRow>
+          )}
+        </div>
+        {isJVorOTB ? (
+          <div className="sm:col-span-9">
+            <FormRow label={isOTB ? `Description (${(form.description || '').length}/20)` : 'Description'}>
+              <>
+                <Input
+                  value={form.description || ''}
+                  maxLength={isOTB ? 20 : undefined}
+                  onChange={e => setForm({ ...form, description: e.target.value })}
+                  placeholder={isOTB ? 'Short description (max 20 chars)' : 'Voucher description'}
+                />
+              </>
+            </FormRow>
+          </div>
+        ) : (
+          <>
+            <div className="sm:col-span-6">
+              <FormRow label="Description"><Input value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Voucher description" /></FormRow>
+            </div>
+            <div className="sm:col-span-3">
+              <FormRow label="Reference #"><Input value={form.reference || ''} onChange={e => setForm({ ...form, reference: e.target.value })} placeholder="Optional" /></FormRow>
+            </div>
+            {chequeMode && (
+              <div className="sm:col-span-3">
+                <FormRow label="Cheque Date"><Input type="date" value={form.chequeDate || ''} onChange={e => setForm({ ...form, chequeDate: e.target.value })} /></FormRow>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
+      {/* Detail lines */}
       <div className="mt-4 border rounded">
         <div className="px-3 py-2 bg-muted/40 border-b font-medium text-sm flex items-center justify-between">
-          <span>Detail Lines {isJV ? '(manual Debit / Credit)' : `(${detailIsCredit ? 'Credit side' : 'Debit side'} — Book Account auto-${detailIsCredit ? 'Debited' : 'Credited'})`}</span>
-          <span className={`text-xs ${isJV ? (balancedJV ? 'text-green-600' : 'text-red-600') : 'text-muted-foreground'}`}>
-            {isJV
-              ? `Dr: ${fmtMoney(totalDebitJV)} · Cr: ${fmtMoney(totalCreditJV)} · ${balancedJV ? 'Balanced' : 'Not balanced'}`
-              : `Book ${detailIsCredit ? 'Dr' : 'Cr'}: ${fmtMoney(totalDetailAmount)}`
-            }
+          <span>Detail Lines {isJVorOTB ? '(manual Debit / Credit)' : `(${detailIsCredit ? 'Credit side — Book auto-Debited' : 'Debit side — Book auto-Credited'})`}</span>
+          <span className={`text-xs ${isJVorOTB ? (balancedJV ? 'text-green-600' : 'text-red-600') : 'text-muted-foreground'}`}>
+            {isJVorOTB
+              ? `Dr: ${fmtMoney(totalDebit)} · Cr: ${fmtMoney(totalCredit)} · ${balancedJV ? 'Balanced' : `Difference ${fmtMoney(difference)}`}`
+              : `Total: ${fmtMoney(totalDetailAmount)}${totalTax > 0 ? ` · Tax: ${fmtMoney(totalTax)}` : ''}`}
           </span>
         </div>
         <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
@@ -715,7 +910,7 @@ function VoucherFormModal({ open, onClose, defaultType, onSaved, editing }: any)
               <tr>
                 <th className="px-2 py-1.5 text-left">Account</th>
                 <th className="px-2 py-1.5 text-left">Description</th>
-                {isJV ? (
+                {isJVorOTB ? (
                   <>
                     <th className="px-2 py-1.5 text-right">Debit</th>
                     <th className="px-2 py-1.5 text-right">Credit</th>
@@ -723,14 +918,13 @@ function VoucherFormModal({ open, onClose, defaultType, onSaved, editing }: any)
                 ) : (
                   <th className="px-2 py-1.5 text-right">Amount</th>
                 )}
-                <th className="px-2 py-1.5 text-left">Tax Account</th>
+                <th className="px-2 py-1.5 text-left">Bill Type</th>
+                <th className="px-2 py-1.5 text-left">Tax Head</th>
                 <th className="px-2 py-1.5 text-right">Tax %</th>
                 <th className="px-2 py-1.5 text-right">Tax Amount</th>
-                <th className="px-2 py-1.5 text-left">Cheque No</th>
-                <th className="px-2 py-1.5 text-right">Cheque Amount</th>
-                <th className="px-2 py-1.5 text-left">Bank Name</th>
-                <th className="px-2 py-1.5 text-left">Cheque Status</th>
-                <th className="px-2 py-1.5 text-left">Status</th>
+                {chequeMode && <th className="px-2 py-1.5 text-left">Cheque No</th>}
+                {chequeMode && <th className="px-2 py-1.5 text-right">Cheque Amount</th>}
+                {chequeMode && <th className="px-2 py-1.5 text-left">Cheque Bank</th>}
                 <th className="px-2 py-1.5"></th>
               </tr>
             </thead>
@@ -742,29 +936,38 @@ function VoucherFormModal({ open, onClose, defaultType, onSaved, editing }: any)
                       <SelectTrigger className="h-7"><SelectValue placeholder="Account" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none__">—</SelectItem>
-                        {detailAccounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}
+                        {detailAccounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </td>
                   <td className="px-2 py-1.5 min-w-[140px]">
                     <Input value={l.lineDescription || ''} onChange={e => setLine(i, { lineDescription: e.target.value })} className="h-7" placeholder="Line description" />
                   </td>
-                  {isJV ? (
+                  {isJVorOTB ? (
                     <>
                       <td className="px-2 py-1.5 w-24">
-                        <Input type="number" value={l.debit || 0} onChange={e => setLine(i, { debit: Number(e.target.value), credit: 0, amount: Number(e.target.value) })} className="h-7 text-right" />
+                        <Input type="number" min={0} step="0.01" value={l.debit || ''} onChange={e => onLineDebitChange(i, Number(e.target.value))} className="h-7 text-right" placeholder="0" />
                       </td>
                       <td className="px-2 py-1.5 w-24">
-                        <Input type="number" value={l.credit || 0} onChange={e => setLine(i, { credit: Number(e.target.value), debit: 0, amount: Number(e.target.value) })} className="h-7 text-right" />
+                        <Input type="number" min={0} step="0.01" value={l.credit || ''} onChange={e => onLineCreditChange(i, Number(e.target.value))} className="h-7 text-right" placeholder="0" />
                       </td>
                     </>
                   ) : (
                     <td className="px-2 py-1.5 w-28">
-                      <Input type="number" value={l.amount || 0} onChange={e => onLineAmountChange(i, Number(e.target.value))} className="h-7 text-right" />
+                      <Input type="number" min={0} step="0.01" value={l.amount || ''} onChange={e => onLineAmountChange(i, Number(e.target.value))} className="h-7 text-right" placeholder="0" />
                     </td>
                   )}
                   <td className="px-2 py-1.5 min-w-[160px]">
-                    <Select value={l.taxAccountId || '__none__'} onValueChange={v => onLineTaxAccountChange(i, v === '__none__' ? '' : v)}>
+                    <Select value={l.billType || '__none__'} onValueChange={v => onLineBillTypeChange(i, v === '__none__' ? '' : v)}>
+                      <SelectTrigger className="h-7"><SelectValue placeholder="None" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">None</SelectItem>
+                        {BOOK_BILL_TYPES.map(b => <SelectItem key={b.name} value={b.name}>{b.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  <td className="px-2 py-1.5 min-w-[160px]">
+                    <Select value={l.taxHeadId || '__none__'} onValueChange={v => onLineTaxHeadChange(i, v === '__none__' ? '' : v)}>
                       <SelectTrigger className="h-7"><SelectValue placeholder="None" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none__">None</SelectItem>
@@ -773,41 +976,26 @@ function VoucherFormModal({ open, onClose, defaultType, onSaved, editing }: any)
                     </Select>
                   </td>
                   <td className="px-2 py-1.5 w-20">
-                    <Input type="number" step="0.01" value={l.taxRate || 0} onChange={e => onLineTaxRateChange(i, Number(e.target.value))} className="h-7 text-right" />
+                    <Input type="number" step="0.01" value={l.taxRate || 0} readOnly disabled className="h-7 text-right bg-muted/40" title="Auto from tax head" />
                   </td>
                   <td className="px-2 py-1.5 w-24">
-                    <Input type="number" value={l.taxAmount || 0} onChange={e => setLine(i, { taxAmount: Number(e.target.value) })} className="h-7 text-right" />
+                    <Input type="number" value={l.taxAmount || 0} readOnly disabled className="h-7 text-right bg-muted/40" title="Auto: amount × rate ÷ 100" />
                   </td>
-                  <td className="px-2 py-1.5 min-w-[120px]">
-                    <Input value={l.chequeNo || ''} onChange={e => setLine(i, { chequeNo: e.target.value })} className="h-7" placeholder="Cheque #" />
-                  </td>
-                  <td className="px-2 py-1.5 w-28">
-                    <Input type="number" value={l.chequeAmount || 0} onChange={e => setLine(i, { chequeAmount: Number(e.target.value) })} className="h-7 text-right" />
-                  </td>
-                  <td className="px-2 py-1.5 min-w-[120px]">
-                    <Input value={l.chequeBankName || ''} onChange={e => setLine(i, { chequeBankName: e.target.value })} className="h-7" placeholder="Bank name" />
-                  </td>
-                  <td className="px-2 py-1.5 min-w-[120px]">
-                    <Select value={l.chequeStatus || '__none__'} onValueChange={v => setLine(i, { chequeStatus: v === '__none__' ? '' : v })}>
-                      <SelectTrigger className="h-7"><SelectValue placeholder="—" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="__none__">—</SelectItem>
-                        <SelectItem value="Hold">Hold</SelectItem>
-                        <SelectItem value="Clear">Clear</SelectItem>
-                        <SelectItem value="Bounced">Bounced</SelectItem>
-                        <SelectItem value="Deposited">Deposited</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </td>
-                  <td className="px-2 py-1.5 min-w-[100px]">
-                    <Select value={l.status || 'Active'} onValueChange={v => setLine(i, { status: v })}>
-                      <SelectTrigger className="h-7"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Active">Active</SelectItem>
-                        <SelectItem value="Hold">Hold</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </td>
+                  {chequeMode && (
+                    <td className="px-2 py-1.5 min-w-[120px]">
+                      <Input value={l.chequeNo || ''} onChange={e => setLine(i, { chequeNo: e.target.value })} className="h-7" placeholder="Cheque #" />
+                    </td>
+                  )}
+                  {chequeMode && (
+                    <td className="px-2 py-1.5 w-28">
+                      <Input type="number" value={l.amount || 0} readOnly disabled className="h-7 text-right bg-muted/40" title="Auto-synced with Amount" />
+                    </td>
+                  )}
+                  {chequeMode && (
+                    <td className="px-2 py-1.5 min-w-[120px]">
+                      <Input value={l.chequeBankName || ''} onChange={e => setLine(i, { chequeBankName: e.target.value })} className="h-7" placeholder="Bank name" />
+                    </td>
+                  )}
                   <td className="px-2 py-1.5">
                     <Button size="sm" variant="ghost" onClick={() => removeLine(i)} disabled={form.lines.length === 1}><Trash2 className="h-3 w-3" /></Button>
                   </td>
@@ -816,50 +1004,85 @@ function VoucherFormModal({ open, onClose, defaultType, onSaved, editing }: any)
             </tbody>
           </table>
         </div>
-        <div className="p-2 border-t">
+        <div className="p-2 border-t flex items-center justify-between">
           <Button size="sm" variant="outline" onClick={addLine}><Plus className="h-3 w-3 mr-1" />Add Line</Button>
+          {isJVorOTB && !balancedJV && (
+            <span className="text-xs text-red-600">Out of balance by {fmtMoney(Math.abs(difference))}{isOTB ? ' (Open TB may be saved unbalanced)' : ''}</span>
+          )}
         </div>
       </div>
 
-      <div className="mt-2 text-xs text-muted-foreground">
-        {defaultType === 'CRV' && 'CRV: Book Account (cash) is auto-DEBITED. Detail lines are credited (income received).'}
-        {defaultType === 'CPV' && 'CPV: Book Account (cash) is auto-CREDITED. Detail lines are debited (expense paid).'}
-        {defaultType === 'BRV' && 'BRV: Book Account (bank) is auto-DEBITED. Detail lines are credited (income received).'}
-        {defaultType === 'BPV' && 'BPV: Book Account (bank) is auto-CREDITED. Detail lines are debited (expense paid).'}
-        {defaultType === 'JV' && 'JV: Manual Debit and Credit entry. Total Debit must equal Total Credit.'}
-        {defaultType === 'OTB' && 'OTB: Opening balances — manual Debit and Credit entry.'}
+      {/* Totals footer */}
+      <div className="mt-3 border rounded p-3 flex items-center gap-6 flex-wrap bg-muted/20">
+        {isJVorOTB ? (
+          <>
+            <div className="text-sm"><span className="text-muted-foreground">Total Debit: </span><span className="font-mono font-semibold">{fmtMoney(totalDebit)}</span></div>
+            <div className="text-sm"><span className="text-muted-foreground">Total Credit: </span><span className="font-mono font-semibold">{fmtMoney(totalCredit)}</span></div>
+            <div className="text-sm">
+              <span className="text-muted-foreground">Difference (Dr − Cr): </span>
+              <span className={`font-mono font-semibold ${balancedJV ? 'text-green-600' : 'text-red-600'}`}>{difference > 0 ? '+' : ''}{fmtMoney(difference)}</span>
+            </div>
+            <div className="flex-1" />
+            <div className={`text-xs font-medium ${balancedJV ? 'text-green-600' : 'text-amber-600'}`}>
+              {balancedJV ? '✓ Balanced' : `Out of balance by ${fmtMoney(Math.abs(difference))}`}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="text-sm"><span className="text-muted-foreground">Total: </span><span className="font-mono font-semibold">{fmtMoney(totalDetailAmount)}</span></div>
+            {totalTax > 0 && <div className="text-sm"><span className="text-muted-foreground">Tax Total: </span><span className="font-mono font-semibold">{fmtMoney(totalTax)}</span></div>}
+            <div className="flex-1" />
+            <div className="text-xs text-muted-foreground">
+              Book account will be {detailIsCredit ? 'DEBITED' : 'CREDITED'} by {fmtMoney(totalDetailAmount)} automatically
+            </div>
+          </>
+        )}
       </div>
+
+      {isJVorOTB && form.lines.some((l: any) => l.billType === 'Opening Balance') && (
+        <div className="mt-2 text-xs text-muted-foreground">
+          Opening Balance bill type: side follows account nature — <span className="font-medium">Dr for assets/expenses, Cr for others</span> (set the Debit or Credit amount accordingly).
+        </div>
+      )}
+      {!isJVorOTB && (
+        <div className="mt-2 text-xs text-muted-foreground">
+          {voucherType === 'CRV' && 'CRV: the cash account is auto-DEBITED; detail lines are credited (income received).'}
+          {voucherType === 'CPV' && 'CPV: the cash account is auto-CREDITED; detail lines are debited (expense paid).'}
+          {voucherType === 'BRV' && 'BRV: the bank account is auto-DEBITED; detail lines are credited (income received).'}
+          {voucherType === 'BPV' && 'BPV: the bank account is auto-CREDITED; detail lines are debited (expense paid).'}
+          {' '}With Payment Mode = Cheque, one cheque row is created per line with a Cheque No (amount syncs with the line amount).
+        </div>
+      )}
     </Modal>
   )
 }
 
-function voucherTypeLabel(vt: string): string {
-  const m: Record<string, string> = {
-    CRV: 'Cash Receipt Voucher', CPV: 'Cash Payment Voucher',
-    BRV: 'Bank Receipt Voucher', BPV: 'Bank Payment Voucher',
-    JV: 'Journal Voucher', OTB: 'Opening Trial Balance',
-  }
-  return m[vt] || vt
-}
-
-function VoucherPrintModal({ open, voucher, onClose }: any) {
+// ----------------------------------------------------------------
+// Print / View / Reverse modals
+// ----------------------------------------------------------------
+function VoucherPrintModal({ open, voucher, onClose, onKnockOff }: any) {
   if (!voucher) return null
   return (
-    <Modal open={open} onClose={onClose} title={`Print ${voucher.voucherNo}`} size="lg"
+    <Modal open={open} onClose={onClose} title={`Print Voucher ${voucher.id}`} size="lg"
       footer={<>
         <Button variant="outline" onClick={onClose}>Close</Button>
+        {voucher.voucherType === 'OTV' && Math.abs(voucher.difference || 0) >= 0.01 && onKnockOff && (
+          <Button variant="outline" onClick={() => { onClose(); onKnockOff(voucher) }}>Knock Off</Button>
+        )}
         <Button onClick={() => window.print()}><Printer className="h-4 w-4 mr-1" />Print</Button>
       </>}>
       <div className="text-sm">
         <div className="text-center mb-4">
           <div className="text-lg font-semibold">{voucherTypeLabel(voucher.voucherType)}</div>
-          <div className="text-xs text-muted-foreground">Voucher # {voucher.voucherNo}</div>
+          <div className="text-xs text-muted-foreground">Voucher # {voucher.id}</div>
         </div>
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div><span className="text-xs text-muted-foreground">Date:</span> {fmtDateStr(voucher.voucherDate)}</div>
           <div><span className="text-xs text-muted-foreground">Branch:</span> {voucher.branch?.name || '—'}</div>
-          <div><span className="text-xs text-muted-foreground">Book Account:</span> {voucher.bookAccount?.name || '—'}</div>
+          <div><span className="text-xs text-muted-foreground">Book Account:</span> {voucher.bookChart ? `${voucher.bookChart.id} — ${voucher.bookChart.name}` : '—'}</div>
+          <div><span className="text-xs text-muted-foreground">Payment Mode:</span> {voucher.paymentMode || '—'}</div>
           <div><span className="text-xs text-muted-foreground">Reference:</span> {voucher.reference || '—'}</div>
+          <div><span className="text-xs text-muted-foreground">Status:</span> {voucher.status}</div>
           <div className="col-span-2"><span className="text-xs text-muted-foreground">Description:</span> {voucher.description || '—'}</div>
         </div>
         <table className="w-full border">
@@ -874,7 +1097,7 @@ function VoucherPrintModal({ open, voucher, onClose }: any) {
           <tbody>
             {(voucher.lines || []).map((l: any) => (
               <tr key={l.id} className="border-b last:border-0">
-                <td className="px-3 py-2 text-xs">{l.account?.code} — {l.account?.name}</td>
+                <td className="px-3 py-2 text-xs">{l.account?.id} — {l.account?.name}</td>
                 <td className="px-3 py-2 text-xs">{l.lineDescription || '—'}</td>
                 <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(l.debit)}</td>
                 <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(l.credit)}</td>
@@ -884,8 +1107,8 @@ function VoucherPrintModal({ open, voucher, onClose }: any) {
           <tfoot className="border-t bg-muted/30 font-medium">
             <tr>
               <td colSpan={2} className="px-3 py-2 text-right text-xs">Total</td>
-              <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(voucher.totalDebit)}</td>
-              <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(voucher.totalCredit)}</td>
+              <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(voucherDr(voucher))}</td>
+              <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(voucherCr(voucher))}</td>
             </tr>
           </tfoot>
         </table>
@@ -894,18 +1117,25 @@ function VoucherPrintModal({ open, voucher, onClose }: any) {
   )
 }
 
-function VoucherViewModal({ open, voucher, onClose }: any) {
+function VoucherViewModal({ open, voucher, onClose, onKnockOff }: any) {
   if (!voucher) return null
   return (
-    <Modal open={open} onClose={onClose} title={`Voucher ${voucher.voucherNo}`} size="lg">
+    <Modal open={open} onClose={onClose} title={`Voucher ${voucher.id}`} size="lg">
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-        <div><div className="text-xs text-muted-foreground">Type</div><div className="font-medium">{voucher.voucherType}</div></div>
+        <div><div className="text-xs text-muted-foreground">Type</div><div className="font-medium">{voucherTypeLabel(voucher.voucherType)}</div></div>
         <div><div className="text-xs text-muted-foreground">Date</div><div className="font-medium">{fmtDateStr(voucher.voucherDate)}</div></div>
         <div><div className="text-xs text-muted-foreground">Status</div><div><StatusBadge status={voucher.status} /></div></div>
         <div><div className="text-xs text-muted-foreground">Branch</div><div className="font-medium">{voucher.branch?.name}</div></div>
-        <div><div className="text-xs text-muted-foreground">Book Account</div><div className="font-medium">{voucher.bookAccount?.name || '—'}</div></div>
+        <div><div className="text-xs text-muted-foreground">Book Account</div><div className="font-medium">{voucher.bookChart ? `${voucher.bookChart.id} — ${voucher.bookChart.name}` : '—'}</div></div>
+        <div><div className="text-xs text-muted-foreground">Payment Mode</div><div className="font-medium">{voucher.paymentMode || '—'}</div></div>
         <div><div className="text-xs text-muted-foreground">Reference</div><div className="font-medium">{voucher.reference || '—'}</div></div>
-        <div className="col-span-3"><div className="text-xs text-muted-foreground">Description</div><div>{voucher.description || '—'}</div></div>
+        {voucher.voucherType === 'OTV' && (
+          <>
+            <div><div className="text-xs text-muted-foreground">Difference (Dr − Cr)</div><div className="font-medium font-mono">{fmtMoney(voucher.difference)}</div></div>
+            <div><div className="text-xs text-muted-foreground">Balance</div><div>{voucher.isBalanced ? <Badge>Balanced</Badge> : <Badge variant="secondary">Unbalanced</Badge>}</div></div>
+          </>
+        )}
+        <div className="col-span-2 sm:col-span-3"><div className="text-xs text-muted-foreground">Description</div><div>{voucher.description || '—'}</div></div>
       </div>
       <div className="mt-4 border rounded overflow-x-auto">
         <table className="w-full text-sm">
@@ -913,6 +1143,7 @@ function VoucherViewModal({ open, voucher, onClose }: any) {
             <tr>
               <th className="px-3 py-2 text-left">Account</th>
               <th className="px-3 py-2 text-left">Description</th>
+              <th className="px-3 py-2 text-left">Bill Type</th>
               <th className="px-3 py-2 text-right">Debit</th>
               <th className="px-3 py-2 text-right">Credit</th>
             </tr>
@@ -920,8 +1151,9 @@ function VoucherViewModal({ open, voucher, onClose }: any) {
           <tbody>
             {voucher.lines?.map((l: any) => (
               <tr key={l.id} className="border-b last:border-0">
-                <td className="px-3 py-2"><span className="font-mono text-xs">{l.account?.code}</span> · {l.account?.name}</td>
+                <td className="px-3 py-2"><span className="font-mono text-xs">{l.account?.id}</span> · {l.account?.name}</td>
                 <td className="px-3 py-2">{l.lineDescription || '—'}</td>
+                <td className="px-3 py-2 text-xs">{l.billType || '—'}</td>
                 <td className="px-3 py-2 text-right font-mono">{fmtMoney(l.debit)}</td>
                 <td className="px-3 py-2 text-right font-mono">{fmtMoney(l.credit)}</td>
               </tr>
@@ -929,9 +1161,9 @@ function VoucherViewModal({ open, voucher, onClose }: any) {
           </tbody>
           <tfoot className="bg-muted/30 border-t font-medium">
             <tr>
-              <td colSpan={2} className="px-3 py-2 text-right">Total</td>
-              <td className="px-3 py-2 text-right font-mono">{fmtMoney(voucher.totalDebit)}</td>
-              <td className="px-3 py-2 text-right font-mono">{fmtMoney(voucher.totalCredit)}</td>
+              <td colSpan={3} className="px-3 py-2 text-right">Total</td>
+              <td className="px-3 py-2 text-right font-mono">{fmtMoney(voucherDr(voucher))}</td>
+              <td className="px-3 py-2 text-right font-mono">{fmtMoney(voucherCr(voucher))}</td>
             </tr>
           </tfoot>
         </table>
@@ -951,6 +1183,11 @@ function VoucherViewModal({ open, voucher, onClose }: any) {
           </div>
         </div>
       )}
+      {voucher.voucherType === 'OTV' && Math.abs(voucher.difference || 0) >= 0.01 && voucher.status === 'Posted' && onKnockOff && (
+        <div className="mt-3">
+          <Button size="sm" variant="outline" onClick={() => { onClose(); onKnockOff(voucher) }}>Knock Off</Button>
+        </div>
+      )}
     </Modal>
   )
 }
@@ -958,17 +1195,305 @@ function VoucherViewModal({ open, voucher, onClose }: any) {
 function ReverseModal({ open, voucher, onClose, onDone }: any) {
   const [reason, setReason] = useState('')
   if (!voucher) return null
+  const endpoint = endpointForBook(voucher.voucherType)
   return (
-    <Modal open={open} onClose={onClose} title={`Reverse ${voucher.voucherNo}`} size="sm"
+    <Modal open={open} onClose={onClose} title={`Reverse ${voucher.id}`} size="sm"
       footer={<>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button variant="destructive" onClick={async () => {
-          try { await apiPatch(`/api/vouchers/${voucher.id}`, { action: 'reverse', reason }); toast.success('Voucher reversed'); onDone() }
-          catch (e: any) { toast.error(e.message) }
+          try {
+            await apiPost(`${endpoint}/${voucher.id}`, { action: 'reverse', reason })
+            toast.success(`Voucher reversed (${voucher.id}-R)`)
+            setReason('')
+            onDone()
+          } catch (e: any) { toast.error(e.message) }
         }}>Reverse</Button>
       </>}>
-      <p className="text-sm mb-2">This will create a reversal voucher swapping debit and credit sides. The original voucher will be marked as reversed.</p>
+      <p className="text-sm mb-2">This creates a reversal voucher ({voucher.id}-R) with swapped debit/credit sides and marks the original as Reversed.</p>
       <FormRow label="Reason"><Textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} /></FormRow>
+    </Modal>
+  )
+}
+
+// ----------------------------------------------------------------
+// OPENING TRIAL BALANCE (OTV) — may be saved unbalanced + knock-off
+// ----------------------------------------------------------------
+export function OpeningTrialBalanceModule() {
+  const { has, branches } = useApp()
+  const endpoint = '/api/opening-tb'
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [branchFilter, setBranchFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [search, setSearch] = useState('')
+  const [formOpen, setFormOpen] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
+  const [viewing, setViewing] = useState<any>(null)
+  const [viewOpen, setViewOpen] = useState(false)
+  const [printTarget, setPrintTarget] = useState<any>(null)
+  const [reverseTarget, setReverseTarget] = useState<any>(null)
+  const [knockTarget, setKnockTarget] = useState<any>(null)
+  const [lastPosted, setLastPosted] = useState<any>(null)
+
+  const qs = [
+    `type=OTV`,
+    from ? `from=${from}` : '',
+    to ? `to=${to}` : '',
+    branchFilter !== 'all' ? `branchId=${branchFilter}` : '',
+    statusFilter ? `status=${statusFilter}` : '',
+    search ? `search=${encodeURIComponent(search)}` : '',
+  ].filter(Boolean).join('&')
+  const { data, reload } = useFetch<any>(`${endpoint}?${qs}`)
+  const vouchers = data?.vouchers || []
+
+  const onSaved = (saved: any) => {
+    setFormOpen(false)
+    setEditing(null)
+    setLastPosted(saved || null)
+    reload()
+  }
+
+  return (
+    <div>
+      <PageHeader title="Opening Trial Balance"
+        action={has('vouchers.add') ? () => { setEditing(null); setFormOpen(true) } : undefined}
+        actionLabel="New Opening TB" />
+
+      {lastPosted && (
+        <Card className="mb-3 border-primary/40 bg-primary/5">
+          <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-xs text-muted-foreground">Opening TB posted — Voucher Number</div>
+              <div className="font-mono font-semibold text-base">{lastPosted.id}</div>
+              <div className="text-xs mt-0.5">
+                {Math.abs(lastPosted.difference || 0) < 0.01
+                  ? <span className="text-green-600 font-medium">Balanced</span>
+                  : <span className="text-amber-600 font-medium">Unbalanced · Difference {fmtMoney(lastPosted.difference)} — knock off to settle</span>}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {Math.abs(lastPosted.difference || 0) >= 0.01 && has('vouchers.add') && (
+                <Button size="sm" onClick={() => { setKnockTarget(lastPosted) }}>Knock Off</Button>
+              )}
+              <Button size="sm" variant="outline" onClick={() => setPrintTarget(lastPosted)}><Printer className="h-3.5 w-3.5 mr-1" />Print</Button>
+              <Button size="sm" variant="ghost" onClick={() => setLastPosted(null)}>Dismiss</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Toolbar>
+        <SearchInput value={search} onChange={setSearch} placeholder="Search voucher no, description…" />
+        <Input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-36" title="From date" />
+        <Input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-36" title="To date" />
+        <Select value={branchFilter} onValueChange={setBranchFilter}>
+          <SelectTrigger className="w-40"><SelectValue placeholder="Branch" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All branches</SelectItem>
+            {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={statusFilter || 'all'} onValueChange={v => setStatusFilter(v === 'all' ? '' : v)}>
+          <SelectTrigger className="w-32"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="Posted">Posted</SelectItem>
+            <SelectItem value="Reversed">Reversed</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+      </Toolbar>
+
+      <DataTable
+        columns={[
+          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
+            <div className="flex gap-0.5">
+              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setViewing(r); setViewOpen(true) }} title="View"><Eye className="h-3.5 w-3.5" /></Button>
+              {r.status !== 'Reversed' && has('vouchers.edit') && (
+                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditing(r); setFormOpen(true) }} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>
+              )}
+              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setPrintTarget(r) }} title="Print"><Printer className="h-3.5 w-3.5" /></Button>
+              {r.status === 'Posted' && Math.abs(r.difference || 0) >= 0.01 && has('vouchers.add') && (
+                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setKnockTarget(r) }} title="Knock Off"><Banknote className="h-3.5 w-3.5 text-primary" /></Button>
+              )}
+              {r.status === 'Posted' && has('vouchers.reverse') && (
+                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setReverseTarget(r) }} title="Reverse"><X className="h-3.5 w-3.5 text-amber-600" /></Button>
+              )}
+            </div>
+          ) },
+          { key: 'id', label: 'Voucher #', mono: true },
+          { key: 'voucherDate', label: 'Date', render: (r: any) => fmtDateStr(r.voucherDate) },
+          { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
+          { key: 'description', label: 'Description' },
+          { key: 'dr', label: 'Debit', align: 'right', mono: true, render: (r: any) => fmtMoney(r.totalDebit) },
+          { key: 'cr', label: 'Credit', align: 'right', mono: true, render: (r: any) => fmtMoney(r.totalCredit) },
+          { key: 'difference', label: 'Difference', align: 'right', mono: true, render: (r: any) => fmtMoney(r.difference) },
+          { key: 'isBalanced', label: 'Balance', render: (r: any) => r.isBalanced ? <Badge>Balanced</Badge> : <Badge variant="secondary">Unbalanced</Badge> },
+          { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
+        ]}
+        rows={vouchers}
+        onRowClick={(r: any) => { setViewing(r); setViewOpen(true) }}
+      />
+
+      <BookVoucherFormModal
+        open={formOpen}
+        onClose={() => { setFormOpen(false); setEditing(null) }}
+        voucherType="OTV"
+        editing={editing}
+        onSaved={onSaved}
+      />
+      <VoucherViewModal
+        open={viewOpen}
+        voucher={viewing}
+        onClose={() => setViewOpen(false)}
+        onKnockOff={(v: any) => setKnockTarget(v)}
+      />
+      <VoucherPrintModal
+        open={!!printTarget}
+        voucher={printTarget}
+        onClose={() => setPrintTarget(null)}
+        onKnockOff={(v: any) => setKnockTarget(v)}
+      />
+      <ReverseModal open={!!reverseTarget} voucher={reverseTarget} onClose={() => setReverseTarget(null)} onDone={() => { setReverseTarget(null); reload() }} />
+      <KnockOffDialog
+        open={!!knockTarget}
+        voucher={knockTarget}
+        onClose={() => setKnockTarget(null)}
+        onDone={reload}
+      />
+    </div>
+  )
+}
+
+// ----------------------------------------------------------------
+// Knock-off dialog for unbalanced Opening TB vouchers
+// ----------------------------------------------------------------
+function KnockOffDialog({ open, voucher, onClose, onDone }: any) {
+  const [rows, setRows] = useState<any[]>([])
+  const [saving, setSaving] = useState(false)
+  const { data: chartsData } = useFetch<any>(open ? '/api/charts?detailOnly=true&isActive=true' : null)
+  const { data: koData, reload } = useFetch<any>(open && voucher ? `/api/knock-offs?openTbVoucherId=${voucher.id}` : null)
+  const detailAccounts = chartsData?.charts || []
+  const knockOffs = koData?.knockOffs || []
+  const outstanding = koData?.outstanding
+
+  const difference = voucher?.difference || 0
+  // Suggested side is the OPPOSITE of the difference side:
+  // Dr-heavy voucher (difference > 0) → knock off with Credit entries.
+  const suggestedSide = difference > 0 ? 'Credit' : 'Debit'
+
+  useEffect(() => {
+    if (open) setRows([{ accountId: '', amount: 0, side: suggestedSide, description: '' }])
+  }, [open, voucher?.id])
+
+  if (!voucher) return null
+
+  const setRow = (i: number, patch: any) => setRows(prev => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r))
+  const addRow = () => setRows(prev => [...prev, { accountId: '', amount: 0, side: suggestedSide, description: '' }])
+  const removeRow = (i: number) => setRows(prev => prev.filter((_, idx) => idx !== i))
+
+  const submit = async () => {
+    const valid = rows.filter(r => r.accountId && Number(r.amount) > 0 && String(r.description || '').trim())
+    if (!valid.length) { toast.error('Add at least one complete knock-off row (account, amount, description)'); return }
+    setSaving(true)
+    try {
+      for (const r of valid) {
+        await apiPost('/api/knock-offs', {
+          openTbVoucherId: voucher.id,
+          accountId: r.accountId,
+          amount: Number(r.amount),
+          side: r.side,
+          description: String(r.description).trim(),
+        })
+      }
+      toast.success('Knock-off entries created')
+      setRows([{ accountId: '', amount: 0, side: suggestedSide, description: '' }])
+      reload()
+      onDone?.()
+    } catch (e: any) { toast.error(e.message) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Knock Off — ${voucher.id}`} size="lg"
+      footer={<>
+        <Button variant="outline" onClick={onClose}>Close</Button>
+        <Button onClick={submit} disabled={saving}><Save className="h-4 w-4 mr-1" />{saving ? 'Saving…' : 'Save Knock Off'}</Button>
+      </>}>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <div><div className="text-xs text-muted-foreground">Voucher</div><div className="font-mono text-sm font-medium">{voucher.id}</div></div>
+        <div><div className="text-xs text-muted-foreground">Dr Total</div><div className="font-mono text-sm font-medium">{fmtMoney(voucher.totalDebit)}</div></div>
+        <div><div className="text-xs text-muted-foreground">Cr Total</div><div className="font-mono text-sm font-medium">{fmtMoney(voucher.totalCredit)}</div></div>
+        <div><div className="text-xs text-muted-foreground">Difference (Dr − Cr)</div>
+          <div className={`font-mono text-sm font-semibold ${Math.abs(difference) < 0.01 ? 'text-green-600' : 'text-red-600'}`}>{fmtMoney(difference)}</div>
+        </div>
+      </div>
+      {outstanding !== null && outstanding !== undefined && (
+        <div className="text-xs text-muted-foreground mb-3">Outstanding difference after knock-offs: <span className="font-mono font-medium text-foreground">{fmtMoney(outstanding)}</span></div>
+      )}
+
+      <div className="border rounded">
+        <div className="px-3 py-2 bg-muted/40 border-b font-medium text-sm">New knock-off entries</div>
+        <div className="p-3 space-y-2">
+          {rows.map((r, i) => (
+            <div key={i} className="grid grid-cols-12 gap-2 items-end">
+              <div className="col-span-4">
+                <FormRow label="Account">
+                  <Select value={r.accountId || '__none__'} onValueChange={v => setRow(i, { accountId: v === '__none__' ? '' : v })}>
+                    <SelectTrigger className="h-8"><SelectValue placeholder="Select account" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">— Select —</SelectItem>
+                      {detailAccounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </FormRow>
+              </div>
+              <div className="col-span-2">
+                <FormRow label="Amount"><Input type="number" min={0} step="0.01" value={r.amount || ''} onChange={e => setRow(i, { amount: Number(e.target.value) })} className="h-8 text-right" /></FormRow>
+              </div>
+              <div className="col-span-2">
+                <FormRow label="Side">
+                  <Select value={r.side} onValueChange={v => setRow(i, { side: v })}>
+                    <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Debit">Debit</SelectItem>
+                      <SelectItem value="Credit">Credit</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FormRow>
+              </div>
+              <div className="col-span-3">
+                <FormRow label={`Description (${String(r.description || '').length}/20)`}>
+                  <Input value={r.description || ''} maxLength={20} onChange={e => setRow(i, { description: e.target.value })} className="h-8" placeholder="Required (max 20)" />
+                </FormRow>
+              </div>
+              <div className="col-span-1 pb-1">
+                <Button size="sm" variant="ghost" onClick={() => removeRow(i)} disabled={rows.length === 1}><Trash2 className="h-3.5 w-3.5" /></Button>
+              </div>
+            </div>
+          ))}
+          <Button size="sm" variant="outline" onClick={addRow}><Plus className="h-3 w-3 mr-1" />Add Row</Button>
+          <div className="text-xs text-muted-foreground">
+            Suggested side: <span className="font-medium text-foreground">{suggestedSide}</span> (opposite of the {difference > 0 ? 'debit' : 'credit'} excess).
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <div className="font-medium text-sm mb-2">Existing knock-offs ({knockOffs.length})</div>
+        <DataTable
+          columns={[
+            { key: 'billId', label: 'Bill ID', mono: true },
+            { key: 'account', label: 'Account', render: (r: any) => `${r.account?.id} — ${r.account?.name}` },
+            { key: 'description', label: 'Description' },
+            { key: 'amount', label: 'Amount', align: 'right', mono: true, render: (r: any) => fmtMoney(r.amount) },
+            { key: 'side', label: 'Side' },
+            { key: 'knockedOffAt', label: 'Date', render: (r: any) => fmtDateStr(r.knockedOffAt) },
+          ]}
+          rows={knockOffs}
+          empty="No knock-offs yet"
+        />
+      </div>
     </Modal>
   )
 }
@@ -1069,7 +1594,7 @@ export function ChequesModule() {
   const { has, selectedBranchIds } = useApp()
   const [status, setStatus] = useState('all')
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [bulkStatus, setBulkStatus] = useState('Clear')
+  const [bulkStatus, setBulkStatus] = useState('Cleared')
   const branchesParam = selectedBranchIds.length ? `&branchId=${selectedBranchIds.join(',')}` : ''
   const { data, reload } = useFetch<any>(`/api/cheques?status=${status !== 'all' ? status : ''}${branchesParam}`)
   const cheques = data?.cheques || []
@@ -1102,9 +1627,9 @@ export function ChequesModule() {
           <SelectContent>
             <SelectItem value="all">All statuses</SelectItem>
             <SelectItem value="Hold">Hold</SelectItem>
-            <SelectItem value="Clear">Clear</SelectItem>
+            <SelectItem value="Cleared">Cleared</SelectItem>
             <SelectItem value="Bounced">Bounced</SelectItem>
-            <SelectItem value="Deposited">Deposited</SelectItem>
+            <SelectItem value="Cancelled">Cancelled</SelectItem>
           </SelectContent>
         </Select>
         <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
@@ -1115,9 +1640,9 @@ export function ChequesModule() {
               <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="Hold">Hold</SelectItem>
-                <SelectItem value="Clear">Clear</SelectItem>
+                <SelectItem value="Cleared">Cleared</SelectItem>
                 <SelectItem value="Bounced">Bounced</SelectItem>
-                <SelectItem value="Deposited">Deposited</SelectItem>
+                <SelectItem value="Cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>
             <Button size="sm" onClick={bulkUpdate}>Update {selected.size} selected</Button>
@@ -1133,8 +1658,8 @@ export function ChequesModule() {
           { key: 'chequeDate', label: 'Date', render: (r: any) => fmtDateStr(r.chequeDate) },
           { key: 'bankName', label: 'Bank' },
           { key: 'amount', label: 'Amount', align: 'right', mono: true, render: (r: any) => fmtMoney(r.amount) },
-          { key: 'voucher', label: 'Voucher', render: (r: any) => r.voucher?.voucherNo || '—' },
-          { key: 'voucher', label: 'Branch', render: (r: any) => r.voucher?.branch?.name || '—' },
+          { key: 'voucher', label: 'Voucher', render: (r: any) => r.voucher?.id || '—' },
+          { key: 'branch', label: 'Branch', render: (r: any) => r.voucher?.branch?.name || '—' },
           { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
         ]}
         rows={cheques}
@@ -1153,6 +1678,10 @@ export function MembersModule() {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<any>(null)
   const [viewing, setViewing] = useState<any>(null)
+  const [viewOpen, setViewOpen] = useState(false)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [printTarget, setPrintTarget] = useState<any>(null)
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
   const { data, reload } = useFetch<any>(`/api/members?status=${status !== 'all' ? status : ''}${branchesParam}`)
   const { data: plansData } = useFetch<any>('/api/memberships')
@@ -1161,6 +1690,23 @@ export function MembersModule() {
   const trainers = trainersData?.staff || []
   const members = (data?.members || []).filter((m: any) =>
     !search || m.memberId.toLowerCase().includes(search.toLowerCase()) || (m.firstName + ' ' + (m.lastName || '')).toLowerCase().includes(search.toLowerCase()) || m.phone?.includes(search))
+  const selected = members.find((m: any) => m.id === selectedId) || null
+
+  const openView = (m: any) => { setViewing(m); setViewOpen(true) }
+  const openEdit = (m: any) => { setEditing(m); setOpen(true) }
+
+  const navigate = (key: string) => window.dispatchEvent(new CustomEvent('contoura:navigate', { detail: { key } }))
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    try {
+      await apiDelete(`/api/members/${deleteTarget.id}`)
+      toast.success('Member deleted (soft delete — records preserved)')
+      if (selectedId === deleteTarget.id) setSelectedId(null)
+      setDeleteTarget(null)
+      reload()
+    } catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  }
 
   return (
     <div>
@@ -1181,15 +1727,47 @@ export function MembersModule() {
         </Select>
         <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
       </Toolbar>
+
+      {/* CoA-style action panel for the selected member */}
+      {selected && (
+        <Card className="mb-3 border-primary/30">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono text-xs text-muted-foreground">{selected.memberId}</span>
+                  <span className="font-semibold text-sm">{selected.firstName} {selected.lastName || ''}</span>
+                  <StatusBadge status={selected.status} />
+                  {selected.membershipPlan && <Badge variant="outline" className="text-xs">{selected.membershipPlan.name}</Badge>}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {selected.phone || '—'}{selected.branch ? ` · ${selected.branch.name}` : ''}{selected.joiningDate ? ` · Joined ${fmtDateStr(selected.joiningDate)}` : ''}
+                </div>
+                <div className="flex gap-1.5 mt-2">
+                  <Button size="sm" variant="outline" onClick={() => navigate('gym-attendance')}><CalendarCheck className="h-3.5 w-3.5 mr-1" />Attendance</Button>
+                  <Button size="sm" variant="outline" onClick={() => navigate('gym-fees')}><Banknote className="h-3.5 w-3.5 mr-1" />Fees</Button>
+                  <Button size="sm" variant="outline" onClick={() => navigate('gym-freezes')}><Snowflake className="h-3.5 w-3.5 mr-1" />Freeze</Button>
+                  <Button size="sm" variant="outline" onClick={() => navigate('gym-followups')}><HandHeart className="h-3.5 w-3.5 mr-1" />Follow-up</Button>
+                </div>
+              </div>
+              <div className="flex gap-1.5 flex-wrap">
+                <Button size="sm" variant="outline" onClick={() => openView(selected)}><Eye className="h-3.5 w-3.5 mr-1" />View</Button>
+                <Button size="sm" variant="outline" onClick={() => setPrintTarget(selected)}><Printer className="h-3.5 w-3.5 mr-1" />Print</Button>
+                {has('members.edit') && (
+                  <Button size="sm" variant="outline" onClick={() => openEdit(selected)}><Edit className="h-3.5 w-3.5 mr-1" />Edit</Button>
+                )}
+                {has('members.delete') && (
+                  <Button size="sm" variant="destructive" onClick={() => setDeleteTarget(selected)}><Trash2 className="h-3.5 w-3.5 mr-1" />Delete</Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <DataTable
         columns={[
-          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
-            <div className="flex gap-1">
-              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setViewing(r) }}><Eye className="h-3.5 w-3.5" /></Button>
-              {has('members.edit') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditing(r); setOpen(true) }}><Edit className="h-3.5 w-3.5" /></Button>}
-            </div>
-          ) },
-          { key: 'memberId', label: 'ID', mono: true },
+          { key: 'memberId', label: 'Member ID', mono: true, sticky: true },
           { key: 'name', label: 'Name', render: (r: any) => `${r.firstName} ${r.lastName || ''}` },
           { key: 'phone', label: 'Phone' },
           { key: 'gender', label: 'Gender' },
@@ -1199,11 +1777,65 @@ export function MembersModule() {
           { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
         ]}
         rows={members}
-        onRowClick={(r: any) => setViewing(r)}
+        onRowClick={(r: any) => setSelectedId(prev => prev === r.id ? null : r.id)}
       />
       <MemberFormModal open={open} onClose={() => setOpen(false)} editing={editing} plans={plans} trainers={trainers} onSaved={() => { setOpen(false); reload() }} />
-      <MemberViewModal open={!!viewing} member={viewing} onClose={() => setViewing(null)} onEdit={() => { setEditing(viewing); setViewing(null); setOpen(true) }} />
+      <MemberViewModal open={viewOpen} member={viewing} onClose={() => setViewOpen(false)} onEdit={() => { setEditing(viewing); setViewOpen(false); setOpen(true) }} />
+      <MemberPrintModal open={!!printTarget} member={printTarget} onClose={() => setPrintTarget(null)} />
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        title="Delete Member"
+        message={deleteTarget ? `Delete member "${deleteTarget.memberId} — ${deleteTarget.firstName} ${deleteTarget.lastName || ''}"? The member will be SOFT DELETED: marked Inactive and hidden from all lists. Historical records (fees, attendance, payments) are preserved.` : ''}
+      />
     </div>
+  )
+}
+
+function MemberPrintModal({ open, member, onClose }: any) {
+  const { data } = useFetch<any>(member ? `/api/members/${member.id}` : null)
+  const m = data?.member
+  if (!open || !member) return null
+  return (
+    <Modal open={open} onClose={onClose} title={`Print Member ${member.memberId}`} size="md"
+      footer={<>
+        <Button variant="outline" onClick={onClose}>Close</Button>
+        <Button onClick={() => window.print()}><Printer className="h-4 w-4 mr-1" />Print</Button>
+      </>}>
+      <div className="text-sm">
+        <div className="text-center mb-4">
+          <div className="text-lg font-semibold">Member Profile</div>
+          <div className="text-xs text-muted-foreground">{member.memberId} — {member.firstName} {member.lastName || ''}</div>
+        </div>
+        <table className="w-full border">
+          <tbody>
+            {([
+              ['Member ID', member.memberId],
+              ['Name', `${member.firstName} ${member.lastName || ''}`],
+              ['Gender', member.gender || '—'],
+              ['Phone', member.phone || '—'],
+              ['WhatsApp', member.whatsapp || '—'],
+              ['Email', member.email || '—'],
+              ['CNIC', member.cnic || '—'],
+              ['Plan', m?.membershipPlan?.name || member.membershipPlan?.name || '—'],
+              ['Branch', m?.branch?.name || member.branch?.name || '—'],
+              ['Joining Date', fmtDateStr(member.joiningDate)],
+              ['Billing Start', fmtDateStr(member.billingStartDate)],
+              ['Fee Relaxation', `${member.feeRelaxationDays} days`],
+              ['Status', member.status],
+              ['Address', member.address || '—'],
+              ['Emergency Contact', [member.emergencyContact, member.emergencyContactNo].filter(Boolean).join(' · ') || '—'],
+            ] as Array<[string, any]>).map(([k, v]) => (
+              <tr key={k} className="border-b last:border-0">
+                <td className="px-3 py-1.5 text-xs text-muted-foreground w-36">{k}</td>
+                <td className="px-3 py-1.5 text-xs">{String(v)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Modal>
   )
 }
 
@@ -1211,19 +1843,35 @@ function MemberFormModal({ open, onClose, editing, plans, trainers, onSaved }: a
   const { session, branches } = useApp()
   const [form, setForm] = useState<any>({})
   const [uploading, setUploading] = useState(false)
+  // "Same as phone" checkbox — whatsapp mirrors phone while checked
+  const [sameAsPhone, setSameAsPhone] = useState(false)
 
   useEffect(() => {
     if (open) {
-      setForm(editing ? { ...editing, joiningDate: editing.joiningDate?.slice(0, 10), billingStartDate: editing.billingStartDate?.slice(0, 10), dob: editing.dob?.slice(0, 10) } : {
-        joiningDate: new Date().toISOString().slice(0, 10),
-        billingStartDate: new Date().toISOString().slice(0, 10),
-        branchId: session?.branchId || branches[0]?.id,
-        feeRelaxationDays: 0,
-        status: 'Active',
-        gender: '',
-      })
+      if (editing) {
+        setForm({ ...editing, joiningDate: editing.joiningDate?.slice(0, 10), billingStartDate: editing.billingStartDate?.slice(0, 10), dob: editing.dob?.slice(0, 10) })
+        setSameAsPhone(!!editing.phone && editing.whatsapp === editing.phone)
+      } else {
+        setForm({
+          joiningDate: new Date().toISOString().slice(0, 10),
+          billingStartDate: new Date().toISOString().slice(0, 10),
+          branchId: session?.branchId || branches[0]?.id,
+          feeRelaxationDays: 0,
+          status: 'Active',
+          gender: '',
+        })
+        setSameAsPhone(false)
+      }
     }
   }, [open, editing])
+
+  const setPhone = (phone: string) => {
+    setForm((f: any) => (sameAsPhone ? { ...f, phone, whatsapp: phone } : { ...f, phone }))
+  }
+  const toggleSameAsPhone = (checked: boolean) => {
+    setSameAsPhone(checked)
+    if (checked) setForm((f: any) => ({ ...f, whatsapp: f.phone || '' }))
+  }
 
   const uploadPhoto = async (file: File) => {
     setUploading(true)
@@ -1254,10 +1902,13 @@ function MemberFormModal({ open, onClose, editing, plans, trainers, onSaved }: a
     if (!form.assignedTrainerId) { toast.error('Trainer is required'); return }
     try {
       if (editing) {
-        await apiPatch(`/api/members/${editing.id}`, form)
+        // Persist whatsapp = phone when the checkbox is checked
+        const payload = sameAsPhone ? { ...form, whatsapp: form.phone } : form
+        await apiPatch(`/api/members/${editing.id}`, payload)
         toast.success('Member updated')
       } else {
-        await apiPost('/api/members', form)
+        const payload = sameAsPhone ? { ...form, whatsapp: form.phone } : form
+        await apiPost('/api/members', payload)
         toast.success('Member created')
       }
       onSaved()
@@ -1306,8 +1957,18 @@ function MemberFormModal({ open, onClose, editing, plans, trainers, onSaved }: a
         <div>
           <div className="text-xs font-semibold uppercase text-muted-foreground mb-2 pb-1 border-b">Contact Information</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormRow label="Contact Number" required><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="0300XXXXXXX" /></FormRow>
-            <FormRow label="WhatsApp"><Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} /></FormRow>
+            <FormRow label="Contact Number" required><Input value={form.phone || ''} onChange={e => setPhone(e.target.value)} placeholder="0300XXXXXXX" /></FormRow>
+            <div>
+              <FormRow label="WhatsApp">
+                <div className="space-y-1.5">
+                  <Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} disabled={sameAsPhone} placeholder={sameAsPhone ? 'Same as phone' : ''} />
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+                    <Checkbox checked={sameAsPhone} onCheckedChange={(v) => toggleSameAsPhone(v === true)} />
+                    Same as phone
+                  </label>
+                </div>
+              </FormRow>
+            </div>
             <FormRow label="Email"><Input value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
             <FormRow label="Emergency Contact"><Input value={form.emergencyContact || ''} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} /></FormRow>
             <FormRow label="Emergency #"><Input value={form.emergencyContactNo || ''} onChange={e => setForm({ ...form, emergencyContactNo: e.target.value })} /></FormRow>
@@ -1516,17 +2177,21 @@ export function MembershipsModule() {
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={async () => {
+            if (!form.name?.trim()) { toast.error('Plan name is required'); return }
+            if (!form.durationDays || Number(form.durationDays) < 1) { toast.error('Duration must be at least 1 day'); return }
+            if (form.amount === undefined || form.amount === null || isNaN(Number(form.amount)) || Number(form.amount) < 0) { toast.error('Amount must be a non-negative number'); return }
             try { await apiPost('/api/memberships', form); toast.success('Plan created'); setOpen(false); reload() }
             catch (e: any) { toast.error(e.message) }
           }}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
         <div className="grid grid-cols-2 gap-3">
           <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
-          <FormRow label="Duration (days)" required><Input type="number" value={form.durationDays || 30} onChange={e => setForm({ ...form, durationDays: Number(e.target.value) })} /></FormRow>
-          <FormRow label="Amount" required><Input type="number" value={form.amount || 0} onChange={e => setForm({ ...form, amount: Number(e.target.value) })} /></FormRow>
+          <FormRow label="Duration (days)" required><Input type="number" min={1} value={form.durationDays || 30} onChange={e => setForm({ ...form, durationDays: Number(e.target.value) })} /></FormRow>
+          <FormRow label="Amount" required><Input type="number" min={0} value={form.amount || 0} onChange={e => setForm({ ...form, amount: Number(e.target.value) })} /></FormRow>
           <FormRow label="Active"><Switch checked={form.isActive !== false} onCheckedChange={v => setForm({ ...form, isActive: v })} /></FormRow>
           <div className="col-span-2"><FormRow label="Description"><Textarea rows={2} value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow></div>
         </div>
+        <div className="text-xs text-muted-foreground mt-3">Plan code (MP-0001, MP-0002, …) is generated automatically on save.</div>
       </Modal>
     </div>
   )
@@ -1535,22 +2200,45 @@ export function MembershipsModule() {
 // =================================================================
 // ATTENDANCE
 // =================================================================
+
+// Local yyyy-mm-dd (avoids UTC off-by-one of toISOString)
+function localDateStr(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export function AttendanceModule() {
   const { has, selectedBranchIds } = useApp()
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(localDateStr(new Date()))
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<any>({ memberId: '', checkIn: new Date().toISOString().slice(0, 16) })
+  const [editOpen, setEditOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<any>(null)
   const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
   const { data, reload } = useFetch<any>(`/api/attendance?date=${date}${branchesParam}`)
   const { data: membersData } = useFetch<any>('/api/members' + (branchesParam ? `?${branchesParam.slice(1)}` : ''))
   const records = data?.records || []
 
+  // Date validation (client-side mirror of server rules): current month, never future
+  const monthStartStr = localDateStr(new Date(new Date().getFullYear(), new Date().getMonth(), 1))
+  const todayStr = localDateStr(new Date())
+  const validateDate = (val: string, label: string): string | null => {
+    if (!val) return null
+    if (val < monthStartStr) return `${label} must be within the current month — earlier dates are not allowed`
+    if (val > todayStr) return `${label} cannot be in the future`
+    return null
+  }
+
   const doCheckOut = async (r: any) => {
     try {
-      await apiPatch('/api/attendance', { id: r.id, checkOut: new Date().toISOString() })
+      await apiPatch(`/api/attendance/${r.id}`, { action: 'check-out' })
       toast.success('Checked out')
       reload()
     } catch (e: any) { toast.error(e.message) }
+  }
+
+  const openEdit = (r: any) => {
+    setEditTarget(r)
+    setEditOpen(true)
   }
 
   return (
@@ -1559,18 +2247,38 @@ export function AttendanceModule() {
         action={has('attendance.add') ? () => { setForm({ memberId: '', checkIn: new Date().toISOString().slice(0, 16) }); setOpen(true) } : undefined}
         actionLabel="Check In" />
       <Toolbar>
-        <FormRow label="Date"><Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-40" /></FormRow>
+        <FormRow label="Date">
+          <Input
+            type="date"
+            value={date}
+            min={monthStartStr}
+            max={todayStr}
+            onChange={e => {
+              const v = e.target.value
+              const err = validateDate(v, 'Date')
+              if (err) { toast.error(err); return }
+              setDate(v)
+            }}
+            className="w-40"
+          />
+        </FormRow>
+        <span className="text-xs text-muted-foreground mt-6">Current month only · no future dates</span>
         <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
       </Toolbar>
       <DataTable
         columns={[
           { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
-            has('attendance.edit') && !r.checkOut ? (
-              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); doCheckOut(r) }}>Check Out</Button>
-            ) : null
+            <div className="flex gap-1">
+              {has('attendance.edit') && !r.checkOut && (
+                <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); doCheckOut(r) }}>Check Out</Button>
+              )}
+              {has('attendance.edit') && (
+                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(r) }} title="Edit times"><Edit className="h-3.5 w-3.5" /></Button>
+              )}
+            </div>
           ) },
           { key: 'member', label: 'Member', render: (r: any) => `${r.member?.firstName} ${r.member?.lastName || ''}` },
-          { key: 'member', label: 'Member ID', render: (r: any) => r.member?.memberId, mono: true },
+          { key: 'memberId', label: 'Member ID', render: (r: any) => r.member?.memberId, mono: true },
           { key: 'date', label: 'Date', render: (r: any) => fmtDateStr(r.date) },
           { key: 'checkIn', label: 'Check In', render: (r: any) => r.checkIn ? fmtDateTime(r.checkIn) : '—' },
           { key: 'checkOut', label: 'Check Out', render: (r: any) => r.checkOut ? fmtDateTime(r.checkOut) : '—' },
@@ -1582,7 +2290,7 @@ export function AttendanceModule() {
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={async () => {
-            try { await apiPost('/api/attendance', { memberId: form.memberId, checkIn: form.checkIn }); toast.success('Checked in'); setOpen(false); reload() }
+            try { await apiPost('/api/attendance', { memberId: form.memberId, date: form.date || date, checkIn: form.checkIn }); toast.success('Checked in'); setOpen(false); reload() }
             catch (e: any) { toast.error(e.message) }
           }}><Save className="h-4 w-4 mr-1" />Check In</Button>
         </>}>
@@ -1592,7 +2300,84 @@ export function AttendanceModule() {
             <SelectContent>{(membersData?.members || []).map((m: any) => <SelectItem key={m.id} value={m.id}>{m.memberId} — {m.firstName} {m.lastName || ''}</SelectItem>)}</SelectContent>
           </Select>
         </FormRow>
-        <FormRow label="Check In Time"><Input type="datetime-local" value={form.checkIn} onChange={e => setForm({ ...form, checkIn: e.target.value })} /></FormRow>
+        <div className="grid grid-cols-2 gap-3 mt-3">
+          <FormRow label="Date">
+            <Input
+              type="date"
+              value={form.date || date}
+              min={monthStartStr}
+              max={todayStr}
+              onChange={e => {
+                const v = e.target.value
+                const err = validateDate(v, 'Date')
+                if (err) { toast.error(err); return }
+                setForm({ ...form, date: v })
+              }}
+            />
+          </FormRow>
+          <FormRow label="Check In Time">
+            <Input
+              type="datetime-local"
+              value={form.checkIn}
+              onChange={e => {
+                const v = e.target.value
+                const err = validateDate(v.slice(0, 10), 'Check-in')
+                if (err) { toast.error(err); return }
+                setForm({ ...form, checkIn: v })
+              }}
+            />
+          </FormRow>
+        </div>
+      </Modal>
+
+      {/* Same-day edit of check-in / check-out times */}
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title={`Edit Attendance — ${editTarget?.member?.firstName || ''} ${editTarget?.member?.lastName || ''}`}
+        footer={<>
+          <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+          <Button onClick={async () => {
+            if (!editTarget) return
+            const checkIn = editTarget.checkIn ? editTarget.checkIn.slice(0, 16) : ''
+            const checkOut = editTarget.checkOut ? editTarget.checkOut.slice(0, 16) : ''
+            const errIn = validateDate(checkIn.slice(0, 10), 'Check-in')
+            if (errIn) { toast.error(errIn); return }
+            const errOut = validateDate(checkOut.slice(0, 10), 'Check-out')
+            if (errOut) { toast.error(errOut); return }
+            if (checkIn && checkOut && new Date(checkOut).getTime() <= new Date(checkIn).getTime()) {
+              toast.error('Check-out time must be after check-in time'); return
+            }
+            try {
+              await apiPatch(`/api/attendance/${editTarget.id}`, { checkIn: checkIn || null, checkOut: checkOut || null, notes: editTarget.notes })
+              toast.success('Attendance updated')
+              setEditOpen(false); reload()
+            } catch (e: any) { toast.error(e.message) }
+          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+        </>}>
+        {editTarget && (
+          <div className="space-y-3">
+            <div className="text-xs text-muted-foreground">
+              Date: {fmtDateStr(editTarget.date)} — editing is allowed for the same day within the current month.
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <FormRow label="Check In">
+                <Input
+                  type="datetime-local"
+                  value={editTarget.checkIn ? editTarget.checkIn.slice(0, 16) : ''}
+                  max={`${todayStr}T23:59`}
+                  onChange={e => setEditTarget({ ...editTarget, checkIn: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                />
+              </FormRow>
+              <FormRow label="Check Out">
+                <Input
+                  type="datetime-local"
+                  value={editTarget.checkOut ? editTarget.checkOut.slice(0, 16) : ''}
+                  max={`${todayStr}T23:59`}
+                  onChange={e => setEditTarget({ ...editTarget, checkOut: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                />
+              </FormRow>
+            </div>
+            <FormRow label="Notes"><Textarea rows={2} value={editTarget.notes || ''} onChange={e => setEditTarget({ ...editTarget, notes: e.target.value })} /></FormRow>
+          </div>
+        )}
       </Modal>
     </div>
   )
@@ -1611,8 +2396,8 @@ export function FeesModule() {
   const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
   const { data, reload } = useFetch<any>(`/api/fees?status=${status !== 'all' ? status : ''}${branchesParam}`)
   const { data: membersData } = useFetch<any>('/api/members' + (branchesParam ? `?${branchesParam.slice(1)}` : ''))
-  const { data: accountsData } = useFetch<any>('/api/accounts?bookType=Cash')
-  const { data: bankAccountsData } = useFetch<any>('/api/accounts?bookType=Bank')
+  const { data: accountsData } = useFetch<any>('/api/charts?bookType=Cash&isActive=true')
+  const { data: bankAccountsData } = useFetch<any>('/api/charts?bookType=Bank&isActive=true')
   const { data: banksData } = useFetch<any>('/api/master-files?type=Banks')
   const { data: cardTypesData } = useFetch<any>('/api/master-files?type=CardTypes')
   const fees = (data?.fees || []).filter((f: any) =>
@@ -1659,8 +2444,8 @@ export function FeesModule() {
       <FeeCreateModal open={open} onClose={() => setOpen(false)} members={membersData?.members || []} onSaved={() => { setOpen(false); reload() }} />
       <FeePayModal
         open={payOpen} fee={payTarget}
-        cashAccounts={accountsData?.accounts || []}
-        bankAccounts={bankAccountsData?.accounts || []}
+        cashAccounts={accountsData?.charts || []}
+        bankAccounts={bankAccountsData?.charts || []}
         banks={(banksData?.records || []).filter((b: any) => b.isActive)}
         cardTypes={(cardTypesData?.records || []).filter((c: any) => c.isActive)}
         onClose={() => setPayOpen(false)} onPaid={() => { setPayOpen(false); reload() }}
@@ -1756,7 +2541,7 @@ function FeePayModal({ open, fee, cashAccounts, bankAccounts, banks, cardTypes, 
         <FormRow label={form.method === 'Cash' ? 'Cash Account' : 'Bank Account'} required>
           <Select value={form.accountId} onValueChange={v => setForm({ ...form, accountId: v })}>
             <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
-            <SelectContent>{accounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}</SelectContent>
+            <SelectContent>{accounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>)}</SelectContent>
           </Select>
         </FormRow>
         <FormRow label="Payment Date"><Input type="date" value={form.paymentDate} onChange={e => setForm({ ...form, paymentDate: e.target.value })} /></FormRow>
@@ -2106,12 +2891,14 @@ export function EquipmentModule() {
   const [form, setForm] = useState<any>({})
   const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
   const { data, reload } = useFetch<any>(`/api/equipment?condition=${condition !== 'all' ? condition : ''}${branchesParam}`)
+  const { data: categoriesData } = useFetch<any>('/api/master-files?type=EquipmentCategory')
   const equipment = (data?.equipment || []).filter((e: any) => !search || e.code?.toLowerCase().includes(search.toLowerCase()) || e.name?.toLowerCase().includes(search.toLowerCase()))
+  const categories = (categoriesData?.records || []).filter((c: any) => c.isActive)
 
   return (
     <div>
       <PageHeader title="Equipment"
-        action={has('equipment.add') ? () => { setForm({ condition: 'Working', category: 'Machine' }); setOpen(true) } : undefined}
+        action={has('equipment.add') ? () => { setForm({ condition: 'Working', category: categories[0]?.name || 'Machine' }); setOpen(true) } : undefined}
         actionLabel="Add Equipment" />
       <Toolbar>
         <SearchInput value={search} onChange={setSearch} placeholder="Search equipment…" />
@@ -2144,6 +2931,8 @@ export function EquipmentModule() {
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={async () => {
+            if (!form.name?.trim()) { toast.error('Equipment name is required'); return }
+            if (!form.branchId) { toast.error('Branch is required'); return }
             try { await apiPost('/api/equipment', form); toast.success('Equipment added'); setOpen(false); reload() }
             catch (e: any) { toast.error(e.message) }
           }}><Save className="h-4 w-4 mr-1" />Save</Button>
@@ -2151,17 +2940,16 @@ export function EquipmentModule() {
         <div className="grid grid-cols-2 gap-3">
           <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
           <FormRow label="Category">
-            <Select value={form.category || 'Machine'} onValueChange={v => setForm({ ...form, category: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Machine">Machine</SelectItem>
-                <SelectItem value="Dumbbell">Dumbbell</SelectItem>
-                <SelectItem value="Bar">Bar</SelectItem>
-                <SelectItem value="Weight">Weight</SelectItem>
-                <SelectItem value="Accessory">Accessory</SelectItem>
-                <SelectItem value="Consumable">Consumable</SelectItem>
-              </SelectContent>
-            </Select>
+            {categories.length > 0 ? (
+              <Select value={form.category || categories[0]?.name || 'Machine'} onValueChange={v => setForm({ ...form, category: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {categories.map((c: any) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input value={form.category || ''} onChange={e => setForm({ ...form, category: e.target.value })} placeholder="e.g. Machine — add categories in Master Files" />
+            )}
           </FormRow>
           <FormRow label="Branch" required>
             <Select value={form.branchId || ''} onValueChange={v => setForm({ ...form, branchId: v })}>
@@ -2264,11 +3052,11 @@ export function PosModule() {
   const [paymentAccountId, setPaymentAccountId] = useState('')
   const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
   const { data: invData } = useFetch<any>(`/api/inventory${branchesParam ? `?${branchesParam.slice(1)}` : ''}`)
-  const { data: cashData } = useFetch<any>('/api/accounts?bookType=Cash')
-  const { data: bankData } = useFetch<any>('/api/accounts?bookType=Bank')
+  const { data: cashData } = useFetch<any>('/api/charts?bookType=Cash&isActive=true')
+  const { data: bankData } = useFetch<any>('/api/charts?bookType=Bank&isActive=true')
 
   const items = invData?.items || []
-  const accounts = method === 'Cash' ? (cashData?.accounts || []) : method === 'Bank' ? (bankData?.accounts || []) : [...(cashData?.accounts || []), ...(bankData?.accounts || [])]
+  const accounts = method === 'Cash' ? (cashData?.charts || []) : method === 'Bank' ? (bankData?.charts || []) : [...(cashData?.charts || []), ...(bankData?.charts || [])]
   const total = cart.reduce((s, c) => s + c.unitPrice * c.quantity, 0)
 
   const addToCart = (item: any) => {
@@ -2343,7 +3131,7 @@ export function PosModule() {
               <FormRow label="Account">
                 <Select value={paymentAccountId} onValueChange={setPaymentAccountId}>
                   <SelectTrigger><SelectValue placeholder="Auto" /></SelectTrigger>
-                  <SelectContent>{accounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}</SelectContent>
+                  <SelectContent>{accounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>)}</SelectContent>
                 </Select>
               </FormRow>
               <div className="flex items-center justify-between text-sm font-medium">
@@ -2359,22 +3147,102 @@ export function PosModule() {
 }
 
 // =================================================================
-// STAFF
+// STAFF — single-page long employee form (client-confirmed rework)
 // =================================================================
+
+// Stacked-section subheading used inside the long employee form
+function FormSection({ title }: { title: string }) {
+  return (
+    <div className="col-span-2 mt-2 border-b pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground first:mt-0">
+      {title}
+    </div>
+  )
+}
+
 export function StaffModule() {
   const { has, selectedBranchIds, branches } = useApp()
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<any>({})
-  const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
-  const { data, reload } = useFetch<any>(`/api/staff${branchesParam ? `?${branchesParam.slice(1)}` : ''}`)
+  const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [confirmDel, setConfirmDel] = useState<any>(null)
+  const { data, reload } = useFetch<any>(`/api/staff${selectedBranchIds.length ? `?branches=${selectedBranchIds.join(',')}` : ''}`)
   const { data: shiftsData } = useFetch<any>('/api/shifts')
+  const { data: deptData } = useFetch<any>('/api/master-files?masterType=Department')
+  const { data: desigData } = useFetch<any>('/api/master-files?masterType=Designation')
   const staff = (data?.staff || []).filter((s: any) => !search || s.employeeId?.toLowerCase().includes(search.toLowerCase()) || s.firstName?.toLowerCase().includes(search.toLowerCase()))
+  const departments = (deptData?.records || []).filter((r: any) => r.isActive !== false)
+  const designations = (desigData?.records || []).filter((r: any) => r.isActive !== false)
+  const shifts = shiftsData?.shifts || []
+
+  const openForm = (row?: any) => {
+    if (row) {
+      setForm({ ...row, joiningDate: row.joiningDate ? localDateStr(new Date(row.joiningDate)) : '' })
+    } else {
+      setForm({ isTrainer: false, overtimeAllowed: false, joiningDate: localDateStr(new Date()), basicSalary: 0, fuelAllowance: 0, rentAllowance: 0, houseAllowance: 0, otherAllowance: 0, sessi: 0, eobi: 0, overtimeRate: 0 })
+    }
+    setOpen(true)
+  }
+
+  const uploadPhoto = async (file: File) => {
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/uploads', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Upload failed')
+      setForm((f: any) => ({ ...f, photo: json.url }))
+      toast.success('Photo uploaded')
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const save = async () => {
+    if (!String(form.firstName || '').trim()) { toast.error('First Name is required'); return }
+    if (!form.branchId) { toast.error('Branch is required'); return }
+    if (!form.joiningDate) { toast.error('Joining Date is required'); return }
+    if (form.basicSalary === '' || form.basicSalary === null || form.basicSalary === undefined) { toast.error('Basic Salary is required'); return }
+    const payload = {
+      ...form,
+      basicSalary: Number(form.basicSalary) || 0,
+      fuelAllowance: Number(form.fuelAllowance) || 0,
+      rentAllowance: Number(form.rentAllowance) || 0,
+      houseAllowance: Number(form.houseAllowance) || 0,
+      otherAllowance: Number(form.otherAllowance) || 0,
+      sessi: Number(form.sessi) || 0,
+      eobi: Number(form.eobi) || 0,
+      overtimeRate: Number(form.overtimeRate) || 0,
+      shiftId: form.shiftId || '',
+    }
+    try {
+      setSaving(true)
+      if (form.id) await apiPatch('/api/staff', payload)
+      else await apiPost('/api/staff', payload)
+      toast.success(form.id ? 'Staff updated' : 'Staff added')
+      setOpen(false)
+      reload()
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const num = (key: string) => ({
+    type: 'number',
+    value: form[key] ?? 0,
+    onChange: (e: any) => setForm({ ...form, [key]: e.target.value }),
+  })
 
   return (
     <div>
       <PageHeader title="Staff"
-        action={has('staff.add') ? () => { setForm({ isTrainer: false, overtimeAllowed: false }); setOpen(true) } : undefined}
+        action={has('staff.add') ? () => openForm() : undefined}
         actionLabel="Add Staff" />
       <Toolbar>
         <SearchInput value={search} onChange={setSearch} placeholder="Search by ID or name…" />
@@ -2391,70 +3259,113 @@ export function StaffModule() {
           { key: 'isTrainer', label: 'Trainer', render: (r: any) => r.isTrainer ? <Badge>Yes</Badge> : '—' },
           { key: 'basicSalary', label: 'Salary', align: 'right', mono: true, render: (r: any) => fmtMoney(r.basicSalary) },
           { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
+          { key: 'actions', label: 'Actions', align: 'right', render: (r: any) => (
+            <div className="flex justify-end gap-1">
+              {has('staff.edit') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openForm(r) }}><Edit className="h-3.5 w-3.5" /></Button>}
+              {has('staff.delete') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setConfirmDel(r) }}><Trash2 className="h-3.5 w-3.5" /></Button>}
+            </div>
+          ) },
         ]}
         rows={staff}
       />
-      <Modal open={open} onClose={() => setOpen(false)} title="Add Staff" size="lg"
+      <Modal open={open} onClose={() => setOpen(false)} title={form.id ? `Edit Staff — ${form.employeeId || ''}` : 'Add Staff'} size="xl"
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={async () => {
-            try { await apiPost('/api/staff', form); toast.success('Staff added'); setOpen(false); reload() }
-            catch (e: any) { toast.error(e.message) }
-          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+          <Button onClick={save} disabled={saving}><Save className="h-4 w-4 mr-1" />{saving ? 'Saving…' : 'Save'}</Button>
         </>}>
-        <Tabs defaultValue="basic">
-          <TabsList className="grid grid-cols-4 mb-3">
-            <TabsTrigger value="basic">Basic</TabsTrigger>
-            <TabsTrigger value="contact">Contact</TabsTrigger>
-            <TabsTrigger value="job">Job</TabsTrigger>
-            <TabsTrigger value="salary">Salary</TabsTrigger>
-          </TabsList>
-          <TabsContent value="basic" className="grid grid-cols-2 gap-3">
-            <FormRow label="First Name" required><Input value={form.firstName || ''} onChange={e => setForm({ ...form, firstName: e.target.value })} /></FormRow>
-            <FormRow label="Last Name"><Input value={form.lastName || ''} onChange={e => setForm({ ...form, lastName: e.target.value })} /></FormRow>
-            <FormRow label="Father/Guardian"><Input value={form.fatherGuardian || ''} onChange={e => setForm({ ...form, fatherGuardian: e.target.value })} /></FormRow>
-            <FormRow label="CNIC"><Input value={form.cnic || ''} onChange={e => setForm({ ...form, cnic: e.target.value })} /></FormRow>
-            <FormRow label="Email"><Input value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
-            <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
-          </TabsContent>
-          <TabsContent value="contact" className="grid grid-cols-2 gap-3">
-            <FormRow label="WhatsApp"><Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} /></FormRow>
-            <FormRow label="Telephone"><Input value={form.telephone || ''} onChange={e => setForm({ ...form, telephone: e.target.value })} /></FormRow>
-            <FormRow label="Emergency Contact"><Input value={form.emergencyContact || ''} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} /></FormRow>
-            <FormRow label="Emergency #"><Input value={form.emergencyContactNo || ''} onChange={e => setForm({ ...form, emergencyContactNo: e.target.value })} /></FormRow>
-            <div className="col-span-2"><FormRow label="Address"><Textarea rows={2} value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></FormRow></div>
-          </TabsContent>
-          <TabsContent value="job" className="grid grid-cols-2 gap-3">
-            <FormRow label="Joining Date"><Input type="date" value={form.joiningDate || ''} onChange={e => setForm({ ...form, joiningDate: e.target.value })} /></FormRow>
-            <FormRow label="Branch" required>
-              <Select value={form.branchId || ''} onValueChange={v => setForm({ ...form, branchId: v })}>
-                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </FormRow>
-            <FormRow label="Department"><Input value={form.department || ''} onChange={e => setForm({ ...form, department: e.target.value })} /></FormRow>
-            <FormRow label="Designation"><Input value={form.designation || ''} onChange={e => setForm({ ...form, designation: e.target.value })} /></FormRow>
-            <FormRow label="Shift">
-              <Select value={form.shiftId || ''} onValueChange={v => setForm({ ...form, shiftId: v })}>
-                <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>{(shiftsData?.shifts || []).map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </FormRow>
-            <FormRow label="Trainer"><Switch checked={form.isTrainer || false} onCheckedChange={v => setForm({ ...form, isTrainer: v })} /></FormRow>
-          </TabsContent>
-          <TabsContent value="salary" className="grid grid-cols-2 gap-3">
-            <FormRow label="Basic Salary"><Input type="number" value={form.basicSalary || 0} onChange={e => setForm({ ...form, basicSalary: Number(e.target.value) })} /></FormRow>
-            <FormRow label="Fuel Allowance"><Input type="number" value={form.fuelAllowance || 0} onChange={e => setForm({ ...form, fuelAllowance: Number(e.target.value) })} /></FormRow>
-            <FormRow label="Rent Allowance"><Input type="number" value={form.rentAllowance || 0} onChange={e => setForm({ ...form, rentAllowance: Number(e.target.value) })} /></FormRow>
-            <FormRow label="House Allowance"><Input type="number" value={form.houseAllowance || 0} onChange={e => setForm({ ...form, houseAllowance: Number(e.target.value) })} /></FormRow>
-            <FormRow label="SESSI"><Input type="number" value={form.sessi || 0} onChange={e => setForm({ ...form, sessi: Number(e.target.value) })} /></FormRow>
-            <FormRow label="EOBI"><Input type="number" value={form.eobi || 0} onChange={e => setForm({ ...form, eobi: Number(e.target.value) })} /></FormRow>
-            <FormRow label="FBR/Tax #"><Input value={form.fbrTaxNumber || ''} onChange={e => setForm({ ...form, fbrTaxNumber: e.target.value })} /></FormRow>
-            <FormRow label="Overtime Allowed"><Switch checked={form.overtimeAllowed || false} onCheckedChange={v => setForm({ ...form, overtimeAllowed: v })} /></FormRow>
-            <FormRow label="Overtime Rate/Hr"><Input type="number" value={form.overtimeRate || 0} onChange={e => setForm({ ...form, overtimeRate: Number(e.target.value) })} /></FormRow>
-          </TabsContent>
-        </Tabs>
+        <div className="grid grid-cols-2 gap-3">
+          <FormSection title="Personal" />
+          <FormRow label="Photo">
+            <div className="flex items-center gap-2">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded border bg-muted/40">
+                {form.photo
+                  ? // eslint-disable-next-line @next/next/no-img-element
+                    <img src={form.photo} alt="Staff photo" className="h-full w-full object-cover" />
+                  : <ImagePlus className="h-5 w-5 text-muted-foreground" />}
+              </div>
+              <Input type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="flex-1 text-xs" disabled={uploading}
+                onChange={e => { const f = e.target.files?.[0]; if (f) uploadPhoto(f) }} />
+              {form.photo && <Button size="sm" variant="ghost" onClick={() => setForm({ ...form, photo: '' })}><X className="h-3.5 w-3.5" /></Button>}
+            </div>
+          </FormRow>
+          <FormRow label="First Name" required><Input value={form.firstName || ''} onChange={e => setForm({ ...form, firstName: e.target.value })} /></FormRow>
+          <FormRow label="Last Name"><Input value={form.lastName || ''} onChange={e => setForm({ ...form, lastName: e.target.value })} /></FormRow>
+          <FormRow label="Father/Guardian"><Input value={form.fatherGuardian || ''} onChange={e => setForm({ ...form, fatherGuardian: e.target.value })} /></FormRow>
+          <FormRow label="CNIC"><Input value={form.cnic || ''} onChange={e => setForm({ ...form, cnic: e.target.value })} /></FormRow>
+
+          <FormSection title="Contact" />
+          <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
+          <FormRow label="WhatsApp"><Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} /></FormRow>
+          <FormRow label="Telephone"><Input value={form.telephone || ''} onChange={e => setForm({ ...form, telephone: e.target.value })} /></FormRow>
+          <FormRow label="Fax"><Input value={form.fax || ''} onChange={e => setForm({ ...form, fax: e.target.value })} /></FormRow>
+          <FormRow label="Email"><Input type="email" value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
+          <FormRow label="Emergency Contact"><Input value={form.emergencyContact || ''} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} /></FormRow>
+          <FormRow label="Emergency Contact No"><Input value={form.emergencyContactNo || ''} onChange={e => setForm({ ...form, emergencyContactNo: e.target.value })} /></FormRow>
+          <div className="col-span-2"><FormRow label="Address"><Textarea rows={2} value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></FormRow></div>
+
+          <FormSection title="Employment" />
+          <FormRow label="Employee ID (auto)">
+            <Input disabled value={form.employeeId || 'Auto — assigned on save (EMP-0001)'} className="bg-muted/40" />
+          </FormRow>
+          <FormRow label="Joining Date" required><Input type="date" value={form.joiningDate || ''} onChange={e => setForm({ ...form, joiningDate: e.target.value })} /></FormRow>
+          <FormRow label="Department">
+            <Select value={form.department || ''} onValueChange={v => setForm({ ...form, department: v })}>
+              <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+              <SelectContent>
+                {(departments.some((d: any) => d.name === form.department) || !form.department ? departments : [...departments, { id: '__cur', name: form.department }]).map((d: any) => (
+                  <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Designation">
+            <Select value={form.designation || ''} onValueChange={v => setForm({ ...form, designation: v })}>
+              <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+              <SelectContent>
+                {(designations.some((d: any) => d.name === form.designation) || !form.designation ? designations : [...designations, { id: '__cur', name: form.designation }]).map((d: any) => (
+                  <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Branch" required>
+            <Select value={form.branchId || ''} onValueChange={v => setForm({ ...form, branchId: v })}>
+              <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+              <SelectContent>{branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Shift">
+            <Select value={form.shiftId || ''} onValueChange={v => setForm({ ...form, shiftId: v })}>
+              <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+              <SelectContent>{shifts.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}{s.isActive ? '' : ' (inactive)'}</SelectItem>)}</SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Trainer"><Switch checked={form.isTrainer || false} onCheckedChange={v => setForm({ ...form, isTrainer: v })} /></FormRow>
+
+          <FormSection title="Salary" />
+          <FormRow label="Basic Salary" required><Input {...num('basicSalary')} /></FormRow>
+          <FormRow label="Fuel Allowance"><Input {...num('fuelAllowance')} /></FormRow>
+          <FormRow label="Rent Allowance"><Input {...num('rentAllowance')} /></FormRow>
+          <FormRow label="House Allowance"><Input {...num('houseAllowance')} /></FormRow>
+          <FormRow label="Other Allowance"><Input {...num('otherAllowance')} /></FormRow>
+          <FormRow label="SESSI"><Input {...num('sessi')} /></FormRow>
+          <FormRow label="EOBI"><Input {...num('eobi')} /></FormRow>
+          <FormRow label="FBR/Tax #"><Input value={form.fbrTaxNumber || ''} onChange={e => setForm({ ...form, fbrTaxNumber: e.target.value })} /></FormRow>
+          <FormRow label="Overtime Allowed"><Switch checked={form.overtimeAllowed || false} onCheckedChange={v => setForm({ ...form, overtimeAllowed: v })} /></FormRow>
+          <FormRow label="Overtime Rate/Hr">
+            <Input {...num('overtimeRate')} disabled={!form.overtimeAllowed} className={!form.overtimeAllowed ? 'opacity-50' : ''} />
+          </FormRow>
+        </div>
       </Modal>
+      <ConfirmModal open={!!confirmDel} onClose={() => setConfirmDel(null)} title="Delete Staff"
+        message={`Soft-delete employee ${confirmDel?.employeeId || ''} — ${confirmDel?.firstName || ''} ${confirmDel?.lastName || ''}? Their leaves, overtime and payroll history are kept.`}
+        onConfirm={async () => {
+          try {
+            const res = await apiDelete(`/api/staff?id=${confirmDel.id}`)
+            toast.success(res.message || 'Staff deleted')
+            reload()
+          } catch (e: any) { toast.error(e.message) }
+        }} />
     </div>
   )
 }
@@ -2466,12 +3377,31 @@ export function ShiftsModule() {
   const { has, branches } = useApp()
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<any>({})
+  const [confirmDel, setConfirmDel] = useState<any>(null)
   const { data, reload } = useFetch<any>('/api/shifts')
   const shifts = data?.shifts || []
+
+  const openForm = (row?: any) => {
+    setForm(row ? { ...row } : { workingDays: 'Mon,Tue,Wed,Thu,Fri' })
+    setOpen(true)
+  }
+
+  const save = async () => {
+    if (!String(form.name || '').trim()) { toast.error('Name is required'); return }
+    if (!form.timeIn || !form.timeOut) { toast.error('Time In and Time Out are required'); return }
+    try {
+      if (form.id) await apiPatch(`/api/shifts/${form.id}`, form)
+      else await apiPost('/api/shifts', form)
+      toast.success(form.id ? 'Shift updated' : 'Shift added')
+      setOpen(false)
+      reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
   return (
     <div>
       <PageHeader title="Shifts"
-        action={has('shifts.add') ? () => { setForm({ workingDays: 'Mon,Tue,Wed,Thu,Fri' }); setOpen(true) } : undefined}
+        action={has('shifts.add') ? () => openForm() : undefined}
         actionLabel="Add Shift" />
       <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
       <DataTable
@@ -2482,16 +3412,19 @@ export function ShiftsModule() {
           { key: 'workingDays', label: 'Days' },
           { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
           { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
+          { key: 'actions', label: 'Actions', align: 'right', render: (r: any) => (
+            <div className="flex justify-end gap-1">
+              {has('shifts.edit') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openForm(r) }}><Edit className="h-3.5 w-3.5" /></Button>}
+              {has('shifts.delete') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setConfirmDel(r) }}><Trash2 className="h-3.5 w-3.5" /></Button>}
+            </div>
+          ) },
         ]}
         rows={shifts}
       />
-      <Modal open={open} onClose={() => setOpen(false)} title="Add Shift"
+      <Modal open={open} onClose={() => setOpen(false)} title={form.id ? `Edit Shift — ${form.name || ''}` : 'Add Shift'}
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={async () => {
-            try { await apiPost('/api/shifts', form); toast.success('Shift added'); setOpen(false); reload() }
-            catch (e: any) { toast.error(e.message) }
-          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+          <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
         <div className="grid grid-cols-2 gap-3">
           <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
@@ -2503,9 +3436,19 @@ export function ShiftsModule() {
           </FormRow>
           <FormRow label="Time In" required><Input type="time" value={form.timeIn || ''} onChange={e => setForm({ ...form, timeIn: e.target.value })} /></FormRow>
           <FormRow label="Time Out" required><Input type="time" value={form.timeOut || ''} onChange={e => setForm({ ...form, timeOut: e.target.value })} /></FormRow>
+          <FormRow label="Active"><Switch checked={form.isActive !== false} onCheckedChange={v => setForm({ ...form, isActive: v })} /></FormRow>
           <div className="col-span-2"><FormRow label="Working Days (CSV)"><Input value={form.workingDays || ''} onChange={e => setForm({ ...form, workingDays: e.target.value })} placeholder="Mon,Tue,Wed,Thu,Fri" /></FormRow></div>
         </div>
       </Modal>
+      <ConfirmModal open={!!confirmDel} onClose={() => setConfirmDel(null)} title="Delete Shift"
+        message={`Delete shift "${confirmDel?.name || ''}"? Shifts with staff assigned cannot be deleted.`}
+        onConfirm={async () => {
+          try {
+            const res = await apiDelete(`/api/shifts/${confirmDel.id}`)
+            toast.success(res.message || 'Shift deleted')
+            reload()
+          } catch (e: any) { toast.error(e.message) }
+        }} />
     </div>
   )
 }
@@ -2518,7 +3461,7 @@ export function CalendarModule() {
   const [year, setYear] = useState(new Date().getFullYear())
   const { data, reload } = useFetch<any>(`/api/calendar?year=${year}`)
   const days = data?.records || []
-  const dayMap = new Map(days.map((d: any) => [new Date(d.date).toISOString().slice(0, 10), d]))
+  const dayMap = new Map<string, any>(days.map((d: any) => [new Date(d.date).toISOString().slice(0, 10), d] as [string, any]))
 
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
   const generateYear = async () => {
@@ -2586,75 +3529,143 @@ export function CalendarModule() {
 }
 
 // =================================================================
-// LEAVES
+// LEAVES — Leave No (LV-0001) business id; types from MasterFile 'LeaveType'
 // =================================================================
 export function LeavesModule({ presetStatus }: { presetStatus?: string } = {}) {
-  const { has } = useApp()
+  const { has, branches } = useApp()
   const [status, setStatus] = useState(presetStatus || 'all')
+  const [branchId, setBranchId] = useState('all')
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<any>({})
-  const { data, reload } = useFetch<any>(`/api/leaves?status=${status !== 'all' ? status : ''}`)
+  const { data, reload } = useFetch<any>(`/api/leaves?status=${status !== 'all' ? status : ''}&branchId=${branchId !== 'all' ? branchId : ''}`)
   const { data: staffData } = useFetch<any>('/api/staff')
+  const { data: ltData } = useFetch<any>('/api/master-files?masterType=LeaveType')
+  const leaveTypes = (ltData?.records || []).filter((r: any) => r.isActive !== false)
+  const staffList = staffData?.staff || []
   const leaves = data?.leaves || []
+  const isApproval = presetStatus === 'Pending'
+
+  const selectedType = leaveTypes.find((t: any) => t.name === form.leaveType)
+  const typeExtra: any = (() => { try { return selectedType?.extra ? JSON.parse(selectedType.extra) : null } catch { return null } })()
+
+  const openForm = (row?: any) => {
+    if (row) setForm({ ...row, fromDate: localDateStr(new Date(row.fromDate)), toDate: localDateStr(new Date(row.toDate)) })
+    else setForm({})
+    setOpen(true)
+  }
+
+  const save = async () => {
+    if (!form.staffId) { toast.error('Staff is required'); return }
+    if (!form.leaveType) { toast.error('Leave type is required'); return }
+    if (!form.fromDate || !form.toDate) { toast.error('From and To dates are required'); return }
+    if (form.toDate < form.fromDate) { toast.error('To date must be on or after From date'); return }
+    const payload = {
+      staffId: form.staffId,
+      leaveType: form.leaveType,
+      fromDate: form.fromDate,
+      toDate: form.toDate,
+      reason: form.reason,
+      branchId: staffList.find((s: any) => s.id === form.staffId)?.branchId,
+    }
+    try {
+      if (form.id) await apiPatch(`/api/leaves/${form.id}`, payload)
+      else await apiPost('/api/leaves', payload)
+      toast.success(form.id ? 'Leave updated' : 'Leave applied')
+      setOpen(false)
+      reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
+  const setStatusFor = async (row: any, newStatus: string) => {
+    try {
+      await apiPatch(`/api/leaves/${row.id}`, { status: newStatus })
+      toast.success(newStatus === 'Approved' ? 'Leave approved' : 'Leave rejected')
+      reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
   return (
     <div>
-      <PageHeader title={presetStatus === 'Pending' ? 'Leave Approval' : 'Leaves'} action={has('leaves.add') && !presetStatus ? () => { setForm({}); setOpen(true) } : undefined} actionLabel="Apply Leave" />
+      <PageHeader title={isApproval ? 'Leave Approval' : 'Leaves'} action={has('leaves.add') && !isApproval ? () => openForm() : undefined} actionLabel="Apply Leave" />
       <Toolbar>
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
+        {!isApproval && (
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="Pending">Pending</SelectItem>
+              <SelectItem value="Approved">Approved</SelectItem>
+              <SelectItem value="Rejected">Rejected</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+        <Select value={branchId} onValueChange={setBranchId}>
+          <SelectTrigger className="w-44"><SelectValue placeholder="Branch" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="Pending">Pending</SelectItem>
-            <SelectItem value="Approved">Approved</SelectItem>
-            <SelectItem value="Rejected">Rejected</SelectItem>
+            <SelectItem value="all">All Branches</SelectItem>
+            {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
           </SelectContent>
         </Select>
         <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
       </Toolbar>
       <DataTable
         columns={[
-          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => r.status === 'Pending' && has('leaves.approve') && (
-            <div className="flex gap-1">
-              <Button size="sm" variant="outline" onClick={async (e) => { e.stopPropagation(); await apiPatch('/api/leaves', { id: r.id, status: 'Approved' }); toast.success('Approved'); reload() }}>Approve</Button>
-              <Button size="sm" variant="ghost" onClick={async (e) => { e.stopPropagation(); await apiPatch('/api/leaves', { id: r.id, status: 'Rejected' }); toast.success('Rejected'); reload() }}>Reject</Button>
-            </div>
-          ) },
+          { key: 'leaveNo', label: 'Leave No', mono: true, sticky: true },
           { key: 'staff', label: 'Staff', render: (r: any) => `${r.staff?.firstName} ${r.staff?.lastName || ''}` },
+          { key: 'employeeId', label: 'Emp ID', mono: true, render: (r: any) => r.staff?.employeeId },
+          { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
           { key: 'leaveType', label: 'Type' },
           { key: 'fromDate', label: 'From', render: (r: any) => fmtDateStr(r.fromDate) },
           { key: 'toDate', label: 'To', render: (r: any) => fmtDateStr(r.toDate) },
           { key: 'days', label: 'Days', align: 'right' },
           { key: 'reason', label: 'Reason' },
           { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
+          { key: 'actions', label: 'Actions', align: 'right', render: (r: any) => r.status === 'Pending' && (
+            <div className="flex justify-end gap-1">
+              {has('leaves.approve') && (
+                <>
+                  <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setStatusFor(r, 'Approved') }}>Approve</Button>
+                  <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setStatusFor(r, 'Rejected') }}>Reject</Button>
+                </>
+              )}
+              {!isApproval && has('leaves.edit') && (
+                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openForm(r) }}><Edit className="h-3.5 w-3.5" /></Button>
+              )}
+            </div>
+          ) },
         ]}
         rows={leaves}
       />
-      <Modal open={open} onClose={() => setOpen(false)} title="Apply Leave"
+      <Modal open={open} onClose={() => setOpen(false)} title={form.id ? `Edit Leave — ${form.leaveNo || ''}` : 'Apply Leave'}
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={async () => {
-            try { await apiPost('/api/leaves', form); toast.success('Leave applied'); setOpen(false); reload() }
-            catch (e: any) { toast.error(e.message) }
-          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+          <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
         <div className="grid grid-cols-2 gap-3">
           <FormRow label="Staff" required>
             <Select value={form.staffId || ''} onValueChange={v => setForm({ ...form, staffId: v })}>
               <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-              <SelectContent>{(staffData?.staff || []).map((s: any) => <SelectItem key={s.id} value={s.id}>{s.employeeId} — {s.firstName} {s.lastName || ''}</SelectItem>)}</SelectContent>
+              <SelectContent>{staffList.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.employeeId} — {s.firstName} {s.lastName || ''}</SelectItem>)}</SelectContent>
             </Select>
           </FormRow>
-          <FormRow label="Type">
-            <Select value={form.leaveType || 'Casual'} onValueChange={v => setForm({ ...form, leaveType: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+          <FormRow label="Type" required>
+            <Select value={form.leaveType || ''} onValueChange={v => setForm({ ...form, leaveType: v })}>
+              <SelectTrigger><SelectValue placeholder="Select leave type" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="Casual">Casual</SelectItem>
-                <SelectItem value="Sick">Sick</SelectItem>
-                <SelectItem value="Paid">Paid</SelectItem>
-                <SelectItem value="Unpaid">Unpaid</SelectItem>
+                {leaveTypes.map((t: any) => {
+                  let hint = ''
+                  try { hint = t.extra ? ` (${JSON.parse(t.extra).allowedDays ?? '?'} days/yr)` : '' } catch { /* ignore */ }
+                  return <SelectItem key={t.id} value={t.name}>{t.name}{hint}</SelectItem>
+                })}
               </SelectContent>
             </Select>
           </FormRow>
+          {typeExtra && (typeExtra.allowedDays !== undefined || typeExtra.isPaid !== undefined) && (
+            <div className="col-span-2 -mt-1 text-xs text-muted-foreground">
+              {form.leaveType}: {typeExtra.allowedDays !== undefined ? `${typeExtra.allowedDays} allowed days/year` : ''}
+              {typeExtra.isPaid !== undefined ? ` · ${typeExtra.isPaid ? 'Paid' : 'Unpaid'}` : ''}
+            </div>
+          )}
           <FormRow label="From" required><Input type="date" value={form.fromDate || ''} onChange={e => setForm({ ...form, fromDate: e.target.value })} /></FormRow>
           <FormRow label="To" required><Input type="date" value={form.toDate || ''} onChange={e => setForm({ ...form, toDate: e.target.value })} /></FormRow>
           <div className="col-span-2"><FormRow label="Reason"><Textarea rows={2} value={form.reason || ''} onChange={e => setForm({ ...form, reason: e.target.value })} /></FormRow></div>
@@ -2799,6 +3810,137 @@ export function PayrollModule() {
 }
 
 // =================================================================
+// PAYROLL MASTER FILE — earning/deduction heads (PMF-0xx)
+// =================================================================
+export function PayrollMasterFilesModule() {
+  const { has, branches } = useApp()
+  const [typeFilter, setTypeFilter] = useState('all')
+  const [open, setOpen] = useState(false)
+  const [form, setForm] = useState<any>({})
+  const [confirmDel, setConfirmDel] = useState<any>(null)
+  const { data, reload } = useFetch<any>(`/api/payroll-master-file${typeFilter !== 'all' ? `?type=${typeFilter}` : ''}`)
+  const records = data?.records || []
+
+  const openForm = (row?: any) => {
+    setForm(row ? { ...row } : { type: 'Earning', calcType: 'Fixed', amount: 0, isActive: true })
+    setOpen(true)
+  }
+
+  const save = async () => {
+    if (!String(form.name || '').trim()) { toast.error('Name is required'); return }
+    if (!['Earning', 'Deduction'].includes(form.type)) { toast.error('Type is required'); return }
+    if (!['Fixed', 'Percent'].includes(form.calcType || 'Fixed')) { toast.error('Calc Type must be Fixed or Percent'); return }
+    const amount = Number(form.amount)
+    if (isNaN(amount) || amount < 0) { toast.error('Amount must be a number >= 0'); return }
+    const payload = {
+      name: String(form.name).trim(),
+      type: form.type,
+      calcType: form.calcType || 'Fixed',
+      amount,
+      isActive: form.isActive !== false,
+      branchId: form.branchId === '*' ? null : (form.branchId || null),
+    }
+    try {
+      if (form.id) await apiPatch(`/api/payroll-master-file/${form.id}`, payload)
+      else await apiPost('/api/payroll-master-file', payload)
+      toast.success(form.id ? 'Updated' : 'Created')
+      setOpen(false)
+      reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
+  return (
+    <div>
+      <PageHeader title="Payroll Master File"
+        action={has('masters.add') ? () => openForm() : undefined}
+        actionLabel="Add Head" />
+      <Toolbar>
+        <Select value={typeFilter} onValueChange={setTypeFilter}>
+          <SelectTrigger className="w-40"><SelectValue placeholder="Type" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            <SelectItem value="Earning">Earnings</SelectItem>
+            <SelectItem value="Deduction">Deductions</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+      </Toolbar>
+      <DataTable
+        columns={[
+          { key: 'code', label: 'Code', mono: true, sticky: true },
+          { key: 'name', label: 'Name' },
+          { key: 'type', label: 'Type', render: (r: any) => (
+            <Badge variant={r.type === 'Earning' ? 'default' : 'destructive'}>{r.type}</Badge>
+          ) },
+          { key: 'calcType', label: 'Calc Type' },
+          { key: 'amount', label: 'Amount', align: 'right', mono: true, render: (r: any) => r.calcType === 'Percent' ? `${fmtMoney(r.amount)}%` : fmtMoney(r.amount) },
+          { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || 'All' },
+          { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
+          { key: 'actions', label: 'Actions', align: 'right', render: (r: any) => (
+            <div className="flex justify-end gap-1">
+              {has('masters.edit') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openForm(r) }}><Edit className="h-3.5 w-3.5" /></Button>}
+              {has('masters.delete') && r.isActive && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setConfirmDel(r) }}><Trash2 className="h-3.5 w-3.5" /></Button>}
+            </div>
+          ) },
+        ]}
+        rows={records}
+        empty="No payroll master file heads yet"
+      />
+      <Modal open={open} onClose={() => setOpen(false)} title={form.id ? `Edit Head — ${form.code || ''}` : 'Add Payroll Head'}
+        footer={<>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
+        </>}>
+        <div className="grid grid-cols-2 gap-3">
+          <FormRow label="Code (auto)"><Input disabled value={form.code || 'Auto — PMF-001 on save'} className="bg-muted/40" /></FormRow>
+          <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
+          <FormRow label="Type" required>
+            <Select value={form.type || 'Earning'} onValueChange={v => setForm({ ...form, type: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Earning">Earning</SelectItem>
+                <SelectItem value="Deduction">Deduction</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Calc Type">
+            <Select value={form.calcType || 'Fixed'} onValueChange={v => setForm({ ...form, calcType: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Fixed">Fixed Amount</SelectItem>
+                <SelectItem value="Percent">Percent</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label={form.calcType === 'Percent' ? 'Percent Value (%)' : 'Amount'} required>
+            <Input type="number" min={0} value={form.amount ?? 0} onChange={e => setForm({ ...form, amount: e.target.value })} />
+          </FormRow>
+          <FormRow label="Branch">
+            <Select value={form.branchId || ''} onValueChange={v => setForm({ ...form, branchId: v })}>
+              <SelectTrigger><SelectValue placeholder="All branches" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="*">All branches</SelectItem>
+                {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Active"><Switch checked={form.isActive !== false} onCheckedChange={v => setForm({ ...form, isActive: v })} /></FormRow>
+        </div>
+      </Modal>
+      <ConfirmModal open={!!confirmDel} onClose={() => setConfirmDel(null)} title="Delete Payroll Head"
+        message={`Deactivate payroll head "${confirmDel?.code || ''} — ${confirmDel?.name || ''}"? Heads may be referenced by past payroll runs, so they are switched off instead of deleted.`}
+        onConfirm={async () => {
+          try {
+            const res = await apiDelete(`/api/payroll-master-file/${confirmDel.id}`)
+            toast.success(res.message || 'Payroll head deactivated')
+            reload()
+          } catch (e: any) { toast.error(e.message) }
+        }} />
+    </div>
+  )
+}
+
+// =================================================================
 // COMPANY
 // =================================================================
 export function CompanyModule() {
@@ -2835,139 +3977,732 @@ export function CompanyModule() {
 }
 
 // =================================================================
-// USERS
+// ADMIN DEFAULTS — single consolidated defaults screen (client-confirmed):
+//   Tab 1: Company Information (name can only be set ONCE — nameLocked)
+//   Tab 2: Financial (FinanceDefaults per company-wide/branch)
+//   Tab 3: Per-branch Account Mapping (account-mappings grid + copy from company level)
 // =================================================================
+export function AdminDefaultsModule() {
+  return (
+    <div>
+      <PageHeader title="Defaults" />
+      <Tabs defaultValue="company" className="space-y-4">
+        <TabsList className="h-auto flex-wrap">
+          <TabsTrigger value="company">Company Information</TabsTrigger>
+          <TabsTrigger value="financial">Financial</TabsTrigger>
+          <TabsTrigger value="mappings">Per-branch Account Mapping</TabsTrigger>
+        </TabsList>
+        <TabsContent value="company"><DefaultsCompanyTab /></TabsContent>
+        <TabsContent value="financial"><DefaultsFinancialTab /></TabsContent>
+        <TabsContent value="mappings"><DefaultsBranchMappingTab /></TabsContent>
+      </Tabs>
+    </div>
+  )
+}
+
+// ---- Tab 1: Company Information -----------------------------------
+function DefaultsCompanyTab() {
+  const { has, setCompanyName } = useApp()
+  const { data, reload } = useFetch<any>('/api/company')
+  const [form, setForm] = useState<any>({})
+  const [saving, setSaving] = useState(false)
+  const company = data?.company
+  useEffect(() => { if (company) setForm(company) }, [company])
+
+  const nameLocked = !!company?.nameLocked
+  const serverName = String(company?.name || '').trim()
+  // the name is editable only while unlocked AND still empty — it can be set exactly once
+  const nameEditable = !nameLocked && !serverName
+  const lockHint = nameLocked
+    ? 'Company name is locked'
+    : nameEditable
+      ? 'The company name can only be set once — it locks automatically after the first successful save.'
+      : 'Company name can only be set once — it will lock on save.'
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const json = await apiPatch('/api/company', form)
+      toast.success(json?.company?.nameLocked && !nameLocked ? 'Company saved — the name is now locked' : 'Company updated')
+      if (json?.company?.name) setCompanyName(json.company.name)
+      reload()
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card className="max-w-3xl">
+      <CardContent className="p-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <FormRow label="Company ID"><Input value={company?.companyId || ''} disabled className="bg-muted/40" /></FormRow>
+          <FormRow label="Accounting Type"><Input value={company?.accountingType || ''} disabled className="bg-muted/40" /></FormRow>
+          <FormRow label="Company Name">
+            <div className="flex items-center gap-2">
+              <Input
+                value={form.name || ''}
+                disabled={!nameEditable}
+                onChange={e => setForm({ ...form, name: e.target.value })}
+                className={!nameEditable ? 'bg-muted/40' : ''}
+                placeholder="Set the company name (one time only)"
+              />
+              {(nameLocked || !nameEditable) && <Lock className="h-4 w-4 text-muted-foreground shrink-0" />}
+            </div>
+          </FormRow>
+          <div className="sm:col-span-1 flex items-end">
+            <div className="text-xs text-muted-foreground">{lockHint}</div>
+          </div>
+          <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
+          <FormRow label="Email"><Input type="email" value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
+          <FormRow label="Website"><Input value={form.website || ''} onChange={e => setForm({ ...form, website: e.target.value })} /></FormRow>
+          <FormRow label="Logo (path or URL)"><Input value={form.logo || ''} onChange={e => setForm({ ...form, logo: e.target.value })} /></FormRow>
+          <FormRow label="STRN"><Input value={form.strn || ''} onChange={e => setForm({ ...form, strn: e.target.value })} /></FormRow>
+          <FormRow label="NTN"><Input value={form.ntn || ''} onChange={e => setForm({ ...form, ntn: e.target.value })} /></FormRow>
+          <div className="sm:col-span-2"><FormRow label="Address"><Textarea rows={2} value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></FormRow></div>
+        </div>
+        <div className="mt-4 flex items-center justify-between gap-2 flex-wrap">
+          <div className="text-xs text-muted-foreground">
+            Company ID and accounting type are set at initial setup and cannot be changed.
+          </div>
+          {has('company.edit') && (
+            <Button onClick={save} disabled={saving}><Save className="h-4 w-4 mr-1" />{saving ? 'Saving…' : 'Save Company Information'}</Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---- Tab 2: Financial (FinanceDefaults) ---------------------------
+function DefaultsFinancialTab() {
+  const { has, branches } = useApp()
+  const [branchId, setBranchId] = useState<string>('') // '' = company-wide
+  const { data, reload } = useFetch<any>(`/api/finance-defaults${branchId ? `?branchId=${branchId}` : ''}`)
+  const { data: chartsData } = useFetch<any>('/api/charts?isActive=true')
+  const { data: taxData } = useFetch<any>('/api/tax-heads')
+  const accounts = chartsData?.charts || []
+  const taxHeads = taxData?.taxHeads || []
+  const financialYears = data?.financialYears || []
+  const defaults = data?.defaults
+
+  const [form, setForm] = useState<any>({})
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    setForm({
+      defaultCashAccountId: defaults?.defaultCashAccountId || '',
+      defaultBankAccountId: defaults?.defaultBankAccountId || '',
+      defaultTaxHeadId: defaults?.defaultTaxHeadId || '',
+      financialYearId: defaults?.financialYearId || '',
+    })
+  }, [defaults, branchId])
+
+  const accountOptions = (a: any) => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>
+  const withNone = (value: string, onChange: (v: string) => void, placeholder: string, children: ReactNode) => (
+    <Select value={value || '__none__'} onValueChange={v => onChange(v === '__none__' ? '' : v)}>
+      <SelectTrigger><SelectValue placeholder={placeholder} /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="__none__">— None —</SelectItem>
+        {children}
+      </SelectContent>
+    </Select>
+  )
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await apiPost('/api/finance-defaults', { branchId: branchId || null, ...form })
+      toast.success('Financial defaults saved')
+      reload()
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card className="max-w-3xl">
+      <CardContent className="p-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <FormRow label="Apply to">
+            <Select value={branchId || '__global__'} onValueChange={v => setBranchId(v === '__global__' ? '' : v)}>
+              <SelectTrigger><SelectValue placeholder="Company-wide" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__global__">Company-wide (default)</SelectItem>
+                {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.code ? `${b.code} — ${b.name}` : b.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <div className="flex items-end text-xs text-muted-foreground">
+            Branch-specific defaults override the company-wide set.
+          </div>
+          <FormRow label="Default Cash Account">
+            {withNone(form.defaultCashAccountId, v => setForm({ ...form, defaultCashAccountId: v }), 'Select cash account', accounts.map(accountOptions))}
+          </FormRow>
+          <FormRow label="Default Bank Account">
+            {withNone(form.defaultBankAccountId, v => setForm({ ...form, defaultBankAccountId: v }), 'Select bank account', accounts.map(accountOptions))}
+          </FormRow>
+          <FormRow label="Default Tax Head">
+            {withNone(form.defaultTaxHeadId, v => setForm({ ...form, defaultTaxHeadId: v }), 'Select tax head',
+              taxHeads.map((t: any) => <SelectItem key={t.id} value={t.id}>{t.code} — {t.name} ({t.rate}%)</SelectItem>))}
+          </FormRow>
+          <FormRow label="Financial Year">
+            {withNone(form.financialYearId, v => setForm({ ...form, financialYearId: v }), 'Select financial year',
+              financialYears.map((fy: any) => (
+                <SelectItem key={fy.id} value={fy.id}>{fy.name}{fy.isClosed ? ' (closed)' : fy.isActive ? ' (active)' : ''}</SelectItem>
+              )))}
+          </FormRow>
+        </div>
+        <div className="mt-4 flex items-center justify-between gap-2 flex-wrap">
+          <div className="text-xs text-muted-foreground">
+            These defaults drive automatic voucher posting from fees, POS and payroll.
+          </div>
+          {has('finance.settings') && (
+            <Button onClick={save} disabled={saving}><Save className="h-4 w-4 mr-1" />{saving ? 'Saving…' : 'Save Financial Defaults'}</Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---- Tab 3: Per-branch Account Mapping ----------------------------
+const DEFAULTS_MAPPING_KEYS = [
+  { key: 'cashAccount', label: 'Cash Account' },
+  { key: 'bankAccount', label: 'Bank Account' },
+  { key: 'feeIncome', label: 'Fee Income' },
+  { key: 'posIncome', label: 'POS Income' },
+  { key: 'taxAccount', label: 'Tax Account' },
+  { key: 'feeReceivable', label: 'Fee Receivable' },
+  { key: 'posCash', label: 'POS Cash' },
+  { key: 'posBank', label: 'POS Bank' },
+]
+
+function DefaultsBranchMappingTab() {
+  const { has, branches } = useApp()
+  const [branchId, setBranchId] = useState<string>('') // '' = company-level
+  const { data, reload } = useFetch<any>('/api/account-mappings')
+  const { data: chartsData } = useFetch<any>('/api/charts?isActive=true')
+  const mappings = data?.mappings || []
+  const accounts = chartsData?.charts || []
+  const companyRows = mappings.filter((m: any) => !m.branchId)
+  const branchRows = branchId ? mappings.filter((m: any) => m.branchId === branchId) : []
+  const currentRows = branchId ? branchRows : companyRows
+
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  useEffect(() => {
+    const d: Record<string, string> = {}
+    for (const k of DEFAULTS_MAPPING_KEYS) {
+      const row = currentRows.find((m: any) => m.key === k.key)
+      d[k.key] = row?.accountId || ''
+    }
+    setDrafts(d)
+  }, [data, branchId])
+
+  const saveRow = async (key: string, label: string) => {
+    const accountId = drafts[key]
+    if (!accountId) { toast.error(`Select an account for ${label}`); return }
+    try {
+      await apiPost('/api/account-mappings', { key, accountId, branchId: branchId || null })
+      toast.success(`${label} mapping saved`)
+      reload()
+    } catch (e: any) {
+      toast.error(e.message)
+    }
+  }
+
+  const copyFromCompany = async () => {
+    if (!branchId) { toast.info('Select a target branch first'); return }
+    const sources = DEFAULTS_MAPPING_KEYS.filter(k => companyRows.find((m: any) => m.key === k.key))
+    if (!sources.length) { toast.info('No company-level mappings to copy yet'); return }
+    if (!confirm(`Copy ${sources.length} company-level mapping(s) to this branch? Existing branch mappings for those keys will be overwritten.`)) return
+    try {
+      let copied = 0
+      for (const k of sources) {
+        const row = companyRows.find((m: any) => m.key === k.key)
+        if (row) { await apiPost('/api/account-mappings', { key: k.key, accountId: row.accountId, branchId }); copied++ }
+      }
+      toast.success(`Copied ${copied} mapping(s) from company level`)
+      reload()
+    } catch (e: any) {
+      toast.error(e.message)
+    }
+  }
+
+  const canEdit = has('accountMappings.edit')
+
+  return (
+    <Card className="max-w-4xl">
+      <CardContent className="p-6">
+        <div className="flex items-end gap-3 flex-wrap mb-4">
+          <div className="w-64">
+            <FormRow label="Branch">
+              <Select value={branchId || '__global__'} onValueChange={v => setBranchId(v === '__global__' ? '' : v)}>
+                <SelectTrigger><SelectValue placeholder="Company level" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__global__">Company level (default)</SelectItem>
+                  {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.code ? `${b.code} — ${b.name}` : b.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormRow>
+          </div>
+          {branchId && canEdit && (
+            <Button variant="outline" size="sm" onClick={copyFromCompany} className="mb-0.5">
+              <Copy className="h-4 w-4 mr-1" />Copy from company level
+            </Button>
+          )}
+        </div>
+        <div className="space-y-1">
+          {DEFAULTS_MAPPING_KEYS.map(({ key, label }) => {
+            const saved = currentRows.find((m: any) => m.key === key)
+            return (
+              <div key={key} className="grid grid-cols-1 sm:grid-cols-[1fr_2fr_auto] gap-2 items-center py-2 border-b last:border-0">
+                <div>
+                  <div className="font-medium text-sm">{label}</div>
+                  <div className="text-xs text-muted-foreground font-mono">{key}</div>
+                </div>
+                <Select
+                  disabled={!canEdit}
+                  value={drafts[key] || '__none__'}
+                  onValueChange={v => setDrafts(d => ({ ...d, [key]: v === '__none__' ? '' : v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— None —</SelectItem>
+                    {accounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <div className="flex items-center gap-2 justify-self-end">
+                  <div className="text-xs text-muted-foreground hidden lg:block max-w-[180px] truncate" title={saved ? `${saved.account?.id} — ${saved.account?.name}` : 'Not configured'}>
+                    {saved ? `${saved.account?.id} — ${saved.account?.name}` : 'Not configured'}
+                  </div>
+                  {canEdit && (
+                    <Button size="sm" variant="outline" onClick={() => saveRow(key, label)} disabled={!drafts[key] || drafts[key] === saved?.accountId}>Save</Button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <div className="text-xs text-muted-foreground mt-3">
+          Company-level mappings apply to every branch unless a branch defines its own. Use "Copy from company level" to seed a branch quickly.
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// =================================================================
+// USERS & PERMISSIONS — one screen: users list (left) + per-role screen
+// permission matrix (right) for the selected user's role.
+// Consolidates the former Users / Roles / Permissions screens.
+// =================================================================
+type PermFlags = { view: boolean; add: boolean; edit: boolean; delete: boolean; print: boolean }
+const PERM_ACTIONS: { key: keyof PermFlags; label: string }[] = [
+  { key: 'view', label: 'View' },
+  { key: 'add', label: 'Add' },
+  { key: 'edit', label: 'Edit' },
+  { key: 'delete', label: 'Delete' },
+  { key: 'print', label: 'Print' },
+]
+
 export function UsersModule() {
   const { has } = useApp()
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
   const [form, setForm] = useState<any>({})
+  const [selectedUser, setSelectedUser] = useState<any>(null)
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const { data, reload } = useFetch<any>('/api/users')
-  const { data: rolesData } = useFetch<any>('/api/roles')
+  const canLoadRoles = has('roles.view')
+  const { data: rolesData } = useFetch<any>(canLoadRoles ? '/api/roles' : null)
   const { data: branchesData } = useFetch<any>('/api/branches')
   const users = data?.users || []
   const roles = rolesData?.roles || []
   const branches = branchesData?.branches || []
+  const selected = selectedUser ? (users.find((u: any) => u.id === selectedUser.id) || selectedUser) : null
+  const [permRoleId, setPermRoleId] = useState<string>('')
+
+  const openAdd = () => {
+    setEditing(null)
+    setForm({ isActive: true, accessibleBranchIds: '*', allBranches: true, branchList: [] })
+    setOpen(true)
+  }
+  const openEdit = (u: any) => {
+    setEditing(u)
+    const accessible = u.accessibleBranchIds || '*'
+    setForm({
+      ...u,
+      password: '',
+      allBranches: accessible === '*',
+      branchList: accessible === '*' ? [] : accessible.split(',').filter(Boolean),
+    })
+    setOpen(true)
+  }
+
+  const saveUser = async () => {
+    if (!form.username || !form.fullName || (!editing && !form.password)) {
+      toast.error('Username, full name' + (!editing ? ', and password are required' : ' are required'))
+      return
+    }
+    if (!editing && !form.roleId) { toast.error('Role is required'); return }
+    const accessible = form.allBranches ? '*' : (form.branchList || []).join(',')
+    const payload: any = {
+      username: form.username, fullName: form.fullName, email: form.email, phone: form.phone,
+      roleId: form.roleId, branchId: form.branchId || null,
+      accessibleBranchIds: accessible, isActive: form.isActive !== false,
+    }
+    if (form.password) payload.password = form.password
+    try {
+      if (editing) {
+        await apiPatch('/api/users', { id: editing.id, ...payload })
+        toast.success('User updated')
+      } else {
+        await apiPost('/api/users', payload)
+        toast.success('User created')
+      }
+      setOpen(false); reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
+  const selectUser = (u: any) => {
+    setSelectedUser(u)
+    if (u?.roleId) setPermRoleId(u.roleId)
+  }
 
   return (
     <div>
-      <PageHeader title="Users"
-        action={has('users.add') ? () => { setForm({ isActive: true, accessibleBranchIds: '*' }); setOpen(true) } : undefined}
+      <PageHeader title="Users & Permissions"
+        action={has('users.add') ? openAdd : undefined}
         actionLabel="Add User" />
-      <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
-      <DataTable
-        columns={[
-          { key: 'username', label: 'Username', mono: true },
-          { key: 'fullName', label: 'Name' },
-          { key: 'email', label: 'Email' },
-          { key: 'role', label: 'Role', render: (r: any) => r.role?.name },
-          { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
-          { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
-        ]}
-        rows={users}
-      />
-      <Modal open={open} onClose={() => setOpen(false)} title="Add User"
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+        {/* Users list */}
+        <div className="xl:col-span-2">
+          <Toolbar>
+            <span className="text-xs text-muted-foreground">Select a user to edit their role's screen permissions</span>
+            <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+          </Toolbar>
+          <DataTable
+            onRowClick={(u: any) => selectUser(u)}
+            columns={[
+              { key: 'username', label: 'Username', mono: true },
+              { key: 'fullName', label: 'Name' },
+              { key: 'email', label: 'Email' },
+              { key: 'role', label: 'Role', render: (r: any) => r.role?.name || '—' },
+              { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
+              { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
+              { key: 'actions', label: 'Actions', render: (r: any) => (
+                <div className="flex gap-1">
+                  {has('users.edit') && (
+                    <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(r) }}><Edit className="h-3.5 w-3.5" /></Button>
+                  )}
+                  {has('users.delete') && (
+                    <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r) }}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  )}
+                </div>
+              ) },
+            ]}
+            rows={users}
+            empty="No users yet"
+          />
+        </div>
+
+        {/* Screen permission matrix for the selected user's role (remounts on role switch) */}
+        <div className="xl:col-span-3">
+          <ScreenPermissionMatrix
+            key={permRoleId || 'none'}
+            roleId={permRoleId}
+            roles={roles}
+            canPickRole={canLoadRoles}
+            selectedUserName={selected?.fullName}
+            selectedRoleName={selected?.role?.name}
+            canSave={has('roles.config')}
+            onRoleChange={setPermRoleId}
+          />
+        </div>
+      </div>
+
+      {/* Add / Edit user modal */}
+      <Modal open={open} onClose={() => setOpen(false)} size="lg" title={editing ? `Edit User — ${editing.username}` : 'Add User'}
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={async () => {
-            try { await apiPost('/api/users', form); toast.success('User created'); setOpen(false); reload() }
-            catch (e: any) { toast.error(e.message) }
-          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+          <Button onClick={saveUser}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormRow label="Username" required><Input value={form.username || ''} onChange={e => setForm({ ...form, username: e.target.value })} /></FormRow>
           <FormRow label="Full Name" required><Input value={form.fullName || ''} onChange={e => setForm({ ...form, fullName: e.target.value })} /></FormRow>
-          <FormRow label="Email"><Input value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
+          <FormRow label="Email"><Input type="email" value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
           <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
-          <FormRow label="Password" required><Input type="password" value={form.password || ''} onChange={e => setForm({ ...form, password: e.target.value })} /></FormRow>
-          <FormRow label="Role" required>
-            <Select value={form.roleId || ''} onValueChange={v => setForm({ ...form, roleId: v })}>
-              <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-              <SelectContent>{roles.map((r: any) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}</SelectContent>
+          <FormRow label={editing ? 'Password' : 'Password'} required={!editing}>
+            <Input type="password" value={form.password || ''} onChange={e => setForm({ ...form, password: e.target.value })} placeholder={editing ? 'Leave blank to keep current password' : ''} />
+          </FormRow>
+          <FormRow label="Role" required={!editing}>
+            <Select
+              disabled={!canLoadRoles}
+              value={form.roleId || ''}
+              onValueChange={v => setForm({ ...form, roleId: v })}>
+              <SelectTrigger><SelectValue placeholder={canLoadRoles ? 'Select role' : (editing?.role?.name || 'No role list access')} /></SelectTrigger>
+              <SelectContent>{roles.map((r: any) => <SelectItem key={r.id} value={r.id}>{r.name}{r.isSystem ? ' (system)' : ''}</SelectItem>)}</SelectContent>
             </Select>
           </FormRow>
           <FormRow label="Primary Branch">
-            <Select value={form.branchId || ''} onValueChange={v => setForm({ ...form, branchId: v })}>
+            <Select value={form.branchId || '__none__'} onValueChange={v => setForm({ ...form, branchId: v === '__none__' ? '' : v })}>
               <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
-              <SelectContent>{branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
-            </Select>
-          </FormRow>
-          <FormRow label="Accessible Branches">
-            <Select value={form.accessibleBranchIds || '*'} onValueChange={v => setForm({ ...form, accessibleBranchIds: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="*">All branches</SelectItem>
+                <SelectItem value="__none__">— None —</SelectItem>
                 {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </FormRow>
+          <FormRow label="Active">
+            <Switch checked={form.isActive !== false} onCheckedChange={v => setForm({ ...form, isActive: v })} />
+          </FormRow>
+          <div className="sm:col-span-2 space-y-2">
+            <div className="flex items-center gap-2">
+              <Switch checked={form.allBranches !== false} onCheckedChange={v => setForm({ ...form, allBranches: v })} id="all-branches" />
+              <Label htmlFor="all-branches" className="text-xs">Accessible branches — all (*)</Label>
+            </div>
+            {form.allBranches === false && (
+              <div className="border rounded p-3 max-h-40 overflow-y-auto scroll-slim grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {branches.map((b: any) => (
+                  <label key={b.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <Checkbox
+                      checked={(form.branchList || []).includes(b.id)}
+                      onCheckedChange={(v: boolean) => {
+                        const list = new Set(form.branchList || [])
+                        if (v) list.add(b.id); else list.delete(b.id)
+                        setForm({ ...form, branchList: Array.from(list) })
+                      }}
+                    />
+                    <span className="truncate">{b.name}</span>
+                  </label>
+                ))}
+                {branches.length === 0 && <div className="text-xs text-muted-foreground">No branches available</div>}
+              </div>
+            )}
+          </div>
         </div>
       </Modal>
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete user"
+        message={`Delete user ${deleteTarget?.username}? The account will be deactivated and hidden.`}
+        onConfirm={async () => {
+          try {
+            const json = await apiDelete(`/api/users?id=${deleteTarget.id}`)
+            toast.success(json.message || 'User deleted')
+            if (selectedUser?.id === deleteTarget.id) setSelectedUser(null)
+            reload()
+          } catch (e: any) { toast.error(e.message) }
+        }}
+      />
     </div>
   )
 }
 
 // =================================================================
-// ROLES
+// SCREEN PERMISSION MATRIX — 52 screens x View/Add/Edit/Delete/Print,
+// loaded & saved per role. Saving applies to the current session
+// immediately (session refresh — no re-login required).
 // =================================================================
-export function RolesModule({ presetTab }: { presetTab?: 'permissions' | 'roles' } = {}) {
-  const { has, session } = useApp()
-  const [selectedRole, setSelectedRole] = useState<string>('')
-  const { data, reload } = useFetch<any>('/api/roles')
-  const roles = data?.roles || []
-  const permissions = data?.permissions || []
-  const current = roles.find((r: any) => r.id === selectedRole) || roles[0]
-  const currentPerms = new Set(current?.permissions?.map((p: any) => p.permission.code) || [])
+function ScreenPermissionMatrix({ roleId, roles, canPickRole, selectedUserName, selectedRoleName, canSave, onRoleChange }: {
+  roleId: string
+  roles: any[]
+  canPickRole: boolean
+  selectedUserName?: string | null
+  selectedRoleName?: string | null
+  canSave: boolean
+  onRoleChange: (roleId: string) => void
+}) {
+  const { refreshSession } = useApp()
+  const { data, loading, reload } = useFetch<any>(roleId ? `/api/screen-permissions?roleId=${roleId}` : null)
+  const [matrix, setMatrix] = useState<Record<string, PermFlags>>({})
+  const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
 
-  const groupedPerms = permissions.reduce((acc: any, p: any) => {
-    if (!acc[p.module]) acc[p.module] = []
-    acc[p.module].push(p)
-    return acc
-  }, {})
+  useEffect(() => {
+    const rows = data?.permissions || []
+    const next: Record<string, PermFlags> = {}
+    for (const s of SCREENS) next[s.key] = { view: false, add: false, edit: false, delete: false, print: false }
+    for (const r of rows) {
+      if (next[r.screenKey]) {
+        next[r.screenKey] = { view: !!r.canView, add: !!r.canAdd, edit: !!r.canEdit, delete: !!r.canDelete, print: !!r.canPrint }
+      }
+    }
+    setMatrix(next)
+    setDirty(false)
+  }, [data, roleId])
 
-  const togglePerm = async (code: string) => {
-    if (!current) return
-    const next = currentPerms.has(code) ? Array.from(currentPerms).filter(c => c !== code) : [...Array.from(currentPerms), code]
-    try {
-      await apiPatch(`/api/roles/${current.id}`, { action: 'permissions', permissionCodes: next })
-      toast.success('Permissions updated')
-      reload()
-    } catch (e: any) { toast.error(e.message) }
+  if (!roleId) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <div className="font-medium mb-1">Screen Permissions</div>
+          <EmptyState message="Select a user (or a role below) to view and edit its screen permission matrix." />
+        </CardContent>
+      </Card>
+    )
   }
 
+  const setFlag = (key: string, action: keyof PermFlags, v: boolean) => {
+    setMatrix(m => ({ ...m, [key]: { ...m[key], [action]: v } }))
+    setDirty(true)
+  }
+  const setAll = (fn: (f: PermFlags) => PermFlags) => {
+    setMatrix(m => {
+      const n: Record<string, PermFlags> = {}
+      for (const k of Object.keys(m)) n[k] = fn(m[k])
+      return n
+    })
+    setDirty(true)
+  }
+  const rowAll = (f?: PermFlags) => !!f && PERM_ACTIONS.every(a => f[a.key])
+  const colAll = (a: keyof PermFlags) => SCREENS.every(s => matrix[s.key]?.[a])
+  const allChecked = SCREENS.every(s => rowAll(matrix[s.key]))
+
+  const toggleRow = (key: string) => {
+    const target = !rowAll(matrix[key])
+    setMatrix(m => ({ ...m, [key]: { view: target, add: target, edit: target, delete: target, print: target } }))
+    setDirty(true)
+  }
+  const toggleCol = (a: keyof PermFlags) => {
+    const target = !colAll(a)
+    setAll(f => ({ ...f, [a]: target }))
+  }
+  const toggleAll = () => {
+    const target = !allChecked
+    setAll(() => ({ view: target, add: target, edit: target, delete: target, print: target }))
+  }
+
+  const save = async () => {
+    if (!roleId) return
+    setSaving(true)
+    try {
+      await apiPost('/api/screen-permissions', {
+        roleId,
+        permissions: SCREENS.map(s => ({
+          screenKey: s.key,
+          canView: matrix[s.key]?.view || false,
+          canAdd: matrix[s.key]?.add || false,
+          canEdit: matrix[s.key]?.edit || false,
+          canDelete: matrix[s.key]?.delete || false,
+          canPrint: matrix[s.key]?.print || false,
+        })),
+      })
+      toast.success('Screen permissions saved — applied to the current session immediately')
+      await refreshSession()
+      reload()
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // group by module, preserving SCREENS order
+  const groups: { module: string; screens: typeof SCREENS }[] = []
+  for (const s of SCREENS) {
+    const g = groups.find(x => x.module === s.module)
+    if (g) g.screens.push(s)
+    else groups.push({ module: s.module, screens: [s] })
+  }
+
+  const roleName = roles.find((r: any) => r.id === roleId)?.name || selectedRoleName || roleId
+
   return (
-    <div>
-      <PageHeader title={presetTab === 'permissions' ? 'Permissions' : 'Roles & Permissions'} />
-      <Toolbar>
-        <Select value={selectedRole || current?.id || ''} onValueChange={setSelectedRole}>
-          <SelectTrigger className="w-64"><SelectValue placeholder="Select role" /></SelectTrigger>
-          <SelectContent>{roles.map((r: any) => <SelectItem key={r.id} value={r.id}>{r.name}{r.isSystem ? ' (system)' : ''}</SelectItem>)}</SelectContent>
-        </Select>
-      </Toolbar>
-      {current && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-          {Object.entries(groupedPerms).map(([mod, perms]: any) => (
-            <Card key={mod}>
-              <CardContent className="p-3">
-                <div className="font-medium mb-2 capitalize">{mod}</div>
-                <div className="space-y-1">
-                  {(perms as any[]).map((p: any) => (
-                    <label key={p.code} className="flex items-center gap-2 text-sm cursor-pointer">
-                      <Checkbox
-                        checked={currentPerms.has(p.code)}
-                        onCheckedChange={() => togglePerm(p.code)}
-                        disabled={current.isSystem && !session?.isSuperAdmin}
-                      />
-                      <span className="font-mono text-xs">{p.action}</span>
-                      {p.description && <span className="text-xs text-muted-foreground">— {p.description}</span>}
-                    </label>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="font-medium">Screen Permissions</div>
+            <Badge variant="secondary">{SCREENS.length} screens</Badge>
+            {selectedUserName && <span className="text-xs text-muted-foreground">for {selectedUserName}</span>}
+          </div>
+          <div className="flex items-center gap-2">
+            {canPickRole && (
+              <Select value={roleId} onValueChange={onRoleChange}>
+                <SelectTrigger className="w-52"><SelectValue placeholder="Select role" /></SelectTrigger>
+                <SelectContent>
+                  {roles.map((r: any) => <SelectItem key={r.id} value={r.id}>{r.name}{r.isSystem ? ' (system)' : ''}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+            <Button variant="outline" size="sm" onClick={toggleAll}>{allChecked ? 'Uncheck all' : 'Check all'}</Button>
+            {canSave && (
+              <Button size="sm" onClick={save} disabled={saving}>
+                <Save className="h-4 w-4 mr-1" />{saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
+              </Button>
+            )}
+          </div>
         </div>
-      )}
-    </div>
+        {!canSave && (
+          <div className="text-xs text-muted-foreground mb-2">Viewing permissions for role <b>{roleName}</b> — you need "Assign permissions to role" to edit.</div>
+        )}
+        {loading ? (
+          <div className="text-sm text-muted-foreground py-6 text-center">Loading permissions…</div>
+        ) : (
+          <div className="max-h-96 overflow-y-auto scroll-slim border rounded">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 border-b sticky top-0 z-10">
+                <tr>
+                  <th className="px-2 py-2 w-8">
+                    <Checkbox checked={allChecked} onCheckedChange={() => toggleAll()} aria-label="Check all screens and actions" />
+                  </th>
+                  <th className="text-left px-2 py-2 font-medium">Screen</th>
+                  {PERM_ACTIONS.map(a => (
+                    <th key={a.key} className="px-2 py-2 font-medium text-center w-16">
+                      <div className="flex flex-col items-center gap-1">
+                        <Checkbox
+                          checked={colAll(a.key)}
+                          onCheckedChange={() => toggleCol(a.key)}
+                          aria-label={`Select all — ${a.label}`}
+                        />
+                        <span className="text-[11px] font-normal text-muted-foreground">{a.label}</span>
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map(g => (
+                  <Fragment key={g.module}>
+                    <tr className="bg-muted/30">
+                      <td colSpan={7} className="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{g.module}</td>
+                    </tr>
+                    {g.screens.map(s => (
+                      <tr key={s.key} className="border-b last:border-0 hover:bg-muted/30">
+                        <td className="px-2 py-1.5">
+                          <Checkbox checked={rowAll(matrix[s.key])} onCheckedChange={() => toggleRow(s.key)} aria-label={`Select all actions — ${s.label}`} />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <div className="font-medium text-xs">{s.label}</div>
+                          <div className="font-mono text-[10px] text-muted-foreground">{s.key}</div>
+                        </td>
+                        {PERM_ACTIONS.map(a => (
+                          <td key={a.key} className="px-2 py-1.5 text-center">
+                            <Checkbox
+                              checked={!!matrix[s.key]?.[a.key]}
+                              onCheckedChange={(v: boolean) => setFlag(s.key, a.key, !!v)}
+                              aria-label={`${s.label} — ${a.label}`}
+                            />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className="text-xs text-muted-foreground mt-2">
+          Changes take effect for the current session immediately after saving (no re-login required). NAV entries and screens without View permission are hidden / blocked.
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -3021,9 +4756,9 @@ export function AccountMappingsModule() {
   const { has, branches, session } = useApp()
   const [branchId, setBranchId] = useState<string>('')
   const { data, reload } = useFetch<any>(`/api/account-mappings${branchId ? `?branchId=${branchId}` : ''}`)
-  const { data: accountsData } = useFetch<any>('/api/accounts')
+  const { data: accountsData } = useFetch<any>('/api/charts?isActive=true')
   const mappings = data?.mappings || []
-  const accounts = accountsData?.accounts || []
+  const accounts = accountsData?.charts || []
 
   const KEYS = [
     { key: 'cashAccount', label: 'Cash Account' },
@@ -3073,9 +4808,9 @@ export function AccountMappingsModule() {
                   </div>
                   <Select value={m?.accountId || ''} onValueChange={(v) => save(key, v)}>
                     <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
-                    <SelectContent>{accounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}</SelectContent>
+                    <SelectContent>{accounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>)}</SelectContent>
                   </Select>
-                  <div className="text-xs text-muted-foreground">{m?.account ? `${m.account.code} — ${m.account.name}` : 'Not configured'}</div>
+                  <div className="text-xs text-muted-foreground">{m?.account ? `${m.account.id} — ${m.account.name}` : 'Not configured'}</div>
                 </div>
               )
             })}
@@ -3108,6 +4843,7 @@ export function FinanceReportsModule({ presetReport }: { presetReport?: 'aging' 
     { key: 'cash-book', name: 'Cash Book', filters: ['from', 'to'] },
     { key: 'bank-book', name: 'Bank Book', filters: ['from', 'to'] },
     { key: 'voucher-register', name: 'Voucher Register', filters: ['from', 'to'] },
+    { key: 'day-book', name: 'Day Book', filters: ['from', 'to'] },
     { key: 'tax-report', name: 'Tax Report', filters: ['from', 'to'] },
   ]
   const REPORTS = presetReport === 'aging' ? AGING_REPORTS : FINANCE_REPORTS
@@ -3126,7 +4862,7 @@ export function FinanceReportsModule({ presetReport }: { presetReport?: 'aging' 
     finally { setLoading(false) }
   }
 
-  const { data: accountsData } = useFetch<any>('/api/accounts')
+  const { data: accountsData } = useFetch<any>('/api/charts?isActive=true')
 
   return (
     <div>
@@ -3153,7 +4889,7 @@ export function FinanceReportsModule({ presetReport }: { presetReport?: 'aging' 
               <FormRow label="Account">
                 <Select value={filters.accountId || ''} onValueChange={v => setFilters({ ...filters, accountId: v })}>
                   <SelectTrigger><SelectValue placeholder="All" /></SelectTrigger>
-                  <SelectContent>{(accountsData?.accounts || []).map((a: any) => <SelectItem key={a.id} value={a.id}>{a.code} — {a.name}</SelectItem>)}</SelectContent>
+                  <SelectContent>{(accountsData?.charts || []).map((a: any) => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>)}</SelectContent>
                 </Select>
               </FormRow>
             )}
@@ -3244,12 +4980,62 @@ function ReportRenderer({ report }: any) {
       </CardContent></Card>
     )
   }
+  if (report.title === 'Day Book') {
+    const BOOK_LABELS: Record<string, string> = { CASHBOOK: 'Cash Book', BANKBOOK: 'Bank Book', JV: 'Journal Vouchers', OTB: 'Opening TB' }
+    return (
+      <div className="mt-4 space-y-4">
+        {report.groups?.map((g: any) => (
+          <Card key={g.bookType}><CardContent className="p-0">
+            <div className="px-4 py-2 border-b font-medium">{BOOK_LABELS[g.bookType] || g.bookType} ({g.vouchers?.length || 0} vouchers)</div>
+            <DataTable
+              columns={[
+                { key: 'voucherNo', label: 'Voucher #', mono: true },
+                { key: 'voucherType', label: 'Type' },
+                { key: 'voucherDate', label: 'Date', render: (r: any) => fmtDateStr(r.voucherDate) },
+                { key: 'branch', label: 'Branch' },
+                { key: 'description', label: 'Description' },
+                { key: 'totalDebit', label: 'Debit', align: 'right', mono: true, render: (r: any) => fmtMoney(r.totalDebit) },
+                { key: 'totalCredit', label: 'Credit', align: 'right', mono: true, render: (r: any) => fmtMoney(r.totalCredit) },
+              ]}
+              rows={g.vouchers}
+              empty={`No ${BOOK_LABELS[g.bookType] || g.bookType} entries in period`}
+            />
+          </CardContent></Card>
+        ))}
+      </div>
+    )
+  }
+  if (report.rows && report.summary && (report.title.includes('Aging') || report.title === 'Aging')) {
+    return (
+      <Card className="mt-4"><CardContent className="p-0">
+        <div className="px-4 py-2 border-b font-medium">{report.title} — as at {fmtDateStr(report.asOf)}</div>
+        <DataTable
+          columns={[
+            { key: 'member', label: 'Member / Supplier' },
+            { key: 'memberId', label: 'ID', render: (r: any) => r.memberId || r.purchaseNo || '—' },
+            { key: 'feeNo', label: 'Doc #', render: (r: any) => r.feeNo || r.purchaseNo || '—' },
+            { key: 'dueDate', label: 'Due Date', render: (r: any) => fmtDateStr(r.dueDate || r.purchaseDate) },
+            { key: 'daysPastDue', label: 'Days Past Due', align: 'right', mono: true },
+            { key: 'bucket', label: 'Bucket' },
+            { key: 'balance', label: 'Outstanding', align: 'right', mono: true, render: (r: any) => fmtMoney(r.balance ?? r.outstanding) },
+          ]}
+          rows={report.rows}
+          empty="Nothing outstanding"
+        />
+        <div className="px-4 py-3 border-t flex items-center gap-4 flex-wrap text-xs">
+          {Object.entries(report.summary).map(([bucket, amount]) => (
+            <div key={bucket}><span className="text-muted-foreground">{bucket}: </span><span className="font-mono font-medium">{fmtMoney(Number(amount))}</span></div>
+          ))}
+        </div>
+      </CardContent></Card>
+    )
+  }
   if (report.accounts) {
     return (
       <div className="mt-4 space-y-4">
         {report.accounts.map((a: any, i: number) => (
           <Card key={i}><CardContent className="p-0">
-            <div className="px-4 py-2 border-b font-medium">{a.account.code} — {a.account.name} · Opening: {fmtMoney(a.openingBalance)} · Closing: {fmtMoney(a.closingBalance)}</div>
+            <div className="px-4 py-2 border-b font-medium">{a.account.code ?? a.account.id} — {a.account.name} · Opening: {fmtMoney(a.openingBalance)} · Closing: {fmtMoney(a.closingBalance)}</div>
             <DataTable columns={[
               { key: 'date', label: 'Date', render: (r: any) => fmtDateStr(r.date) },
               { key: 'voucherNo', label: 'Voucher', mono: true },
@@ -3305,8 +5091,10 @@ export function ExercisesModule() {
   const [form, setForm] = useState<any>({})
   const { data, reload } = useFetch<any>('/api/exercises')
   const { data: categoriesData } = useFetch<any>('/api/master-files?type=ExerciseCategories')
+  const { data: equipmentData } = useFetch<any>('/api/master-files?type=Equipment')
   const exercises = data?.exercises || []
   const categories = (categoriesData?.records || []).filter((c: any) => c.isActive)
+  const equipmentOptions = (equipmentData?.records || []).filter((e: any) => e.isActive)
   // Look up category name from master file by id (if stored as id) — but Exercise.category stores the name text per existing schema
   const categoryName = (cat: string) => {
     if (!cat) return '—'
@@ -3355,7 +5143,19 @@ export function ExercisesModule() {
             </Select>
           </FormRow>
           <FormRow label="Muscle Group"><Input value={form.muscleGroup || ''} onChange={e => setForm({ ...form, muscleGroup: e.target.value })} /></FormRow>
-          <FormRow label="Equipment"><Input value={form.equipment || ''} onChange={e => setForm({ ...form, equipment: e.target.value })} /></FormRow>
+          <FormRow label="Equipment">
+            {equipmentOptions.length > 0 ? (
+              <Select value={form.equipment || '__none__'} onValueChange={v => setForm({ ...form, equipment: v === '__none__' ? '' : v })}>
+                <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">—</SelectItem>
+                  {equipmentOptions.map((e: any) => <SelectItem key={e.id} value={e.name}>{e.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input value={form.equipment || ''} onChange={e => setForm({ ...form, equipment: e.target.value })} placeholder="e.g. Barbell — add equipment in Master Files" />
+            )}
+          </FormRow>
           <FormRow label="Sets"><Input type="number" value={form.sets || ''} onChange={e => setForm({ ...form, sets: e.target.value })} /></FormRow>
           <FormRow label="Reps"><Input value={form.reps || ''} onChange={e => setForm({ ...form, reps: e.target.value })} placeholder="8-12" /></FormRow>
           <FormRow label="Duration"><Input value={form.duration || ''} onChange={e => setForm({ ...form, duration: e.target.value })} placeholder="30 sec" /></FormRow>
@@ -3558,6 +5358,8 @@ export function DietModule() {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<any>(null)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const [copyOpen, setCopyOpen] = useState(false)
+  const [copyDay, setCopyDay] = useState('Monday')
   const [form, setForm] = useState<any>({ name: '', description: '', meals: {} })
   const { data, reload } = useFetch<any>('/api/diet')
   const plans = data?.plans || []
@@ -3628,6 +5430,22 @@ export function DietModule() {
     } catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
   }
 
+  // Copy the currently edited day's meal set (one cell per meal timing) to ALL other days.
+  // Applied to the in-editor grid; saved in bulk via PATCH /api/diet/[id] (full meals replace).
+  const copyToAllDays = () => {
+    const source = form.meals?.[copyDay] || {}
+    setForm((f: any) => {
+      const meals = { ...f.meals }
+      for (const day of DIET_DAYS) {
+        if (day === copyDay) continue
+        meals[day] = { ...meals[day], ...source }
+      }
+      return { ...f, meals }
+    })
+    setCopyOpen(false)
+    toast.success(`Copied ${copyDay}'s meals to all other days — press Update to save`)
+  }
+
   return (
     <div>
       <PageHeader title="Diet Plans"
@@ -3658,7 +5476,19 @@ export function DietModule() {
           <FormRow label="Plan Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
           <FormRow label="Description"><Input value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow>
         </div>
-        <div className="text-xs text-muted-foreground mb-2">Weekly diet grid — each cell max {DIET_MAX_LEN} characters. Empty cells are allowed.</div>
+        <div className="flex items-center gap-2 mb-2 flex-wrap">
+          <span className="text-xs text-muted-foreground">Weekly diet grid — each cell max {DIET_MAX_LEN} characters. Empty cells are allowed.</span>
+          <div className="ml-auto flex items-center gap-1.5">
+            <Label className="text-xs">Copy this day:</Label>
+            <Select value={copyDay} onValueChange={setCopyDay}>
+              <SelectTrigger className="w-32 h-8"><SelectValue /></SelectTrigger>
+              <SelectContent>{DIET_DAYS.map(day => <SelectItem key={day} value={day}>{day}</SelectItem>)}</SelectContent>
+            </Select>
+            <Button size="sm" variant="outline" onClick={() => setCopyOpen(true)} title={`Copy ${copyDay}'s meals to all other days`}>
+              <Copy className="h-3.5 w-3.5 mr-1" />Copy to all days
+            </Button>
+          </div>
+        </div>
         <div className="overflow-x-auto max-h-[55vh] overflow-y-auto border rounded">
           <table className="w-full text-xs">
             <thead className="bg-muted/50 border-b sticky top-0">
@@ -3690,6 +5520,13 @@ export function DietModule() {
           </table>
         </div>
       </Modal>
+      <ConfirmModal
+        open={copyOpen}
+        onClose={() => setCopyOpen(false)}
+        onConfirm={copyToAllDays}
+        title="Copy to all days"
+        message={`Copy ${copyDay}'s meal set (all meal timings) to ALL other days (Mon–Sun)? This will overwrite the other days' meals.`}
+      />
       <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={doDelete} title="Delete Diet Plan" message={deleteTarget ? `Delete diet plan "${deleteTarget.name}"? This cannot be undone.` : ''} />
     </div>
   )
@@ -3743,6 +5580,105 @@ export function ProgressModule() {
           <FormRow label="Hips"><Input type="number" value={form.hips || ''} onChange={e => setForm({ ...form, hips: e.target.value })} /></FormRow>
           <FormRow label="Biceps"><Input type="number" value={form.biceps || ''} onChange={e => setForm({ ...form, biceps: e.target.value })} /></FormRow>
           <FormRow label="Thighs"><Input type="number" value={form.thighs || ''} onChange={e => setForm({ ...form, thighs: e.target.value })} /></FormRow>
+          <div className="col-span-2"><FormRow label="Notes"><Textarea rows={2} value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></FormRow></div>
+        </div>
+      </Modal>
+    </div>
+  )
+}
+
+// =================================================================
+// PERSONAL TRAINING SESSIONS — /api/pt-sessions
+// =================================================================
+export function PTSessionsModule() {
+  const { has, selectedBranchIds } = useApp()
+  const [open, setOpen] = useState(false)
+  const [form, setForm] = useState<any>({})
+  const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
+  const { data, reload } = useFetch<any>('/api/pt-sessions')
+  const { data: membersData } = useFetch<any>('/api/members' + (branchesParam ? `?${branchesParam.slice(1)}` : ''))
+  const { data: trainersData } = useFetch<any>('/api/staff?isTrainer=true')
+  const records = data?.records || []
+  const members = membersData?.members || []
+  const trainers = trainersData?.staff || []
+
+  const trainerName = (id: string) => {
+    const t = trainers.find((x: any) => x.id === id)
+    return t ? `${t.firstName} ${t.lastName || ''}` : '—'
+  }
+
+  const save = async () => {
+    if (!form.memberId) { toast.error('Member is required'); return }
+    if (!form.trainerId) { toast.error('Trainer is required'); return }
+    if (!form.sessionsPurchased || Number(form.sessionsPurchased) < 1) { toast.error('Sessions purchased must be at least 1'); return }
+    try {
+      await apiPost('/api/pt-sessions', {
+        memberId: form.memberId,
+        trainerId: form.trainerId,
+        branchId: form.branchId || members.find((m: any) => m.id === form.memberId)?.branchId || null,
+        sessionsPurchased: Number(form.sessionsPurchased),
+        sessionsUsed: 0,
+        sessionsRemaining: Number(form.sessionsPurchased),
+        sessionDate: form.sessionDate || null,
+        startDate: form.startDate || null,
+        endDate: form.endDate || null,
+        notes: form.notes || null,
+      })
+      toast.success('PT session package created')
+      setOpen(false); reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
+  return (
+    <div>
+      <PageHeader title="Personal Training"
+        action={has('progress.edit') ? () => { setForm({ sessionsPurchased: 1 }); setOpen(true) } : undefined}
+        actionLabel="Add Session Package" />
+      <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
+      <DataTable
+        columns={[
+          { key: 'member', label: 'Member', render: (r: any) => r.member ? `${r.member.firstName} ${r.member.lastName || ''}` : '—' },
+          { key: 'memberIdNo', label: 'Member ID', mono: true, render: (r: any) => r.member?.memberId },
+          { key: 'trainer', label: 'Trainer', render: (r: any) => trainerName(r.trainerId) },
+          { key: 'sessionsPurchased', label: 'Purchased', align: 'right' },
+          { key: 'sessionsUsed', label: 'Used', align: 'right' },
+          { key: 'sessionsRemaining', label: 'Remaining', align: 'right' },
+          { key: 'sessionDate', label: 'Session Date', render: (r: any) => fmtDateStr(r.sessionDate) },
+          { key: 'sessionStatus', label: 'Session Status', render: (r: any) => <StatusBadge status={r.sessionStatus} /> },
+          { key: 'notes', label: 'Notes' },
+        ]}
+        rows={records}
+      />
+      <Modal open={open} onClose={() => setOpen(false)} title="Add PT Session Package"
+        footer={<>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
+        </>}>
+        <div className="grid grid-cols-2 gap-3">
+          <FormRow label="Member" required>
+            <Select value={form.memberId || ''} onValueChange={v => setForm({ ...form, memberId: v })}>
+              <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
+              <SelectContent>{members.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.memberId} — {m.firstName} {m.lastName || ''}</SelectItem>)}</SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Trainer" required>
+            <Select value={form.trainerId || ''} onValueChange={v => setForm({ ...form, trainerId: v })}>
+              <SelectTrigger><SelectValue placeholder="Select trainer" /></SelectTrigger>
+              <SelectContent>
+                {trainers.length === 0 ? <SelectItem value="__none__" disabled>No trainers found</SelectItem> :
+                  trainers.map((t: any) => <SelectItem key={t.id} value={t.id}>{t.employeeId} — {t.firstName} {t.lastName || ''}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Sessions Purchased" required>
+            <Input type="number" min={1} value={form.sessionsPurchased || 1} onChange={e => {
+              const n = Math.max(1, Number(e.target.value) || 1)
+              setForm({ ...form, sessionsPurchased: n, sessionsRemaining: n })
+            }} />
+          </FormRow>
+          <FormRow label="Session Date"><Input type="date" value={form.sessionDate || ''} onChange={e => setForm({ ...form, sessionDate: e.target.value })} /></FormRow>
+          <FormRow label="Package Start"><Input type="date" value={form.startDate || ''} onChange={e => setForm({ ...form, startDate: e.target.value })} /></FormRow>
+          <FormRow label="Package End"><Input type="date" value={form.endDate || ''} onChange={e => setForm({ ...form, endDate: e.target.value })} /></FormRow>
           <div className="col-span-2"><FormRow label="Notes"><Textarea rows={2} value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></FormRow></div>
         </div>
       </Modal>

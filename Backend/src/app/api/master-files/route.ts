@@ -4,7 +4,7 @@ import { getSession } from '@/lib/auth'
 
 const MASTER_TYPES = [
   'Department', 'Designation', 'Education', 'Currency', 'Allowance',
-  'Shift', 'LeaveType', 'MembershipSource', 'ProspectSource', 'EquipmentCategory',
+  'Shift', 'LeaveType', 'MembershipSource', 'ProspectSource', 'EquipmentCategory', 'Equipment',
   'Banks', 'CardTypes', 'ExerciseCategories', 'TrainerSpecializations', 'FoodCategories', 'ItemCategories', 'Units', 'Brands', 'Warehouses', 'MaintenanceTypes',
 ]
 
@@ -14,12 +14,18 @@ export async function GET(req: NextRequest) {
   if (!session.permissions.includes('masters.view')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const url = new URL(req.url)
-  const masterType = url.searchParams.get('type')
+  // Accept both `type` and `masterType` query params
+  const masterType = url.searchParams.get('type') || url.searchParams.get('masterType')
   if (masterType && !MASTER_TYPES.includes(masterType)) {
     return NextResponse.json({ error: 'Invalid master type' }, { status: 400 })
   }
+  // Optional branch scoping: rows where branchId IS NULL (global) OR branchId = given
+  const branchId = url.searchParams.get('branchId')
   const records = await db.masterFile.findMany({
-    where: masterType ? { masterType } : {},
+    where: {
+      ...(masterType ? { masterType } : {}),
+      ...(branchId ? { OR: [{ branchId: null }, { branchId }] } : {}),
+    },
     orderBy: [{ masterType: 'asc' }, { code: 'asc' }],
   })
   return NextResponse.json({ records, types: MASTER_TYPES })
@@ -44,6 +50,7 @@ export async function POST(req: NextRequest) {
       masterType: data.masterType,
       code,
       name: data.name,
+      branchId: data.branchId || null,
       description: data.description,
       isActive: data.isActive !== false,
       extra: data.extra ? JSON.stringify(data.extra) : null,
@@ -65,6 +72,7 @@ export async function PATCH(req: NextRequest) {
     where: { id: data.id },
     data: {
       name: data.name,
+      branchId: data.branchId !== undefined ? (data.branchId || null) : undefined,
       description: data.description,
       isActive: data.isActive,
       extra: data.extra ? JSON.stringify(data.extra) : undefined,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, getSelectedBranchIds } from '@/lib/auth'
+import { makeBranchPeriodId } from '@/lib/ids'
 
 export async function GET(req: NextRequest) {
   const session = await getSession()
@@ -16,8 +17,9 @@ export async function GET(req: NextRequest) {
       ...(allowed ? { branchId: { in: allowed } } : {}),
       ...(status ? { status } : {}),
       ...(memberId ? { memberId } : {}),
+      member: { isDeleted: false },
     },
-    include: { member: true, branch: true, voucher: true, payments: true },
+    include: { member: true, branch: true, payments: true },
     orderBy: { dueDate: 'desc' },
     take: 200,
   })
@@ -30,7 +32,7 @@ export async function POST(req: NextRequest) {
   if (!session.permissions.includes('fees.add')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const data = await req.json()
 
-  const member = await db.member.findUnique({ where: { id: data.memberId }, include: { membershipPlan: true, branch: true } })
+  const member = await db.member.findFirst({ where: { id: data.memberId, isDeleted: false }, include: { membershipPlan: true, branch: true } })
   if (!member) return NextResponse.json({ error: 'Member not found' }, { status: 404 })
 
   const billingPeriodStart = data.billingPeriodStart ? new Date(data.billingPeriodStart) : new Date()
@@ -39,9 +41,9 @@ export async function POST(req: NextRequest) {
   const discount = Number(data.discount) || 0
   const dueDate = data.dueDate ? new Date(data.dueDate) : billingPeriodEnd
 
-  // Generate fee number
-  const count = await db.fee.count()
-  const feeNo = `F-${String(count + 1).padStart(5, '0')}`
+  // Business fee number: {branchCode}/{MMMyy}/{00001}
+  const branchCode = member.branch?.code || 'MAIN'
+  const feeNo = await makeBranchPeriodId('FEE', branchCode, billingPeriodStart)
 
   const fee = await db.fee.create({
     data: {

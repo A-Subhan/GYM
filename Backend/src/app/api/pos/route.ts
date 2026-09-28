@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, getSelectedBranchIds } from '@/lib/auth'
-import { postVoucher } from '@/lib/accounting'
+import { postBookVoucher } from '@/lib/accounting'
 
 export async function GET(req: NextRequest) {
   const session = await getSession()
@@ -41,23 +41,20 @@ export async function POST(req: NextRequest) {
   const mappings = await db.accountMapping.findMany({ where: { OR: [{ branchId }, { branchId: null }] } })
   const pickMapping = (key: string) => mappings.find(m => m.key === key && m.branchId === branchId) || mappings.find(m => m.key === key && m.branchId === null)
   const posIncomeMapping = pickMapping('posIncome')
-  const cashMapping = pickMapping('posCash')
-  const bankMapping = pickMapping('posBank')
-  const taxMapping = pickMapping('taxAccount')
+  const cashMapping = pickMapping('cashAccount') || pickMapping('posCash')
+  const bankMapping = pickMapping('bankAccount') || pickMapping('posBank')
 
   if (!posIncomeMapping) return NextResponse.json({ error: 'Account mapping "posIncome" not configured' }, { status: 500 })
 
-  // Determine which account to debit (cash or bank)
-  let debitAccountId = paymentAccountId
-  if (!debitAccountId) {
-    if (paymentMethod === 'Cash' && cashMapping) debitAccountId = cashMapping.accountId
-    else if (bankMapping) debitAccountId = bankMapping.accountId
-    else debitAccountId = paymentAccountId
+  // Book account (debited by the book voucher): Cash → cashAccount, Bank/Online → bankAccount
+  const bookMapping = paymentMethod === 'Cash' ? cashMapping : bankMapping
+  if (!bookMapping && !paymentAccountId) {
+    return NextResponse.json({ error: `Account mapping "${paymentMethod === 'Cash' ? 'cashAccount' : 'bankAccount'}" not configured` }, { status: 500 })
   }
-  if (!debitAccountId) return NextResponse.json({ error: 'No payment account available' }, { status: 400 })
+  const bookChartId = bookMapping?.accountId || paymentAccountId
 
   try {
-    // Reduce inventory + create sale + create voucher (atomic)
+    // Reduce inventory + create sale (atomic)
     const sale = await db.$transaction(async (tx) => {
       // reduce inventory quantities
       for (const l of lines) {
@@ -74,7 +71,7 @@ export async function POST(req: NextRequest) {
           cashierId: session.id,
           total,
           paymentMethod,
-          paymentAccountId: debitAccountId,
+          paymentAccountId: bookChartId,
           status: 'Completed',
           notes,
           lines: { create: lines.map((l: any) => ({ inventoryItemId: l.inventoryItemId, quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), amount: Number(l.unitPrice) * Number(l.quantity) })) },
@@ -84,24 +81,26 @@ export async function POST(req: NextRequest) {
       return s
     })
 
-    // Post voucher (separate tx, references sale.id via reference)
-    const voucher = await postVoucher({
-      voucherType: 'POS-SALE',
+    // Post the book voucher (CRV for cash, BRV for bank/online); detail line credited to posIncome
+    const branch = await db.branch.findUnique({ where: { id: branchId } })
+    if (!branch) throw new Error('Invalid branch')
+    const voucher = await postBookVoucher({
+      voucherType: paymentMethod === 'Cash' ? 'CRV' : 'BRV',
       voucherDate: new Date(),
       branchId,
-      bookAccountId: debitAccountId,
+      branchCode: branch.code,
+      bookChartId,
       description: `POS Sale ${saleNo}`,
       reference: sale.id,
+      paymentMode: paymentMethod === 'Cash' ? 'Cash' : 'Online Transfer',
       lines: [
-        { accountId: debitAccountId, debit: total, credit: 0, lineDescription: `Sale ${saleNo}` },
-        { accountId: posIncomeMapping.accountId, debit: 0, credit: total, lineDescription: `POS income` },
+        { accountId: posIncomeMapping.accountId, amount: total, lineDescription: `POS income`, billType: 'Sales Bill' },
       ],
       postedById: session.id,
-      status: 'Posted',
     })
 
-    // link voucher to sale
-    await db.posSale.update({ where: { id: sale.id }, data: { voucherId: voucher.id } })
+    // link book voucher to sale
+    await db.posSale.update({ where: { id: sale.id }, data: { bookVoucherId: voucher.id } })
 
     return NextResponse.json({ sale, voucher })
   } catch (e: any) {

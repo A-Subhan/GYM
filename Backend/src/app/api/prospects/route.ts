@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, getSelectedBranchIds } from '@/lib/auth'
+import { makeProspectId } from '@/lib/ids'
 
 export async function GET(req: NextRequest) {
   const session = await getSession()
@@ -39,8 +40,8 @@ export async function POST(req: NextRequest) {
   const data = await req.json()
   if (!data.name) return NextResponse.json({ error: 'Name required' }, { status: 400 })
 
-  const count = await db.prospect.count()
-  const prospectId = `P-${String(count + 1).padStart(5, '0')}`
+  // Business ID: p-00001, p-00002, … (IdSequence-backed)
+  const prospectId = await makeProspectId()
 
   const prospect = await db.prospect.create({
     data: {

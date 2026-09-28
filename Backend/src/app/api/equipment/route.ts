@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, getSelectedBranchIds } from '@/lib/auth'
+import { makeEquipmentId } from '@/lib/ids'
 
 export async function GET(req: NextRequest) {
   const session = await getSession()
@@ -30,8 +31,8 @@ export async function POST(req: NextRequest) {
   const data = await req.json()
   if (!data.name || !data.branchId) return NextResponse.json({ error: 'Name and branch required' }, { status: 400 })
 
-  const count = await db.equipment.count()
-  const code = `EQ-${String(count + 1).padStart(4, '0')}`
+  // Business ID: EQ-00001, EQ-00002, … (IdSequence-backed)
+  const code = await makeEquipmentId()
 
   const equipment = await db.equipment.create({
     data: {
