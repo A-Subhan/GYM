@@ -17,7 +17,7 @@ import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { Plus, Search, Edit, Trash2, Eye, X, Save, ChevronDown, ChevronRight, Download, Printer, Banknote, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Eye, X, Save, ChevronDown, ChevronRight, Download, Printer, Banknote, AlertCircle, CheckCircle2, CalendarCheck, Snowflake, HandHeart, Copy } from 'lucide-react'
 import {
   useApp, useFetch, apiPost, apiPatch, apiDelete,
   fmtMoney, fmtDateStr, fmtDateTime, PageHeader, SearchInput, EmptyState,
@@ -1677,6 +1677,10 @@ export function MembersModule() {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<any>(null)
   const [viewing, setViewing] = useState<any>(null)
+  const [viewOpen, setViewOpen] = useState(false)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [printTarget, setPrintTarget] = useState<any>(null)
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
   const { data, reload } = useFetch<any>(`/api/members?status=${status !== 'all' ? status : ''}${branchesParam}`)
   const { data: plansData } = useFetch<any>('/api/memberships')
@@ -1685,6 +1689,23 @@ export function MembersModule() {
   const trainers = trainersData?.staff || []
   const members = (data?.members || []).filter((m: any) =>
     !search || m.memberId.toLowerCase().includes(search.toLowerCase()) || (m.firstName + ' ' + (m.lastName || '')).toLowerCase().includes(search.toLowerCase()) || m.phone?.includes(search))
+  const selected = members.find((m: any) => m.id === selectedId) || null
+
+  const openView = (m: any) => { setViewing(m); setViewOpen(true) }
+  const openEdit = (m: any) => { setEditing(m); setOpen(true) }
+
+  const navigate = (key: string) => window.dispatchEvent(new CustomEvent('contoura:navigate', { detail: { key } }))
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    try {
+      await apiDelete(`/api/members/${deleteTarget.id}`)
+      toast.success('Member deleted (soft delete — records preserved)')
+      if (selectedId === deleteTarget.id) setSelectedId(null)
+      setDeleteTarget(null)
+      reload()
+    } catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  }
 
   return (
     <div>
@@ -1705,15 +1726,47 @@ export function MembersModule() {
         </Select>
         <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
       </Toolbar>
+
+      {/* CoA-style action panel for the selected member */}
+      {selected && (
+        <Card className="mb-3 border-primary/30">
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono text-xs text-muted-foreground">{selected.memberId}</span>
+                  <span className="font-semibold text-sm">{selected.firstName} {selected.lastName || ''}</span>
+                  <StatusBadge status={selected.status} />
+                  {selected.membershipPlan && <Badge variant="outline" className="text-xs">{selected.membershipPlan.name}</Badge>}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {selected.phone || '—'}{selected.branch ? ` · ${selected.branch.name}` : ''}{selected.joiningDate ? ` · Joined ${fmtDateStr(selected.joiningDate)}` : ''}
+                </div>
+                <div className="flex gap-1.5 mt-2">
+                  <Button size="sm" variant="outline" onClick={() => navigate('gym-attendance')}><CalendarCheck className="h-3.5 w-3.5 mr-1" />Attendance</Button>
+                  <Button size="sm" variant="outline" onClick={() => navigate('gym-fees')}><Banknote className="h-3.5 w-3.5 mr-1" />Fees</Button>
+                  <Button size="sm" variant="outline" onClick={() => navigate('gym-freezes')}><Snowflake className="h-3.5 w-3.5 mr-1" />Freeze</Button>
+                  <Button size="sm" variant="outline" onClick={() => navigate('gym-followups')}><HandHeart className="h-3.5 w-3.5 mr-1" />Follow-up</Button>
+                </div>
+              </div>
+              <div className="flex gap-1.5 flex-wrap">
+                <Button size="sm" variant="outline" onClick={() => openView(selected)}><Eye className="h-3.5 w-3.5 mr-1" />View</Button>
+                <Button size="sm" variant="outline" onClick={() => setPrintTarget(selected)}><Printer className="h-3.5 w-3.5 mr-1" />Print</Button>
+                {has('members.edit') && (
+                  <Button size="sm" variant="outline" onClick={() => openEdit(selected)}><Edit className="h-3.5 w-3.5 mr-1" />Edit</Button>
+                )}
+                {has('members.delete') && (
+                  <Button size="sm" variant="destructive" onClick={() => setDeleteTarget(selected)}><Trash2 className="h-3.5 w-3.5 mr-1" />Delete</Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <DataTable
         columns={[
-          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
-            <div className="flex gap-1">
-              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setViewing(r) }}><Eye className="h-3.5 w-3.5" /></Button>
-              {has('members.edit') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditing(r); setOpen(true) }}><Edit className="h-3.5 w-3.5" /></Button>}
-            </div>
-          ) },
-          { key: 'memberId', label: 'ID', mono: true },
+          { key: 'memberId', label: 'Member ID', mono: true, sticky: true },
           { key: 'name', label: 'Name', render: (r: any) => `${r.firstName} ${r.lastName || ''}` },
           { key: 'phone', label: 'Phone' },
           { key: 'gender', label: 'Gender' },
@@ -1723,11 +1776,65 @@ export function MembersModule() {
           { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
         ]}
         rows={members}
-        onRowClick={(r: any) => setViewing(r)}
+        onRowClick={(r: any) => setSelectedId(prev => prev === r.id ? null : r.id)}
       />
       <MemberFormModal open={open} onClose={() => setOpen(false)} editing={editing} plans={plans} trainers={trainers} onSaved={() => { setOpen(false); reload() }} />
-      <MemberViewModal open={!!viewing} member={viewing} onClose={() => setViewing(null)} onEdit={() => { setEditing(viewing); setViewing(null); setOpen(true) }} />
+      <MemberViewModal open={viewOpen} member={viewing} onClose={() => setViewOpen(false)} onEdit={() => { setEditing(viewing); setViewOpen(false); setOpen(true) }} />
+      <MemberPrintModal open={!!printTarget} member={printTarget} onClose={() => setPrintTarget(null)} />
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        title="Delete Member"
+        message={deleteTarget ? `Delete member "${deleteTarget.memberId} — ${deleteTarget.firstName} ${deleteTarget.lastName || ''}"? The member will be SOFT DELETED: marked Inactive and hidden from all lists. Historical records (fees, attendance, payments) are preserved.` : ''}
+      />
     </div>
+  )
+}
+
+function MemberPrintModal({ open, member, onClose }: any) {
+  const { data } = useFetch<any>(member ? `/api/members/${member.id}` : null)
+  const m = data?.member
+  if (!open || !member) return null
+  return (
+    <Modal open={open} onClose={onClose} title={`Print Member ${member.memberId}`} size="md"
+      footer={<>
+        <Button variant="outline" onClick={onClose}>Close</Button>
+        <Button onClick={() => window.print()}><Printer className="h-4 w-4 mr-1" />Print</Button>
+      </>}>
+      <div className="text-sm">
+        <div className="text-center mb-4">
+          <div className="text-lg font-semibold">Member Profile</div>
+          <div className="text-xs text-muted-foreground">{member.memberId} — {member.firstName} {member.lastName || ''}</div>
+        </div>
+        <table className="w-full border">
+          <tbody>
+            {([
+              ['Member ID', member.memberId],
+              ['Name', `${member.firstName} ${member.lastName || ''}`],
+              ['Gender', member.gender || '—'],
+              ['Phone', member.phone || '—'],
+              ['WhatsApp', member.whatsapp || '—'],
+              ['Email', member.email || '—'],
+              ['CNIC', member.cnic || '—'],
+              ['Plan', m?.membershipPlan?.name || member.membershipPlan?.name || '—'],
+              ['Branch', m?.branch?.name || member.branch?.name || '—'],
+              ['Joining Date', fmtDateStr(member.joiningDate)],
+              ['Billing Start', fmtDateStr(member.billingStartDate)],
+              ['Fee Relaxation', `${member.feeRelaxationDays} days`],
+              ['Status', member.status],
+              ['Address', member.address || '—'],
+              ['Emergency Contact', [member.emergencyContact, member.emergencyContactNo].filter(Boolean).join(' · ') || '—'],
+            ] as Array<[string, any]>).map(([k, v]) => (
+              <tr key={k} className="border-b last:border-0">
+                <td className="px-3 py-1.5 text-xs text-muted-foreground w-36">{k}</td>
+                <td className="px-3 py-1.5 text-xs">{String(v)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Modal>
   )
 }
 
@@ -1735,19 +1842,35 @@ function MemberFormModal({ open, onClose, editing, plans, trainers, onSaved }: a
   const { session, branches } = useApp()
   const [form, setForm] = useState<any>({})
   const [uploading, setUploading] = useState(false)
+  // "Same as phone" checkbox — whatsapp mirrors phone while checked
+  const [sameAsPhone, setSameAsPhone] = useState(false)
 
   useEffect(() => {
     if (open) {
-      setForm(editing ? { ...editing, joiningDate: editing.joiningDate?.slice(0, 10), billingStartDate: editing.billingStartDate?.slice(0, 10), dob: editing.dob?.slice(0, 10) } : {
-        joiningDate: new Date().toISOString().slice(0, 10),
-        billingStartDate: new Date().toISOString().slice(0, 10),
-        branchId: session?.branchId || branches[0]?.id,
-        feeRelaxationDays: 0,
-        status: 'Active',
-        gender: '',
-      })
+      if (editing) {
+        setForm({ ...editing, joiningDate: editing.joiningDate?.slice(0, 10), billingStartDate: editing.billingStartDate?.slice(0, 10), dob: editing.dob?.slice(0, 10) })
+        setSameAsPhone(!!editing.phone && editing.whatsapp === editing.phone)
+      } else {
+        setForm({
+          joiningDate: new Date().toISOString().slice(0, 10),
+          billingStartDate: new Date().toISOString().slice(0, 10),
+          branchId: session?.branchId || branches[0]?.id,
+          feeRelaxationDays: 0,
+          status: 'Active',
+          gender: '',
+        })
+        setSameAsPhone(false)
+      }
     }
   }, [open, editing])
+
+  const setPhone = (phone: string) => {
+    setForm((f: any) => (sameAsPhone ? { ...f, phone, whatsapp: phone } : { ...f, phone }))
+  }
+  const toggleSameAsPhone = (checked: boolean) => {
+    setSameAsPhone(checked)
+    if (checked) setForm((f: any) => ({ ...f, whatsapp: f.phone || '' }))
+  }
 
   const uploadPhoto = async (file: File) => {
     setUploading(true)
@@ -1778,10 +1901,13 @@ function MemberFormModal({ open, onClose, editing, plans, trainers, onSaved }: a
     if (!form.assignedTrainerId) { toast.error('Trainer is required'); return }
     try {
       if (editing) {
-        await apiPatch(`/api/members/${editing.id}`, form)
+        // Persist whatsapp = phone when the checkbox is checked
+        const payload = sameAsPhone ? { ...form, whatsapp: form.phone } : form
+        await apiPatch(`/api/members/${editing.id}`, payload)
         toast.success('Member updated')
       } else {
-        await apiPost('/api/members', form)
+        const payload = sameAsPhone ? { ...form, whatsapp: form.phone } : form
+        await apiPost('/api/members', payload)
         toast.success('Member created')
       }
       onSaved()
@@ -1830,8 +1956,18 @@ function MemberFormModal({ open, onClose, editing, plans, trainers, onSaved }: a
         <div>
           <div className="text-xs font-semibold uppercase text-muted-foreground mb-2 pb-1 border-b">Contact Information</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FormRow label="Contact Number" required><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="0300XXXXXXX" /></FormRow>
-            <FormRow label="WhatsApp"><Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} /></FormRow>
+            <FormRow label="Contact Number" required><Input value={form.phone || ''} onChange={e => setPhone(e.target.value)} placeholder="0300XXXXXXX" /></FormRow>
+            <div>
+              <FormRow label="WhatsApp">
+                <div className="space-y-1.5">
+                  <Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} disabled={sameAsPhone} placeholder={sameAsPhone ? 'Same as phone' : ''} />
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+                    <Checkbox checked={sameAsPhone} onCheckedChange={(v) => toggleSameAsPhone(v === true)} />
+                    Same as phone
+                  </label>
+                </div>
+              </FormRow>
+            </div>
             <FormRow label="Email"><Input value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
             <FormRow label="Emergency Contact"><Input value={form.emergencyContact || ''} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} /></FormRow>
             <FormRow label="Emergency #"><Input value={form.emergencyContactNo || ''} onChange={e => setForm({ ...form, emergencyContactNo: e.target.value })} /></FormRow>
@@ -2040,17 +2176,21 @@ export function MembershipsModule() {
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={async () => {
+            if (!form.name?.trim()) { toast.error('Plan name is required'); return }
+            if (!form.durationDays || Number(form.durationDays) < 1) { toast.error('Duration must be at least 1 day'); return }
+            if (form.amount === undefined || form.amount === null || isNaN(Number(form.amount)) || Number(form.amount) < 0) { toast.error('Amount must be a non-negative number'); return }
             try { await apiPost('/api/memberships', form); toast.success('Plan created'); setOpen(false); reload() }
             catch (e: any) { toast.error(e.message) }
           }}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
         <div className="grid grid-cols-2 gap-3">
           <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
-          <FormRow label="Duration (days)" required><Input type="number" value={form.durationDays || 30} onChange={e => setForm({ ...form, durationDays: Number(e.target.value) })} /></FormRow>
-          <FormRow label="Amount" required><Input type="number" value={form.amount || 0} onChange={e => setForm({ ...form, amount: Number(e.target.value) })} /></FormRow>
+          <FormRow label="Duration (days)" required><Input type="number" min={1} value={form.durationDays || 30} onChange={e => setForm({ ...form, durationDays: Number(e.target.value) })} /></FormRow>
+          <FormRow label="Amount" required><Input type="number" min={0} value={form.amount || 0} onChange={e => setForm({ ...form, amount: Number(e.target.value) })} /></FormRow>
           <FormRow label="Active"><Switch checked={form.isActive !== false} onCheckedChange={v => setForm({ ...form, isActive: v })} /></FormRow>
           <div className="col-span-2"><FormRow label="Description"><Textarea rows={2} value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow></div>
         </div>
+        <div className="text-xs text-muted-foreground mt-3">Plan code (MP-0001, MP-0002, …) is generated automatically on save.</div>
       </Modal>
     </div>
   )
@@ -2059,22 +2199,45 @@ export function MembershipsModule() {
 // =================================================================
 // ATTENDANCE
 // =================================================================
+
+// Local yyyy-mm-dd (avoids UTC off-by-one of toISOString)
+function localDateStr(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export function AttendanceModule() {
   const { has, selectedBranchIds } = useApp()
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(localDateStr(new Date()))
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<any>({ memberId: '', checkIn: new Date().toISOString().slice(0, 16) })
+  const [editOpen, setEditOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<any>(null)
   const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
   const { data, reload } = useFetch<any>(`/api/attendance?date=${date}${branchesParam}`)
   const { data: membersData } = useFetch<any>('/api/members' + (branchesParam ? `?${branchesParam.slice(1)}` : ''))
   const records = data?.records || []
 
+  // Date validation (client-side mirror of server rules): current month, never future
+  const monthStartStr = localDateStr(new Date(new Date().getFullYear(), new Date().getMonth(), 1))
+  const todayStr = localDateStr(new Date())
+  const validateDate = (val: string, label: string): string | null => {
+    if (!val) return null
+    if (val < monthStartStr) return `${label} must be within the current month — earlier dates are not allowed`
+    if (val > todayStr) return `${label} cannot be in the future`
+    return null
+  }
+
   const doCheckOut = async (r: any) => {
     try {
-      await apiPatch('/api/attendance', { id: r.id, checkOut: new Date().toISOString() })
+      await apiPatch(`/api/attendance/${r.id}`, { action: 'check-out' })
       toast.success('Checked out')
       reload()
     } catch (e: any) { toast.error(e.message) }
+  }
+
+  const openEdit = (r: any) => {
+    setEditTarget(r)
+    setEditOpen(true)
   }
 
   return (
@@ -2083,18 +2246,38 @@ export function AttendanceModule() {
         action={has('attendance.add') ? () => { setForm({ memberId: '', checkIn: new Date().toISOString().slice(0, 16) }); setOpen(true) } : undefined}
         actionLabel="Check In" />
       <Toolbar>
-        <FormRow label="Date"><Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-40" /></FormRow>
+        <FormRow label="Date">
+          <Input
+            type="date"
+            value={date}
+            min={monthStartStr}
+            max={todayStr}
+            onChange={e => {
+              const v = e.target.value
+              const err = validateDate(v, 'Date')
+              if (err) { toast.error(err); return }
+              setDate(v)
+            }}
+            className="w-40"
+          />
+        </FormRow>
+        <span className="text-xs text-muted-foreground mt-6">Current month only · no future dates</span>
         <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
       </Toolbar>
       <DataTable
         columns={[
           { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
-            has('attendance.edit') && !r.checkOut ? (
-              <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); doCheckOut(r) }}>Check Out</Button>
-            ) : null
+            <div className="flex gap-1">
+              {has('attendance.edit') && !r.checkOut && (
+                <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); doCheckOut(r) }}>Check Out</Button>
+              )}
+              {has('attendance.edit') && (
+                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(r) }} title="Edit times"><Edit className="h-3.5 w-3.5" /></Button>
+              )}
+            </div>
           ) },
           { key: 'member', label: 'Member', render: (r: any) => `${r.member?.firstName} ${r.member?.lastName || ''}` },
-          { key: 'member', label: 'Member ID', render: (r: any) => r.member?.memberId, mono: true },
+          { key: 'memberId', label: 'Member ID', render: (r: any) => r.member?.memberId, mono: true },
           { key: 'date', label: 'Date', render: (r: any) => fmtDateStr(r.date) },
           { key: 'checkIn', label: 'Check In', render: (r: any) => r.checkIn ? fmtDateTime(r.checkIn) : '—' },
           { key: 'checkOut', label: 'Check Out', render: (r: any) => r.checkOut ? fmtDateTime(r.checkOut) : '—' },
@@ -2106,7 +2289,7 @@ export function AttendanceModule() {
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={async () => {
-            try { await apiPost('/api/attendance', { memberId: form.memberId, checkIn: form.checkIn }); toast.success('Checked in'); setOpen(false); reload() }
+            try { await apiPost('/api/attendance', { memberId: form.memberId, date: form.date || date, checkIn: form.checkIn }); toast.success('Checked in'); setOpen(false); reload() }
             catch (e: any) { toast.error(e.message) }
           }}><Save className="h-4 w-4 mr-1" />Check In</Button>
         </>}>
@@ -2116,7 +2299,84 @@ export function AttendanceModule() {
             <SelectContent>{(membersData?.members || []).map((m: any) => <SelectItem key={m.id} value={m.id}>{m.memberId} — {m.firstName} {m.lastName || ''}</SelectItem>)}</SelectContent>
           </Select>
         </FormRow>
-        <FormRow label="Check In Time"><Input type="datetime-local" value={form.checkIn} onChange={e => setForm({ ...form, checkIn: e.target.value })} /></FormRow>
+        <div className="grid grid-cols-2 gap-3 mt-3">
+          <FormRow label="Date">
+            <Input
+              type="date"
+              value={form.date || date}
+              min={monthStartStr}
+              max={todayStr}
+              onChange={e => {
+                const v = e.target.value
+                const err = validateDate(v, 'Date')
+                if (err) { toast.error(err); return }
+                setForm({ ...form, date: v })
+              }}
+            />
+          </FormRow>
+          <FormRow label="Check In Time">
+            <Input
+              type="datetime-local"
+              value={form.checkIn}
+              onChange={e => {
+                const v = e.target.value
+                const err = validateDate(v.slice(0, 10), 'Check-in')
+                if (err) { toast.error(err); return }
+                setForm({ ...form, checkIn: v })
+              }}
+            />
+          </FormRow>
+        </div>
+      </Modal>
+
+      {/* Same-day edit of check-in / check-out times */}
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title={`Edit Attendance — ${editTarget?.member?.firstName || ''} ${editTarget?.member?.lastName || ''}`}
+        footer={<>
+          <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+          <Button onClick={async () => {
+            if (!editTarget) return
+            const checkIn = editTarget.checkIn ? editTarget.checkIn.slice(0, 16) : ''
+            const checkOut = editTarget.checkOut ? editTarget.checkOut.slice(0, 16) : ''
+            const errIn = validateDate(checkIn.slice(0, 10), 'Check-in')
+            if (errIn) { toast.error(errIn); return }
+            const errOut = validateDate(checkOut.slice(0, 10), 'Check-out')
+            if (errOut) { toast.error(errOut); return }
+            if (checkIn && checkOut && new Date(checkOut).getTime() <= new Date(checkIn).getTime()) {
+              toast.error('Check-out time must be after check-in time'); return
+            }
+            try {
+              await apiPatch(`/api/attendance/${editTarget.id}`, { checkIn: checkIn || null, checkOut: checkOut || null, notes: editTarget.notes })
+              toast.success('Attendance updated')
+              setEditOpen(false); reload()
+            } catch (e: any) { toast.error(e.message) }
+          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+        </>}>
+        {editTarget && (
+          <div className="space-y-3">
+            <div className="text-xs text-muted-foreground">
+              Date: {fmtDateStr(editTarget.date)} — editing is allowed for the same day within the current month.
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <FormRow label="Check In">
+                <Input
+                  type="datetime-local"
+                  value={editTarget.checkIn ? editTarget.checkIn.slice(0, 16) : ''}
+                  max={`${todayStr}T23:59`}
+                  onChange={e => setEditTarget({ ...editTarget, checkIn: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                />
+              </FormRow>
+              <FormRow label="Check Out">
+                <Input
+                  type="datetime-local"
+                  value={editTarget.checkOut ? editTarget.checkOut.slice(0, 16) : ''}
+                  max={`${todayStr}T23:59`}
+                  onChange={e => setEditTarget({ ...editTarget, checkOut: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                />
+              </FormRow>
+            </div>
+            <FormRow label="Notes"><Textarea rows={2} value={editTarget.notes || ''} onChange={e => setEditTarget({ ...editTarget, notes: e.target.value })} /></FormRow>
+          </div>
+        )}
       </Modal>
     </div>
   )
@@ -2630,12 +2890,14 @@ export function EquipmentModule() {
   const [form, setForm] = useState<any>({})
   const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
   const { data, reload } = useFetch<any>(`/api/equipment?condition=${condition !== 'all' ? condition : ''}${branchesParam}`)
+  const { data: categoriesData } = useFetch<any>('/api/master-files?type=EquipmentCategory')
   const equipment = (data?.equipment || []).filter((e: any) => !search || e.code?.toLowerCase().includes(search.toLowerCase()) || e.name?.toLowerCase().includes(search.toLowerCase()))
+  const categories = (categoriesData?.records || []).filter((c: any) => c.isActive)
 
   return (
     <div>
       <PageHeader title="Equipment"
-        action={has('equipment.add') ? () => { setForm({ condition: 'Working', category: 'Machine' }); setOpen(true) } : undefined}
+        action={has('equipment.add') ? () => { setForm({ condition: 'Working', category: categories[0]?.name || 'Machine' }); setOpen(true) } : undefined}
         actionLabel="Add Equipment" />
       <Toolbar>
         <SearchInput value={search} onChange={setSearch} placeholder="Search equipment…" />
@@ -2668,6 +2930,8 @@ export function EquipmentModule() {
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={async () => {
+            if (!form.name?.trim()) { toast.error('Equipment name is required'); return }
+            if (!form.branchId) { toast.error('Branch is required'); return }
             try { await apiPost('/api/equipment', form); toast.success('Equipment added'); setOpen(false); reload() }
             catch (e: any) { toast.error(e.message) }
           }}><Save className="h-4 w-4 mr-1" />Save</Button>
@@ -2675,17 +2939,16 @@ export function EquipmentModule() {
         <div className="grid grid-cols-2 gap-3">
           <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
           <FormRow label="Category">
-            <Select value={form.category || 'Machine'} onValueChange={v => setForm({ ...form, category: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Machine">Machine</SelectItem>
-                <SelectItem value="Dumbbell">Dumbbell</SelectItem>
-                <SelectItem value="Bar">Bar</SelectItem>
-                <SelectItem value="Weight">Weight</SelectItem>
-                <SelectItem value="Accessory">Accessory</SelectItem>
-                <SelectItem value="Consumable">Consumable</SelectItem>
-              </SelectContent>
-            </Select>
+            {categories.length > 0 ? (
+              <Select value={form.category || categories[0]?.name || 'Machine'} onValueChange={v => setForm({ ...form, category: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {categories.map((c: any) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input value={form.category || ''} onChange={e => setForm({ ...form, category: e.target.value })} placeholder="e.g. Machine — add categories in Master Files" />
+            )}
           </FormRow>
           <FormRow label="Branch" required>
             <Select value={form.branchId || ''} onValueChange={v => setForm({ ...form, branchId: v })}>
@@ -3880,8 +4143,10 @@ export function ExercisesModule() {
   const [form, setForm] = useState<any>({})
   const { data, reload } = useFetch<any>('/api/exercises')
   const { data: categoriesData } = useFetch<any>('/api/master-files?type=ExerciseCategories')
+  const { data: equipmentData } = useFetch<any>('/api/master-files?type=Equipment')
   const exercises = data?.exercises || []
   const categories = (categoriesData?.records || []).filter((c: any) => c.isActive)
+  const equipmentOptions = (equipmentData?.records || []).filter((e: any) => e.isActive)
   // Look up category name from master file by id (if stored as id) — but Exercise.category stores the name text per existing schema
   const categoryName = (cat: string) => {
     if (!cat) return '—'
@@ -3930,7 +4195,19 @@ export function ExercisesModule() {
             </Select>
           </FormRow>
           <FormRow label="Muscle Group"><Input value={form.muscleGroup || ''} onChange={e => setForm({ ...form, muscleGroup: e.target.value })} /></FormRow>
-          <FormRow label="Equipment"><Input value={form.equipment || ''} onChange={e => setForm({ ...form, equipment: e.target.value })} /></FormRow>
+          <FormRow label="Equipment">
+            {equipmentOptions.length > 0 ? (
+              <Select value={form.equipment || '__none__'} onValueChange={v => setForm({ ...form, equipment: v === '__none__' ? '' : v })}>
+                <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">—</SelectItem>
+                  {equipmentOptions.map((e: any) => <SelectItem key={e.id} value={e.name}>{e.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input value={form.equipment || ''} onChange={e => setForm({ ...form, equipment: e.target.value })} placeholder="e.g. Barbell — add equipment in Master Files" />
+            )}
+          </FormRow>
           <FormRow label="Sets"><Input type="number" value={form.sets || ''} onChange={e => setForm({ ...form, sets: e.target.value })} /></FormRow>
           <FormRow label="Reps"><Input value={form.reps || ''} onChange={e => setForm({ ...form, reps: e.target.value })} placeholder="8-12" /></FormRow>
           <FormRow label="Duration"><Input value={form.duration || ''} onChange={e => setForm({ ...form, duration: e.target.value })} placeholder="30 sec" /></FormRow>
@@ -4133,6 +4410,8 @@ export function DietModule() {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<any>(null)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const [copyOpen, setCopyOpen] = useState(false)
+  const [copyDay, setCopyDay] = useState('Monday')
   const [form, setForm] = useState<any>({ name: '', description: '', meals: {} })
   const { data, reload } = useFetch<any>('/api/diet')
   const plans = data?.plans || []
@@ -4203,6 +4482,22 @@ export function DietModule() {
     } catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
   }
 
+  // Copy the currently edited day's meal set (one cell per meal timing) to ALL other days.
+  // Applied to the in-editor grid; saved in bulk via PATCH /api/diet/[id] (full meals replace).
+  const copyToAllDays = () => {
+    const source = form.meals?.[copyDay] || {}
+    setForm((f: any) => {
+      const meals = { ...f.meals }
+      for (const day of DIET_DAYS) {
+        if (day === copyDay) continue
+        meals[day] = { ...meals[day], ...source }
+      }
+      return { ...f, meals }
+    })
+    setCopyOpen(false)
+    toast.success(`Copied ${copyDay}'s meals to all other days — press Update to save`)
+  }
+
   return (
     <div>
       <PageHeader title="Diet Plans"
@@ -4233,7 +4528,19 @@ export function DietModule() {
           <FormRow label="Plan Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
           <FormRow label="Description"><Input value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow>
         </div>
-        <div className="text-xs text-muted-foreground mb-2">Weekly diet grid — each cell max {DIET_MAX_LEN} characters. Empty cells are allowed.</div>
+        <div className="flex items-center gap-2 mb-2 flex-wrap">
+          <span className="text-xs text-muted-foreground">Weekly diet grid — each cell max {DIET_MAX_LEN} characters. Empty cells are allowed.</span>
+          <div className="ml-auto flex items-center gap-1.5">
+            <Label className="text-xs">Copy this day:</Label>
+            <Select value={copyDay} onValueChange={setCopyDay}>
+              <SelectTrigger className="w-32 h-8"><SelectValue /></SelectTrigger>
+              <SelectContent>{DIET_DAYS.map(day => <SelectItem key={day} value={day}>{day}</SelectItem>)}</SelectContent>
+            </Select>
+            <Button size="sm" variant="outline" onClick={() => setCopyOpen(true)} title={`Copy ${copyDay}'s meals to all other days`}>
+              <Copy className="h-3.5 w-3.5 mr-1" />Copy to all days
+            </Button>
+          </div>
+        </div>
         <div className="overflow-x-auto max-h-[55vh] overflow-y-auto border rounded">
           <table className="w-full text-xs">
             <thead className="bg-muted/50 border-b sticky top-0">
@@ -4265,6 +4572,13 @@ export function DietModule() {
           </table>
         </div>
       </Modal>
+      <ConfirmModal
+        open={copyOpen}
+        onClose={() => setCopyOpen(false)}
+        onConfirm={copyToAllDays}
+        title="Copy to all days"
+        message={`Copy ${copyDay}'s meal set (all meal timings) to ALL other days (Mon–Sun)? This will overwrite the other days' meals.`}
+      />
       <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={doDelete} title="Delete Diet Plan" message={deleteTarget ? `Delete diet plan "${deleteTarget.name}"? This cannot be undone.` : ''} />
     </div>
   )
@@ -4318,6 +4632,105 @@ export function ProgressModule() {
           <FormRow label="Hips"><Input type="number" value={form.hips || ''} onChange={e => setForm({ ...form, hips: e.target.value })} /></FormRow>
           <FormRow label="Biceps"><Input type="number" value={form.biceps || ''} onChange={e => setForm({ ...form, biceps: e.target.value })} /></FormRow>
           <FormRow label="Thighs"><Input type="number" value={form.thighs || ''} onChange={e => setForm({ ...form, thighs: e.target.value })} /></FormRow>
+          <div className="col-span-2"><FormRow label="Notes"><Textarea rows={2} value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></FormRow></div>
+        </div>
+      </Modal>
+    </div>
+  )
+}
+
+// =================================================================
+// PERSONAL TRAINING SESSIONS — /api/pt-sessions
+// =================================================================
+export function PTSessionsModule() {
+  const { has, selectedBranchIds } = useApp()
+  const [open, setOpen] = useState(false)
+  const [form, setForm] = useState<any>({})
+  const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
+  const { data, reload } = useFetch<any>('/api/pt-sessions')
+  const { data: membersData } = useFetch<any>('/api/members' + (branchesParam ? `?${branchesParam.slice(1)}` : ''))
+  const { data: trainersData } = useFetch<any>('/api/staff?isTrainer=true')
+  const records = data?.records || []
+  const members = membersData?.members || []
+  const trainers = trainersData?.staff || []
+
+  const trainerName = (id: string) => {
+    const t = trainers.find((x: any) => x.id === id)
+    return t ? `${t.firstName} ${t.lastName || ''}` : '—'
+  }
+
+  const save = async () => {
+    if (!form.memberId) { toast.error('Member is required'); return }
+    if (!form.trainerId) { toast.error('Trainer is required'); return }
+    if (!form.sessionsPurchased || Number(form.sessionsPurchased) < 1) { toast.error('Sessions purchased must be at least 1'); return }
+    try {
+      await apiPost('/api/pt-sessions', {
+        memberId: form.memberId,
+        trainerId: form.trainerId,
+        branchId: form.branchId || members.find((m: any) => m.id === form.memberId)?.branchId || null,
+        sessionsPurchased: Number(form.sessionsPurchased),
+        sessionsUsed: 0,
+        sessionsRemaining: Number(form.sessionsPurchased),
+        sessionDate: form.sessionDate || null,
+        startDate: form.startDate || null,
+        endDate: form.endDate || null,
+        notes: form.notes || null,
+      })
+      toast.success('PT session package created')
+      setOpen(false); reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
+  return (
+    <div>
+      <PageHeader title="Personal Training"
+        action={has('progress.edit') ? () => { setForm({ sessionsPurchased: 1 }); setOpen(true) } : undefined}
+        actionLabel="Add Session Package" />
+      <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
+      <DataTable
+        columns={[
+          { key: 'member', label: 'Member', render: (r: any) => r.member ? `${r.member.firstName} ${r.member.lastName || ''}` : '—' },
+          { key: 'memberIdNo', label: 'Member ID', mono: true, render: (r: any) => r.member?.memberId },
+          { key: 'trainer', label: 'Trainer', render: (r: any) => trainerName(r.trainerId) },
+          { key: 'sessionsPurchased', label: 'Purchased', align: 'right' },
+          { key: 'sessionsUsed', label: 'Used', align: 'right' },
+          { key: 'sessionsRemaining', label: 'Remaining', align: 'right' },
+          { key: 'sessionDate', label: 'Session Date', render: (r: any) => fmtDateStr(r.sessionDate) },
+          { key: 'sessionStatus', label: 'Session Status', render: (r: any) => <StatusBadge status={r.sessionStatus} /> },
+          { key: 'notes', label: 'Notes' },
+        ]}
+        rows={records}
+      />
+      <Modal open={open} onClose={() => setOpen(false)} title="Add PT Session Package"
+        footer={<>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
+        </>}>
+        <div className="grid grid-cols-2 gap-3">
+          <FormRow label="Member" required>
+            <Select value={form.memberId || ''} onValueChange={v => setForm({ ...form, memberId: v })}>
+              <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
+              <SelectContent>{members.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.memberId} — {m.firstName} {m.lastName || ''}</SelectItem>)}</SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Trainer" required>
+            <Select value={form.trainerId || ''} onValueChange={v => setForm({ ...form, trainerId: v })}>
+              <SelectTrigger><SelectValue placeholder="Select trainer" /></SelectTrigger>
+              <SelectContent>
+                {trainers.length === 0 ? <SelectItem value="__none__" disabled>No trainers found</SelectItem> :
+                  trainers.map((t: any) => <SelectItem key={t.id} value={t.id}>{t.employeeId} — {t.firstName} {t.lastName || ''}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Sessions Purchased" required>
+            <Input type="number" min={1} value={form.sessionsPurchased || 1} onChange={e => {
+              const n = Math.max(1, Number(e.target.value) || 1)
+              setForm({ ...form, sessionsPurchased: n, sessionsRemaining: n })
+            }} />
+          </FormRow>
+          <FormRow label="Session Date"><Input type="date" value={form.sessionDate || ''} onChange={e => setForm({ ...form, sessionDate: e.target.value })} /></FormRow>
+          <FormRow label="Package Start"><Input type="date" value={form.startDate || ''} onChange={e => setForm({ ...form, startDate: e.target.value })} /></FormRow>
+          <FormRow label="Package End"><Input type="date" value={form.endDate || ''} onChange={e => setForm({ ...form, endDate: e.target.value })} /></FormRow>
           <div className="col-span-2"><FormRow label="Notes"><Textarea rows={2} value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></FormRow></div>
         </div>
       </Modal>

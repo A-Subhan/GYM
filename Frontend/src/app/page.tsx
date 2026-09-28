@@ -65,6 +65,7 @@ import {
   UsersModule as UsersModuleImpl,
   RolesModule as RolesModuleImpl,
   AuditModule as AuditModuleImpl,
+  PTSessionsModule as PTSessionsModuleImpl,
 } from './module-pages'
 import { BranchesModule as BranchesModuleImpl } from './modules'
 import { AppContext, type AppCtx, type SessionUser, type Branch, useApp } from './app-context'
@@ -115,9 +116,8 @@ type ModuleKey =
   // Admin → Master Files
   | 'admin-branches' | 'admin-users' | 'admin-roles' | 'admin-permissions'
   // Gym → Operations (new)
-  | 'gym-fitness-goals' | 'gym-fitness-assessments' | 'gym-body-progress'
-  | 'gym-pt-sessions' | 'gym-classes' | 'gym-class-enrollments'
-  | 'gym-member-documents' | 'gym-trainer-availability' | 'gym-trainer-schedule'
+  | 'gym-fitness-goals' | 'gym-body-progress'
+  | 'gym-pt-sessions' | 'gym-trainer-availability' | 'gym-trainer-schedule'
   // Gym → Reports (new)
   // Inventory → Transactions
   | 'inv-purchases' | 'inv-stock-movements' | 'inv-equipment' | 'inv-equipment-maintenance'
@@ -150,12 +150,9 @@ const NAV: NavModule[] = [
           { key: 'gym-diet-assignment', label: 'Diet Assignment', perm: 'diet.assign' },
           { key: 'gym-progress', label: 'Body Progress', perm: 'progress.view' },
           { key: 'gym-fitness-goals', label: 'Fitness Goals', perm: 'progress.view' },
-          { key: 'gym-fitness-assessments', label: 'Fitness Assessments', perm: 'progress.view' },
           { key: 'gym-pt-sessions', label: 'Personal Training', perm: 'progress.view' },
-          { key: 'gym-classes', label: 'Classes', perm: 'progress.view' },
           { key: 'gym-trainer-availability', label: 'Trainer Availability', perm: 'staff.view' },
           { key: 'gym-trainer-schedule', label: 'Trainer Schedule', perm: 'staff.view' },
-          { key: 'gym-member-documents', label: 'Member Documents', perm: 'members.view' },
         ],
       },
       {
@@ -394,6 +391,17 @@ export default function Home() {
       setActiveModule('login')
     }
   }, [session, loadBranches])
+
+  // Cross-screen navigation mechanism — modules can dispatch:
+  //   window.dispatchEvent(new CustomEvent('contoura:navigate', { detail: { key: 'gym-attendance' } }))
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const key = (e as CustomEvent).detail?.key
+      if (typeof key === 'string') setActiveModule(key as ModuleKey)
+    }
+    window.addEventListener('contoura:navigate', handler)
+    return () => window.removeEventListener('contoura:navigate', handler)
+  }, [])
 
   const login = useCallback(async (username: string, password: string) => {
     try {
@@ -810,13 +818,10 @@ function ModuleRouter({ active, setActive }: { active: ModuleKey, setActive: (m:
     case 'admin-permissions': return <PermissionsModule />
     // Gym → Operations (new)
     case 'gym-fitness-goals': return <FitnessGoalsModule />
-    case 'gym-fitness-assessments': return <FitnessAssessmentsModule />
     case 'gym-body-progress': return <ProgressModule />
     case 'gym-pt-sessions': return <PTSessionsModule />
-    case 'gym-classes': return <ClassesModule />
     case 'gym-trainer-availability': return <TrainerAvailabilityModule />
     case 'gym-trainer-schedule': return <TrainerScheduleModule />
-    case 'gym-member-documents': return <MemberDocumentsModule />
     // Inventory → Transactions
     case 'inv-purchases': return <PurchasesModule />
     case 'inv-stock-movements': return <StockMovementsModule />
@@ -896,12 +901,8 @@ function UsersModule() { return <UsersModuleImpl /> }
 function RolesModule() { return <RolesModuleImpl /> }
 function AuditModule() { return <AuditModuleImpl /> }
 function FitnessGoalsModule() { return <NotImplemented name="Fitness Goals" /> }
-function FitnessAssessmentsModule() { return <NotImplemented name="Fitness Assessments" /> }
-function PTSessionsModule() { return <NotImplemented name="Personal Training Sessions" /> }
-function ClassesModule() { return <NotImplemented name="Classes" /> }
 function TrainerAvailabilityModule() { return <NotImplemented name="Trainer Availability" /> }
 function TrainerScheduleModule() { return <NotImplemented name="Trainer Schedule" /> }
-function MemberDocumentsModule() { return <NotImplemented name="Member Documents" /> }
 function PurchasesModule() { return <NotImplemented name="Purchases" /> }
 function StockMovementsModule() { return <NotImplemented name="Stock Movements" /> }
 function InventoryReportsModule() { return <ReportsListModule apiPath="/api/inventory-reports" title="Inventory Reports" /> }
@@ -923,6 +924,7 @@ function PayrollReportsModule() { return <NotImplemented name="Payroll Reports" 
 function CoaConfigStub() { return <NotImplemented name="COA Configuration" /> }
 function AccountingDefaultsModule() { return <PeriodsModuleImpl /> }
 function PermissionsModule() { return <RolesModuleImpl presetTab="permissions" /> }
+function PTSessionsModule() { return <PTSessionsModuleImpl /> }
 
 // Universal Master Files Screen — reusable dropdown + grid for Department/Designation/Education/Currency/etc.
 function UniversalMasterFilesScreen() {

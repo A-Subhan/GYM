@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const allowed = getSelectedBranchIds(session, url.searchParams.get('branches'))
   const records = await db.followUp.findMany({
-    where: { ...(allowed ? { branchId: { in: allowed } } : {}) },
+    where: { ...(allowed ? { branchId: { in: allowed } } : {}), member: { isDeleted: false } },
     include: { member: true },
     orderBy: { date: 'desc' },
     take: 100,

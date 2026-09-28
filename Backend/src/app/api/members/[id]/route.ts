@@ -7,7 +7,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
   const member = await db.member.findUnique({
-    where: { id },
+    where: { id, isDeleted: false },
     include: {
       branch: true,
       membershipPlan: true,
@@ -92,7 +92,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (!session.permissions.includes('members.delete')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const { id } = await params
-  await db.member.update({ where: { id }, data: { isDeleted: true, isActive: false } })
-  await db.auditLog.create({ data: { userId: session.id, action: 'DELETE', module: 'members', details: JSON.stringify({ id }) } })
-  return NextResponse.json({ success: true })
+  // Soft delete only: mark deleted/inactive, never hard-delete (history must be preserved)
+  const existing = await db.member.findFirst({ where: { id, isDeleted: false } })
+  if (!existing) return NextResponse.json({ error: 'Member not found' }, { status: 404 })
+  await db.member.update({ where: { id }, data: { isDeleted: true, status: 'Inactive', isActive: false } })
+  await db.auditLog.create({ data: { userId: session.id, action: 'DELETE', module: 'members', details: JSON.stringify({ id, softDelete: true, memberId: existing.memberId }) } })
+  return NextResponse.json({ success: true, softDeleted: true })
 }
