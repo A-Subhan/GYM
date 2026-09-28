@@ -17,7 +17,7 @@ import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { Plus, Search, Edit, Trash2, Eye, X, Save, ChevronDown, ChevronRight, Download, Printer, Banknote, AlertCircle, CheckCircle2, CalendarCheck, Snowflake, HandHeart, Copy } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Eye, X, Save, ChevronDown, ChevronRight, Download, Printer, Banknote, AlertCircle, CheckCircle2, CalendarCheck, Snowflake, HandHeart, Copy, ImagePlus } from 'lucide-react'
 import {
   useApp, useFetch, apiPost, apiPatch, apiDelete,
   fmtMoney, fmtDateStr, fmtDateTime, PageHeader, SearchInput, EmptyState,
@@ -3146,22 +3146,102 @@ export function PosModule() {
 }
 
 // =================================================================
-// STAFF
+// STAFF — single-page long employee form (client-confirmed rework)
 // =================================================================
+
+// Stacked-section subheading used inside the long employee form
+function FormSection({ title }: { title: string }) {
+  return (
+    <div className="col-span-2 mt-2 border-b pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground first:mt-0">
+      {title}
+    </div>
+  )
+}
+
 export function StaffModule() {
   const { has, selectedBranchIds, branches } = useApp()
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<any>({})
-  const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
-  const { data, reload } = useFetch<any>(`/api/staff${branchesParam ? `?${branchesParam.slice(1)}` : ''}`)
+  const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [confirmDel, setConfirmDel] = useState<any>(null)
+  const { data, reload } = useFetch<any>(`/api/staff${selectedBranchIds.length ? `?branches=${selectedBranchIds.join(',')}` : ''}`)
   const { data: shiftsData } = useFetch<any>('/api/shifts')
+  const { data: deptData } = useFetch<any>('/api/master-files?masterType=Department')
+  const { data: desigData } = useFetch<any>('/api/master-files?masterType=Designation')
   const staff = (data?.staff || []).filter((s: any) => !search || s.employeeId?.toLowerCase().includes(search.toLowerCase()) || s.firstName?.toLowerCase().includes(search.toLowerCase()))
+  const departments = (deptData?.records || []).filter((r: any) => r.isActive !== false)
+  const designations = (desigData?.records || []).filter((r: any) => r.isActive !== false)
+  const shifts = shiftsData?.shifts || []
+
+  const openForm = (row?: any) => {
+    if (row) {
+      setForm({ ...row, joiningDate: row.joiningDate ? localDateStr(new Date(row.joiningDate)) : '' })
+    } else {
+      setForm({ isTrainer: false, overtimeAllowed: false, joiningDate: localDateStr(new Date()), basicSalary: 0, fuelAllowance: 0, rentAllowance: 0, houseAllowance: 0, otherAllowance: 0, sessi: 0, eobi: 0, overtimeRate: 0 })
+    }
+    setOpen(true)
+  }
+
+  const uploadPhoto = async (file: File) => {
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/uploads', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Upload failed')
+      setForm((f: any) => ({ ...f, photo: json.url }))
+      toast.success('Photo uploaded')
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const save = async () => {
+    if (!String(form.firstName || '').trim()) { toast.error('First Name is required'); return }
+    if (!form.branchId) { toast.error('Branch is required'); return }
+    if (!form.joiningDate) { toast.error('Joining Date is required'); return }
+    if (form.basicSalary === '' || form.basicSalary === null || form.basicSalary === undefined) { toast.error('Basic Salary is required'); return }
+    const payload = {
+      ...form,
+      basicSalary: Number(form.basicSalary) || 0,
+      fuelAllowance: Number(form.fuelAllowance) || 0,
+      rentAllowance: Number(form.rentAllowance) || 0,
+      houseAllowance: Number(form.houseAllowance) || 0,
+      otherAllowance: Number(form.otherAllowance) || 0,
+      sessi: Number(form.sessi) || 0,
+      eobi: Number(form.eobi) || 0,
+      overtimeRate: Number(form.overtimeRate) || 0,
+      shiftId: form.shiftId || '',
+    }
+    try {
+      setSaving(true)
+      if (form.id) await apiPatch('/api/staff', payload)
+      else await apiPost('/api/staff', payload)
+      toast.success(form.id ? 'Staff updated' : 'Staff added')
+      setOpen(false)
+      reload()
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const num = (key: string) => ({
+    type: 'number',
+    value: form[key] ?? 0,
+    onChange: (e: any) => setForm({ ...form, [key]: e.target.value }),
+  })
 
   return (
     <div>
       <PageHeader title="Staff"
-        action={has('staff.add') ? () => { setForm({ isTrainer: false, overtimeAllowed: false }); setOpen(true) } : undefined}
+        action={has('staff.add') ? () => openForm() : undefined}
         actionLabel="Add Staff" />
       <Toolbar>
         <SearchInput value={search} onChange={setSearch} placeholder="Search by ID or name…" />
@@ -3178,70 +3258,113 @@ export function StaffModule() {
           { key: 'isTrainer', label: 'Trainer', render: (r: any) => r.isTrainer ? <Badge>Yes</Badge> : '—' },
           { key: 'basicSalary', label: 'Salary', align: 'right', mono: true, render: (r: any) => fmtMoney(r.basicSalary) },
           { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
+          { key: 'actions', label: 'Actions', align: 'right', render: (r: any) => (
+            <div className="flex justify-end gap-1">
+              {has('staff.edit') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openForm(r) }}><Edit className="h-3.5 w-3.5" /></Button>}
+              {has('staff.delete') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setConfirmDel(r) }}><Trash2 className="h-3.5 w-3.5" /></Button>}
+            </div>
+          ) },
         ]}
         rows={staff}
       />
-      <Modal open={open} onClose={() => setOpen(false)} title="Add Staff" size="lg"
+      <Modal open={open} onClose={() => setOpen(false)} title={form.id ? `Edit Staff — ${form.employeeId || ''}` : 'Add Staff'} size="xl"
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={async () => {
-            try { await apiPost('/api/staff', form); toast.success('Staff added'); setOpen(false); reload() }
-            catch (e: any) { toast.error(e.message) }
-          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+          <Button onClick={save} disabled={saving}><Save className="h-4 w-4 mr-1" />{saving ? 'Saving…' : 'Save'}</Button>
         </>}>
-        <Tabs defaultValue="basic">
-          <TabsList className="grid grid-cols-4 mb-3">
-            <TabsTrigger value="basic">Basic</TabsTrigger>
-            <TabsTrigger value="contact">Contact</TabsTrigger>
-            <TabsTrigger value="job">Job</TabsTrigger>
-            <TabsTrigger value="salary">Salary</TabsTrigger>
-          </TabsList>
-          <TabsContent value="basic" className="grid grid-cols-2 gap-3">
-            <FormRow label="First Name" required><Input value={form.firstName || ''} onChange={e => setForm({ ...form, firstName: e.target.value })} /></FormRow>
-            <FormRow label="Last Name"><Input value={form.lastName || ''} onChange={e => setForm({ ...form, lastName: e.target.value })} /></FormRow>
-            <FormRow label="Father/Guardian"><Input value={form.fatherGuardian || ''} onChange={e => setForm({ ...form, fatherGuardian: e.target.value })} /></FormRow>
-            <FormRow label="CNIC"><Input value={form.cnic || ''} onChange={e => setForm({ ...form, cnic: e.target.value })} /></FormRow>
-            <FormRow label="Email"><Input value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
-            <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
-          </TabsContent>
-          <TabsContent value="contact" className="grid grid-cols-2 gap-3">
-            <FormRow label="WhatsApp"><Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} /></FormRow>
-            <FormRow label="Telephone"><Input value={form.telephone || ''} onChange={e => setForm({ ...form, telephone: e.target.value })} /></FormRow>
-            <FormRow label="Emergency Contact"><Input value={form.emergencyContact || ''} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} /></FormRow>
-            <FormRow label="Emergency #"><Input value={form.emergencyContactNo || ''} onChange={e => setForm({ ...form, emergencyContactNo: e.target.value })} /></FormRow>
-            <div className="col-span-2"><FormRow label="Address"><Textarea rows={2} value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></FormRow></div>
-          </TabsContent>
-          <TabsContent value="job" className="grid grid-cols-2 gap-3">
-            <FormRow label="Joining Date"><Input type="date" value={form.joiningDate || ''} onChange={e => setForm({ ...form, joiningDate: e.target.value })} /></FormRow>
-            <FormRow label="Branch" required>
-              <Select value={form.branchId || ''} onValueChange={v => setForm({ ...form, branchId: v })}>
-                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </FormRow>
-            <FormRow label="Department"><Input value={form.department || ''} onChange={e => setForm({ ...form, department: e.target.value })} /></FormRow>
-            <FormRow label="Designation"><Input value={form.designation || ''} onChange={e => setForm({ ...form, designation: e.target.value })} /></FormRow>
-            <FormRow label="Shift">
-              <Select value={form.shiftId || ''} onValueChange={v => setForm({ ...form, shiftId: v })}>
-                <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>{(shiftsData?.shifts || []).map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </FormRow>
-            <FormRow label="Trainer"><Switch checked={form.isTrainer || false} onCheckedChange={v => setForm({ ...form, isTrainer: v })} /></FormRow>
-          </TabsContent>
-          <TabsContent value="salary" className="grid grid-cols-2 gap-3">
-            <FormRow label="Basic Salary"><Input type="number" value={form.basicSalary || 0} onChange={e => setForm({ ...form, basicSalary: Number(e.target.value) })} /></FormRow>
-            <FormRow label="Fuel Allowance"><Input type="number" value={form.fuelAllowance || 0} onChange={e => setForm({ ...form, fuelAllowance: Number(e.target.value) })} /></FormRow>
-            <FormRow label="Rent Allowance"><Input type="number" value={form.rentAllowance || 0} onChange={e => setForm({ ...form, rentAllowance: Number(e.target.value) })} /></FormRow>
-            <FormRow label="House Allowance"><Input type="number" value={form.houseAllowance || 0} onChange={e => setForm({ ...form, houseAllowance: Number(e.target.value) })} /></FormRow>
-            <FormRow label="SESSI"><Input type="number" value={form.sessi || 0} onChange={e => setForm({ ...form, sessi: Number(e.target.value) })} /></FormRow>
-            <FormRow label="EOBI"><Input type="number" value={form.eobi || 0} onChange={e => setForm({ ...form, eobi: Number(e.target.value) })} /></FormRow>
-            <FormRow label="FBR/Tax #"><Input value={form.fbrTaxNumber || ''} onChange={e => setForm({ ...form, fbrTaxNumber: e.target.value })} /></FormRow>
-            <FormRow label="Overtime Allowed"><Switch checked={form.overtimeAllowed || false} onCheckedChange={v => setForm({ ...form, overtimeAllowed: v })} /></FormRow>
-            <FormRow label="Overtime Rate/Hr"><Input type="number" value={form.overtimeRate || 0} onChange={e => setForm({ ...form, overtimeRate: Number(e.target.value) })} /></FormRow>
-          </TabsContent>
-        </Tabs>
+        <div className="grid grid-cols-2 gap-3">
+          <FormSection title="Personal" />
+          <FormRow label="Photo">
+            <div className="flex items-center gap-2">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded border bg-muted/40">
+                {form.photo
+                  ? // eslint-disable-next-line @next/next/no-img-element
+                    <img src={form.photo} alt="Staff photo" className="h-full w-full object-cover" />
+                  : <ImagePlus className="h-5 w-5 text-muted-foreground" />}
+              </div>
+              <Input type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="flex-1 text-xs" disabled={uploading}
+                onChange={e => { const f = e.target.files?.[0]; if (f) uploadPhoto(f) }} />
+              {form.photo && <Button size="sm" variant="ghost" onClick={() => setForm({ ...form, photo: '' })}><X className="h-3.5 w-3.5" /></Button>}
+            </div>
+          </FormRow>
+          <FormRow label="First Name" required><Input value={form.firstName || ''} onChange={e => setForm({ ...form, firstName: e.target.value })} /></FormRow>
+          <FormRow label="Last Name"><Input value={form.lastName || ''} onChange={e => setForm({ ...form, lastName: e.target.value })} /></FormRow>
+          <FormRow label="Father/Guardian"><Input value={form.fatherGuardian || ''} onChange={e => setForm({ ...form, fatherGuardian: e.target.value })} /></FormRow>
+          <FormRow label="CNIC"><Input value={form.cnic || ''} onChange={e => setForm({ ...form, cnic: e.target.value })} /></FormRow>
+
+          <FormSection title="Contact" />
+          <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
+          <FormRow label="WhatsApp"><Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} /></FormRow>
+          <FormRow label="Telephone"><Input value={form.telephone || ''} onChange={e => setForm({ ...form, telephone: e.target.value })} /></FormRow>
+          <FormRow label="Fax"><Input value={form.fax || ''} onChange={e => setForm({ ...form, fax: e.target.value })} /></FormRow>
+          <FormRow label="Email"><Input type="email" value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
+          <FormRow label="Emergency Contact"><Input value={form.emergencyContact || ''} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} /></FormRow>
+          <FormRow label="Emergency Contact No"><Input value={form.emergencyContactNo || ''} onChange={e => setForm({ ...form, emergencyContactNo: e.target.value })} /></FormRow>
+          <div className="col-span-2"><FormRow label="Address"><Textarea rows={2} value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></FormRow></div>
+
+          <FormSection title="Employment" />
+          <FormRow label="Employee ID (auto)">
+            <Input disabled value={form.employeeId || 'Auto — assigned on save (EMP-0001)'} className="bg-muted/40" />
+          </FormRow>
+          <FormRow label="Joining Date" required><Input type="date" value={form.joiningDate || ''} onChange={e => setForm({ ...form, joiningDate: e.target.value })} /></FormRow>
+          <FormRow label="Department">
+            <Select value={form.department || ''} onValueChange={v => setForm({ ...form, department: v })}>
+              <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+              <SelectContent>
+                {(departments.some((d: any) => d.name === form.department) || !form.department ? departments : [...departments, { id: '__cur', name: form.department }]).map((d: any) => (
+                  <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Designation">
+            <Select value={form.designation || ''} onValueChange={v => setForm({ ...form, designation: v })}>
+              <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+              <SelectContent>
+                {(designations.some((d: any) => d.name === form.designation) || !form.designation ? designations : [...designations, { id: '__cur', name: form.designation }]).map((d: any) => (
+                  <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Branch" required>
+            <Select value={form.branchId || ''} onValueChange={v => setForm({ ...form, branchId: v })}>
+              <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+              <SelectContent>{branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Shift">
+            <Select value={form.shiftId || ''} onValueChange={v => setForm({ ...form, shiftId: v })}>
+              <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+              <SelectContent>{shifts.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.name}{s.isActive ? '' : ' (inactive)'}</SelectItem>)}</SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Trainer"><Switch checked={form.isTrainer || false} onCheckedChange={v => setForm({ ...form, isTrainer: v })} /></FormRow>
+
+          <FormSection title="Salary" />
+          <FormRow label="Basic Salary" required><Input {...num('basicSalary')} /></FormRow>
+          <FormRow label="Fuel Allowance"><Input {...num('fuelAllowance')} /></FormRow>
+          <FormRow label="Rent Allowance"><Input {...num('rentAllowance')} /></FormRow>
+          <FormRow label="House Allowance"><Input {...num('houseAllowance')} /></FormRow>
+          <FormRow label="Other Allowance"><Input {...num('otherAllowance')} /></FormRow>
+          <FormRow label="SESSI"><Input {...num('sessi')} /></FormRow>
+          <FormRow label="EOBI"><Input {...num('eobi')} /></FormRow>
+          <FormRow label="FBR/Tax #"><Input value={form.fbrTaxNumber || ''} onChange={e => setForm({ ...form, fbrTaxNumber: e.target.value })} /></FormRow>
+          <FormRow label="Overtime Allowed"><Switch checked={form.overtimeAllowed || false} onCheckedChange={v => setForm({ ...form, overtimeAllowed: v })} /></FormRow>
+          <FormRow label="Overtime Rate/Hr">
+            <Input {...num('overtimeRate')} disabled={!form.overtimeAllowed} className={!form.overtimeAllowed ? 'opacity-50' : ''} />
+          </FormRow>
+        </div>
       </Modal>
+      <ConfirmModal open={!!confirmDel} onClose={() => setConfirmDel(null)} title="Delete Staff"
+        message={`Soft-delete employee ${confirmDel?.employeeId || ''} — ${confirmDel?.firstName || ''} ${confirmDel?.lastName || ''}? Their leaves, overtime and payroll history are kept.`}
+        onConfirm={async () => {
+          try {
+            const res = await apiDelete(`/api/staff?id=${confirmDel.id}`)
+            toast.success(res.message || 'Staff deleted')
+            reload()
+          } catch (e: any) { toast.error(e.message) }
+        }} />
     </div>
   )
 }
@@ -3253,12 +3376,31 @@ export function ShiftsModule() {
   const { has, branches } = useApp()
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<any>({})
+  const [confirmDel, setConfirmDel] = useState<any>(null)
   const { data, reload } = useFetch<any>('/api/shifts')
   const shifts = data?.shifts || []
+
+  const openForm = (row?: any) => {
+    setForm(row ? { ...row } : { workingDays: 'Mon,Tue,Wed,Thu,Fri' })
+    setOpen(true)
+  }
+
+  const save = async () => {
+    if (!String(form.name || '').trim()) { toast.error('Name is required'); return }
+    if (!form.timeIn || !form.timeOut) { toast.error('Time In and Time Out are required'); return }
+    try {
+      if (form.id) await apiPatch(`/api/shifts/${form.id}`, form)
+      else await apiPost('/api/shifts', form)
+      toast.success(form.id ? 'Shift updated' : 'Shift added')
+      setOpen(false)
+      reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
   return (
     <div>
       <PageHeader title="Shifts"
-        action={has('shifts.add') ? () => { setForm({ workingDays: 'Mon,Tue,Wed,Thu,Fri' }); setOpen(true) } : undefined}
+        action={has('shifts.add') ? () => openForm() : undefined}
         actionLabel="Add Shift" />
       <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
       <DataTable
@@ -3269,16 +3411,19 @@ export function ShiftsModule() {
           { key: 'workingDays', label: 'Days' },
           { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
           { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
+          { key: 'actions', label: 'Actions', align: 'right', render: (r: any) => (
+            <div className="flex justify-end gap-1">
+              {has('shifts.edit') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openForm(r) }}><Edit className="h-3.5 w-3.5" /></Button>}
+              {has('shifts.delete') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setConfirmDel(r) }}><Trash2 className="h-3.5 w-3.5" /></Button>}
+            </div>
+          ) },
         ]}
         rows={shifts}
       />
-      <Modal open={open} onClose={() => setOpen(false)} title="Add Shift"
+      <Modal open={open} onClose={() => setOpen(false)} title={form.id ? `Edit Shift — ${form.name || ''}` : 'Add Shift'}
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={async () => {
-            try { await apiPost('/api/shifts', form); toast.success('Shift added'); setOpen(false); reload() }
-            catch (e: any) { toast.error(e.message) }
-          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+          <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
         <div className="grid grid-cols-2 gap-3">
           <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
@@ -3290,9 +3435,19 @@ export function ShiftsModule() {
           </FormRow>
           <FormRow label="Time In" required><Input type="time" value={form.timeIn || ''} onChange={e => setForm({ ...form, timeIn: e.target.value })} /></FormRow>
           <FormRow label="Time Out" required><Input type="time" value={form.timeOut || ''} onChange={e => setForm({ ...form, timeOut: e.target.value })} /></FormRow>
+          <FormRow label="Active"><Switch checked={form.isActive !== false} onCheckedChange={v => setForm({ ...form, isActive: v })} /></FormRow>
           <div className="col-span-2"><FormRow label="Working Days (CSV)"><Input value={form.workingDays || ''} onChange={e => setForm({ ...form, workingDays: e.target.value })} placeholder="Mon,Tue,Wed,Thu,Fri" /></FormRow></div>
         </div>
       </Modal>
+      <ConfirmModal open={!!confirmDel} onClose={() => setConfirmDel(null)} title="Delete Shift"
+        message={`Delete shift "${confirmDel?.name || ''}"? Shifts with staff assigned cannot be deleted.`}
+        onConfirm={async () => {
+          try {
+            const res = await apiDelete(`/api/shifts/${confirmDel.id}`)
+            toast.success(res.message || 'Shift deleted')
+            reload()
+          } catch (e: any) { toast.error(e.message) }
+        }} />
     </div>
   )
 }
@@ -3373,75 +3528,143 @@ export function CalendarModule() {
 }
 
 // =================================================================
-// LEAVES
+// LEAVES — Leave No (LV-0001) business id; types from MasterFile 'LeaveType'
 // =================================================================
 export function LeavesModule({ presetStatus }: { presetStatus?: string } = {}) {
-  const { has } = useApp()
+  const { has, branches } = useApp()
   const [status, setStatus] = useState(presetStatus || 'all')
+  const [branchId, setBranchId] = useState('all')
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<any>({})
-  const { data, reload } = useFetch<any>(`/api/leaves?status=${status !== 'all' ? status : ''}`)
+  const { data, reload } = useFetch<any>(`/api/leaves?status=${status !== 'all' ? status : ''}&branchId=${branchId !== 'all' ? branchId : ''}`)
   const { data: staffData } = useFetch<any>('/api/staff')
+  const { data: ltData } = useFetch<any>('/api/master-files?masterType=LeaveType')
+  const leaveTypes = (ltData?.records || []).filter((r: any) => r.isActive !== false)
+  const staffList = staffData?.staff || []
   const leaves = data?.leaves || []
+  const isApproval = presetStatus === 'Pending'
+
+  const selectedType = leaveTypes.find((t: any) => t.name === form.leaveType)
+  const typeExtra: any = (() => { try { return selectedType?.extra ? JSON.parse(selectedType.extra) : null } catch { return null } })()
+
+  const openForm = (row?: any) => {
+    if (row) setForm({ ...row, fromDate: localDateStr(new Date(row.fromDate)), toDate: localDateStr(new Date(row.toDate)) })
+    else setForm({})
+    setOpen(true)
+  }
+
+  const save = async () => {
+    if (!form.staffId) { toast.error('Staff is required'); return }
+    if (!form.leaveType) { toast.error('Leave type is required'); return }
+    if (!form.fromDate || !form.toDate) { toast.error('From and To dates are required'); return }
+    if (form.toDate < form.fromDate) { toast.error('To date must be on or after From date'); return }
+    const payload = {
+      staffId: form.staffId,
+      leaveType: form.leaveType,
+      fromDate: form.fromDate,
+      toDate: form.toDate,
+      reason: form.reason,
+      branchId: staffList.find((s: any) => s.id === form.staffId)?.branchId,
+    }
+    try {
+      if (form.id) await apiPatch(`/api/leaves/${form.id}`, payload)
+      else await apiPost('/api/leaves', payload)
+      toast.success(form.id ? 'Leave updated' : 'Leave applied')
+      setOpen(false)
+      reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
+  const setStatusFor = async (row: any, newStatus: string) => {
+    try {
+      await apiPatch(`/api/leaves/${row.id}`, { status: newStatus })
+      toast.success(newStatus === 'Approved' ? 'Leave approved' : 'Leave rejected')
+      reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
   return (
     <div>
-      <PageHeader title={presetStatus === 'Pending' ? 'Leave Approval' : 'Leaves'} action={has('leaves.add') && !presetStatus ? () => { setForm({}); setOpen(true) } : undefined} actionLabel="Apply Leave" />
+      <PageHeader title={isApproval ? 'Leave Approval' : 'Leaves'} action={has('leaves.add') && !isApproval ? () => openForm() : undefined} actionLabel="Apply Leave" />
       <Toolbar>
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
+        {!isApproval && (
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="Pending">Pending</SelectItem>
+              <SelectItem value="Approved">Approved</SelectItem>
+              <SelectItem value="Rejected">Rejected</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+        <Select value={branchId} onValueChange={setBranchId}>
+          <SelectTrigger className="w-44"><SelectValue placeholder="Branch" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="Pending">Pending</SelectItem>
-            <SelectItem value="Approved">Approved</SelectItem>
-            <SelectItem value="Rejected">Rejected</SelectItem>
+            <SelectItem value="all">All Branches</SelectItem>
+            {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
           </SelectContent>
         </Select>
         <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
       </Toolbar>
       <DataTable
         columns={[
-          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => r.status === 'Pending' && has('leaves.approve') && (
-            <div className="flex gap-1">
-              <Button size="sm" variant="outline" onClick={async (e) => { e.stopPropagation(); await apiPatch('/api/leaves', { id: r.id, status: 'Approved' }); toast.success('Approved'); reload() }}>Approve</Button>
-              <Button size="sm" variant="ghost" onClick={async (e) => { e.stopPropagation(); await apiPatch('/api/leaves', { id: r.id, status: 'Rejected' }); toast.success('Rejected'); reload() }}>Reject</Button>
-            </div>
-          ) },
+          { key: 'leaveNo', label: 'Leave No', mono: true, sticky: true },
           { key: 'staff', label: 'Staff', render: (r: any) => `${r.staff?.firstName} ${r.staff?.lastName || ''}` },
+          { key: 'employeeId', label: 'Emp ID', mono: true, render: (r: any) => r.staff?.employeeId },
+          { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
           { key: 'leaveType', label: 'Type' },
           { key: 'fromDate', label: 'From', render: (r: any) => fmtDateStr(r.fromDate) },
           { key: 'toDate', label: 'To', render: (r: any) => fmtDateStr(r.toDate) },
           { key: 'days', label: 'Days', align: 'right' },
           { key: 'reason', label: 'Reason' },
           { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
+          { key: 'actions', label: 'Actions', align: 'right', render: (r: any) => r.status === 'Pending' && (
+            <div className="flex justify-end gap-1">
+              {has('leaves.approve') && (
+                <>
+                  <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setStatusFor(r, 'Approved') }}>Approve</Button>
+                  <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setStatusFor(r, 'Rejected') }}>Reject</Button>
+                </>
+              )}
+              {!isApproval && has('leaves.edit') && (
+                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openForm(r) }}><Edit className="h-3.5 w-3.5" /></Button>
+              )}
+            </div>
+          ) },
         ]}
         rows={leaves}
       />
-      <Modal open={open} onClose={() => setOpen(false)} title="Apply Leave"
+      <Modal open={open} onClose={() => setOpen(false)} title={form.id ? `Edit Leave — ${form.leaveNo || ''}` : 'Apply Leave'}
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={async () => {
-            try { await apiPost('/api/leaves', form); toast.success('Leave applied'); setOpen(false); reload() }
-            catch (e: any) { toast.error(e.message) }
-          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+          <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
         <div className="grid grid-cols-2 gap-3">
           <FormRow label="Staff" required>
             <Select value={form.staffId || ''} onValueChange={v => setForm({ ...form, staffId: v })}>
               <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-              <SelectContent>{(staffData?.staff || []).map((s: any) => <SelectItem key={s.id} value={s.id}>{s.employeeId} — {s.firstName} {s.lastName || ''}</SelectItem>)}</SelectContent>
+              <SelectContent>{staffList.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.employeeId} — {s.firstName} {s.lastName || ''}</SelectItem>)}</SelectContent>
             </Select>
           </FormRow>
-          <FormRow label="Type">
-            <Select value={form.leaveType || 'Casual'} onValueChange={v => setForm({ ...form, leaveType: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+          <FormRow label="Type" required>
+            <Select value={form.leaveType || ''} onValueChange={v => setForm({ ...form, leaveType: v })}>
+              <SelectTrigger><SelectValue placeholder="Select leave type" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="Casual">Casual</SelectItem>
-                <SelectItem value="Sick">Sick</SelectItem>
-                <SelectItem value="Paid">Paid</SelectItem>
-                <SelectItem value="Unpaid">Unpaid</SelectItem>
+                {leaveTypes.map((t: any) => {
+                  let hint = ''
+                  try { hint = t.extra ? ` (${JSON.parse(t.extra).allowedDays ?? '?'} days/yr)` : '' } catch { /* ignore */ }
+                  return <SelectItem key={t.id} value={t.name}>{t.name}{hint}</SelectItem>
+                })}
               </SelectContent>
             </Select>
           </FormRow>
+          {typeExtra && (typeExtra.allowedDays !== undefined || typeExtra.isPaid !== undefined) && (
+            <div className="col-span-2 -mt-1 text-xs text-muted-foreground">
+              {form.leaveType}: {typeExtra.allowedDays !== undefined ? `${typeExtra.allowedDays} allowed days/year` : ''}
+              {typeExtra.isPaid !== undefined ? ` · ${typeExtra.isPaid ? 'Paid' : 'Unpaid'}` : ''}
+            </div>
+          )}
           <FormRow label="From" required><Input type="date" value={form.fromDate || ''} onChange={e => setForm({ ...form, fromDate: e.target.value })} /></FormRow>
           <FormRow label="To" required><Input type="date" value={form.toDate || ''} onChange={e => setForm({ ...form, toDate: e.target.value })} /></FormRow>
           <div className="col-span-2"><FormRow label="Reason"><Textarea rows={2} value={form.reason || ''} onChange={e => setForm({ ...form, reason: e.target.value })} /></FormRow></div>
@@ -3581,6 +3804,137 @@ export function PayrollModule() {
           Payroll is auto-calculated from basic salary + allowances + approved overtime minus unpaid leaves and statutory deductions (SESSI, EOBI).
         </div>
       </Modal>
+    </div>
+  )
+}
+
+// =================================================================
+// PAYROLL MASTER FILE — earning/deduction heads (PMF-0xx)
+// =================================================================
+export function PayrollMasterFilesModule() {
+  const { has, branches } = useApp()
+  const [typeFilter, setTypeFilter] = useState('all')
+  const [open, setOpen] = useState(false)
+  const [form, setForm] = useState<any>({})
+  const [confirmDel, setConfirmDel] = useState<any>(null)
+  const { data, reload } = useFetch<any>(`/api/payroll-master-file${typeFilter !== 'all' ? `?type=${typeFilter}` : ''}`)
+  const records = data?.records || []
+
+  const openForm = (row?: any) => {
+    setForm(row ? { ...row } : { type: 'Earning', calcType: 'Fixed', amount: 0, isActive: true })
+    setOpen(true)
+  }
+
+  const save = async () => {
+    if (!String(form.name || '').trim()) { toast.error('Name is required'); return }
+    if (!['Earning', 'Deduction'].includes(form.type)) { toast.error('Type is required'); return }
+    if (!['Fixed', 'Percent'].includes(form.calcType || 'Fixed')) { toast.error('Calc Type must be Fixed or Percent'); return }
+    const amount = Number(form.amount)
+    if (isNaN(amount) || amount < 0) { toast.error('Amount must be a number >= 0'); return }
+    const payload = {
+      name: String(form.name).trim(),
+      type: form.type,
+      calcType: form.calcType || 'Fixed',
+      amount,
+      isActive: form.isActive !== false,
+      branchId: form.branchId === '*' ? null : (form.branchId || null),
+    }
+    try {
+      if (form.id) await apiPatch(`/api/payroll-master-file/${form.id}`, payload)
+      else await apiPost('/api/payroll-master-file', payload)
+      toast.success(form.id ? 'Updated' : 'Created')
+      setOpen(false)
+      reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
+  return (
+    <div>
+      <PageHeader title="Payroll Master File"
+        action={has('masters.add') ? () => openForm() : undefined}
+        actionLabel="Add Head" />
+      <Toolbar>
+        <Select value={typeFilter} onValueChange={setTypeFilter}>
+          <SelectTrigger className="w-40"><SelectValue placeholder="Type" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            <SelectItem value="Earning">Earnings</SelectItem>
+            <SelectItem value="Deduction">Deductions</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+      </Toolbar>
+      <DataTable
+        columns={[
+          { key: 'code', label: 'Code', mono: true, sticky: true },
+          { key: 'name', label: 'Name' },
+          { key: 'type', label: 'Type', render: (r: any) => (
+            <Badge variant={r.type === 'Earning' ? 'default' : 'destructive'}>{r.type}</Badge>
+          ) },
+          { key: 'calcType', label: 'Calc Type' },
+          { key: 'amount', label: 'Amount', align: 'right', mono: true, render: (r: any) => r.calcType === 'Percent' ? `${fmtMoney(r.amount)}%` : fmtMoney(r.amount) },
+          { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || 'All' },
+          { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
+          { key: 'actions', label: 'Actions', align: 'right', render: (r: any) => (
+            <div className="flex justify-end gap-1">
+              {has('masters.edit') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openForm(r) }}><Edit className="h-3.5 w-3.5" /></Button>}
+              {has('masters.delete') && r.isActive && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setConfirmDel(r) }}><Trash2 className="h-3.5 w-3.5" /></Button>}
+            </div>
+          ) },
+        ]}
+        rows={records}
+        empty="No payroll master file heads yet"
+      />
+      <Modal open={open} onClose={() => setOpen(false)} title={form.id ? `Edit Head — ${form.code || ''}` : 'Add Payroll Head'}
+        footer={<>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
+        </>}>
+        <div className="grid grid-cols-2 gap-3">
+          <FormRow label="Code (auto)"><Input disabled value={form.code || 'Auto — PMF-001 on save'} className="bg-muted/40" /></FormRow>
+          <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
+          <FormRow label="Type" required>
+            <Select value={form.type || 'Earning'} onValueChange={v => setForm({ ...form, type: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Earning">Earning</SelectItem>
+                <SelectItem value="Deduction">Deduction</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Calc Type">
+            <Select value={form.calcType || 'Fixed'} onValueChange={v => setForm({ ...form, calcType: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Fixed">Fixed Amount</SelectItem>
+                <SelectItem value="Percent">Percent</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label={form.calcType === 'Percent' ? 'Percent Value (%)' : 'Amount'} required>
+            <Input type="number" min={0} value={form.amount ?? 0} onChange={e => setForm({ ...form, amount: e.target.value })} />
+          </FormRow>
+          <FormRow label="Branch">
+            <Select value={form.branchId || ''} onValueChange={v => setForm({ ...form, branchId: v })}>
+              <SelectTrigger><SelectValue placeholder="All branches" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="*">All branches</SelectItem>
+                {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Active"><Switch checked={form.isActive !== false} onCheckedChange={v => setForm({ ...form, isActive: v })} /></FormRow>
+        </div>
+      </Modal>
+      <ConfirmModal open={!!confirmDel} onClose={() => setConfirmDel(null)} title="Delete Payroll Head"
+        message={`Deactivate payroll head "${confirmDel?.code || ''} — ${confirmDel?.name || ''}"? Heads may be referenced by past payroll runs, so they are switched off instead of deleted.`}
+        onConfirm={async () => {
+          try {
+            const res = await apiDelete(`/api/payroll-master-file/${confirmDel.id}`)
+            toast.success(res.message || 'Payroll head deactivated')
+            reload()
+          } catch (e: any) { toast.error(e.message) }
+        }} />
     </div>
   )
 }

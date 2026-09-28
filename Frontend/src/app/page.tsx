@@ -61,6 +61,7 @@ import {
   LeavesModule as LeavesModuleImpl,
   OvertimeModule as OvertimeModuleImpl,
   PayrollModule as PayrollModuleImpl,
+  PayrollMasterFilesModule as PayrollMasterFilesModuleImpl,
   CompanyModule as CompanyModuleImpl,
   UsersModule as UsersModuleImpl,
   RolesModule as RolesModuleImpl,
@@ -217,7 +218,7 @@ const NAV: NavModule[] = [
       },
       {
         label: 'Master', perm: 'masters.view', screens: [
-          { key: 'payroll-master-files', label: 'Master Files', perm: 'masters.view' },
+          { key: 'payroll-master-files', label: 'Payroll Master File', perm: 'masters.view' },
         ],
       },
     ],
@@ -802,7 +803,7 @@ function ModuleRouter({ active, setActive }: { active: ModuleKey, setActive: (m:
     // Payroll → Master Files
     case 'payroll-shifts': return <ShiftsModule />
     case 'payroll-calendar': return <CalendarModule />
-    case 'payroll-master-files': return <UniversalMasterFilesModule />
+    case 'payroll-master-files': return <PayrollMasterFilesModule />
     // Admin → Defaults
     case 'admin-company': return <CompanyModule />
     case 'admin-finance-defaults': return <FinanceDefaultsModule />
@@ -895,6 +896,7 @@ function CalendarModule() { return <CalendarModuleImpl /> }
 function LeavesModule() { return <LeavesModuleImpl /> }
 function OvertimeModule() { return <OvertimeModuleImpl /> }
 function PayrollModule() { return <PayrollModuleImpl /> }
+function PayrollMasterFilesModule() { return <PayrollMasterFilesModuleImpl /> }
 function CompanyModule() { return <CompanyModuleImpl /> }
 function BranchesModule() { return <BranchesModuleImpl /> }
 function UsersModule() { return <UsersModuleImpl /> }
