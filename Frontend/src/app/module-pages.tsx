@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, type ReactNode } from 'react'
+import { useEffect, useState, useCallback, Fragment, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -17,7 +17,8 @@ import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { Plus, Search, Edit, Trash2, Eye, X, Save, ChevronDown, ChevronRight, Download, Printer, Banknote, AlertCircle, CheckCircle2, CalendarCheck, Snowflake, HandHeart, Copy, ImagePlus } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Eye, X, Save, ChevronDown, ChevronRight, Download, Printer, Banknote, AlertCircle, CheckCircle2, CalendarCheck, Snowflake, HandHeart, Copy, ImagePlus, Lock } from 'lucide-react'
+import { SCREENS } from '@/lib/screens'
 import {
   useApp, useFetch, apiPost, apiPatch, apiDelete,
   fmtMoney, fmtDateStr, fmtDateTime, PageHeader, SearchInput, EmptyState,
@@ -3976,139 +3977,732 @@ export function CompanyModule() {
 }
 
 // =================================================================
-// USERS
+// ADMIN DEFAULTS — single consolidated defaults screen (client-confirmed):
+//   Tab 1: Company Information (name can only be set ONCE — nameLocked)
+//   Tab 2: Financial (FinanceDefaults per company-wide/branch)
+//   Tab 3: Per-branch Account Mapping (account-mappings grid + copy from company level)
 // =================================================================
+export function AdminDefaultsModule() {
+  return (
+    <div>
+      <PageHeader title="Defaults" />
+      <Tabs defaultValue="company" className="space-y-4">
+        <TabsList className="h-auto flex-wrap">
+          <TabsTrigger value="company">Company Information</TabsTrigger>
+          <TabsTrigger value="financial">Financial</TabsTrigger>
+          <TabsTrigger value="mappings">Per-branch Account Mapping</TabsTrigger>
+        </TabsList>
+        <TabsContent value="company"><DefaultsCompanyTab /></TabsContent>
+        <TabsContent value="financial"><DefaultsFinancialTab /></TabsContent>
+        <TabsContent value="mappings"><DefaultsBranchMappingTab /></TabsContent>
+      </Tabs>
+    </div>
+  )
+}
+
+// ---- Tab 1: Company Information -----------------------------------
+function DefaultsCompanyTab() {
+  const { has, setCompanyName } = useApp()
+  const { data, reload } = useFetch<any>('/api/company')
+  const [form, setForm] = useState<any>({})
+  const [saving, setSaving] = useState(false)
+  const company = data?.company
+  useEffect(() => { if (company) setForm(company) }, [company])
+
+  const nameLocked = !!company?.nameLocked
+  const serverName = String(company?.name || '').trim()
+  // the name is editable only while unlocked AND still empty — it can be set exactly once
+  const nameEditable = !nameLocked && !serverName
+  const lockHint = nameLocked
+    ? 'Company name is locked'
+    : nameEditable
+      ? 'The company name can only be set once — it locks automatically after the first successful save.'
+      : 'Company name can only be set once — it will lock on save.'
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const json = await apiPatch('/api/company', form)
+      toast.success(json?.company?.nameLocked && !nameLocked ? 'Company saved — the name is now locked' : 'Company updated')
+      if (json?.company?.name) setCompanyName(json.company.name)
+      reload()
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card className="max-w-3xl">
+      <CardContent className="p-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <FormRow label="Company ID"><Input value={company?.companyId || ''} disabled className="bg-muted/40" /></FormRow>
+          <FormRow label="Accounting Type"><Input value={company?.accountingType || ''} disabled className="bg-muted/40" /></FormRow>
+          <FormRow label="Company Name">
+            <div className="flex items-center gap-2">
+              <Input
+                value={form.name || ''}
+                disabled={!nameEditable}
+                onChange={e => setForm({ ...form, name: e.target.value })}
+                className={!nameEditable ? 'bg-muted/40' : ''}
+                placeholder="Set the company name (one time only)"
+              />
+              {(nameLocked || !nameEditable) && <Lock className="h-4 w-4 text-muted-foreground shrink-0" />}
+            </div>
+          </FormRow>
+          <div className="sm:col-span-1 flex items-end">
+            <div className="text-xs text-muted-foreground">{lockHint}</div>
+          </div>
+          <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
+          <FormRow label="Email"><Input type="email" value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
+          <FormRow label="Website"><Input value={form.website || ''} onChange={e => setForm({ ...form, website: e.target.value })} /></FormRow>
+          <FormRow label="Logo (path or URL)"><Input value={form.logo || ''} onChange={e => setForm({ ...form, logo: e.target.value })} /></FormRow>
+          <FormRow label="STRN"><Input value={form.strn || ''} onChange={e => setForm({ ...form, strn: e.target.value })} /></FormRow>
+          <FormRow label="NTN"><Input value={form.ntn || ''} onChange={e => setForm({ ...form, ntn: e.target.value })} /></FormRow>
+          <div className="sm:col-span-2"><FormRow label="Address"><Textarea rows={2} value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></FormRow></div>
+        </div>
+        <div className="mt-4 flex items-center justify-between gap-2 flex-wrap">
+          <div className="text-xs text-muted-foreground">
+            Company ID and accounting type are set at initial setup and cannot be changed.
+          </div>
+          {has('company.edit') && (
+            <Button onClick={save} disabled={saving}><Save className="h-4 w-4 mr-1" />{saving ? 'Saving…' : 'Save Company Information'}</Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---- Tab 2: Financial (FinanceDefaults) ---------------------------
+function DefaultsFinancialTab() {
+  const { has, branches } = useApp()
+  const [branchId, setBranchId] = useState<string>('') // '' = company-wide
+  const { data, reload } = useFetch<any>(`/api/finance-defaults${branchId ? `?branchId=${branchId}` : ''}`)
+  const { data: chartsData } = useFetch<any>('/api/charts?isActive=true')
+  const { data: taxData } = useFetch<any>('/api/tax-heads')
+  const accounts = chartsData?.charts || []
+  const taxHeads = taxData?.taxHeads || []
+  const financialYears = data?.financialYears || []
+  const defaults = data?.defaults
+
+  const [form, setForm] = useState<any>({})
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    setForm({
+      defaultCashAccountId: defaults?.defaultCashAccountId || '',
+      defaultBankAccountId: defaults?.defaultBankAccountId || '',
+      defaultTaxHeadId: defaults?.defaultTaxHeadId || '',
+      financialYearId: defaults?.financialYearId || '',
+    })
+  }, [defaults, branchId])
+
+  const accountOptions = (a: any) => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>
+  const withNone = (value: string, onChange: (v: string) => void, placeholder: string, children: ReactNode) => (
+    <Select value={value || '__none__'} onValueChange={v => onChange(v === '__none__' ? '' : v)}>
+      <SelectTrigger><SelectValue placeholder={placeholder} /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="__none__">— None —</SelectItem>
+        {children}
+      </SelectContent>
+    </Select>
+  )
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await apiPost('/api/finance-defaults', { branchId: branchId || null, ...form })
+      toast.success('Financial defaults saved')
+      reload()
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card className="max-w-3xl">
+      <CardContent className="p-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <FormRow label="Apply to">
+            <Select value={branchId || '__global__'} onValueChange={v => setBranchId(v === '__global__' ? '' : v)}>
+              <SelectTrigger><SelectValue placeholder="Company-wide" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__global__">Company-wide (default)</SelectItem>
+                {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.code ? `${b.code} — ${b.name}` : b.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <div className="flex items-end text-xs text-muted-foreground">
+            Branch-specific defaults override the company-wide set.
+          </div>
+          <FormRow label="Default Cash Account">
+            {withNone(form.defaultCashAccountId, v => setForm({ ...form, defaultCashAccountId: v }), 'Select cash account', accounts.map(accountOptions))}
+          </FormRow>
+          <FormRow label="Default Bank Account">
+            {withNone(form.defaultBankAccountId, v => setForm({ ...form, defaultBankAccountId: v }), 'Select bank account', accounts.map(accountOptions))}
+          </FormRow>
+          <FormRow label="Default Tax Head">
+            {withNone(form.defaultTaxHeadId, v => setForm({ ...form, defaultTaxHeadId: v }), 'Select tax head',
+              taxHeads.map((t: any) => <SelectItem key={t.id} value={t.id}>{t.code} — {t.name} ({t.rate}%)</SelectItem>))}
+          </FormRow>
+          <FormRow label="Financial Year">
+            {withNone(form.financialYearId, v => setForm({ ...form, financialYearId: v }), 'Select financial year',
+              financialYears.map((fy: any) => (
+                <SelectItem key={fy.id} value={fy.id}>{fy.name}{fy.isClosed ? ' (closed)' : fy.isActive ? ' (active)' : ''}</SelectItem>
+              )))}
+          </FormRow>
+        </div>
+        <div className="mt-4 flex items-center justify-between gap-2 flex-wrap">
+          <div className="text-xs text-muted-foreground">
+            These defaults drive automatic voucher posting from fees, POS and payroll.
+          </div>
+          {has('finance.settings') && (
+            <Button onClick={save} disabled={saving}><Save className="h-4 w-4 mr-1" />{saving ? 'Saving…' : 'Save Financial Defaults'}</Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---- Tab 3: Per-branch Account Mapping ----------------------------
+const DEFAULTS_MAPPING_KEYS = [
+  { key: 'cashAccount', label: 'Cash Account' },
+  { key: 'bankAccount', label: 'Bank Account' },
+  { key: 'feeIncome', label: 'Fee Income' },
+  { key: 'posIncome', label: 'POS Income' },
+  { key: 'taxAccount', label: 'Tax Account' },
+  { key: 'feeReceivable', label: 'Fee Receivable' },
+  { key: 'posCash', label: 'POS Cash' },
+  { key: 'posBank', label: 'POS Bank' },
+]
+
+function DefaultsBranchMappingTab() {
+  const { has, branches } = useApp()
+  const [branchId, setBranchId] = useState<string>('') // '' = company-level
+  const { data, reload } = useFetch<any>('/api/account-mappings')
+  const { data: chartsData } = useFetch<any>('/api/charts?isActive=true')
+  const mappings = data?.mappings || []
+  const accounts = chartsData?.charts || []
+  const companyRows = mappings.filter((m: any) => !m.branchId)
+  const branchRows = branchId ? mappings.filter((m: any) => m.branchId === branchId) : []
+  const currentRows = branchId ? branchRows : companyRows
+
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  useEffect(() => {
+    const d: Record<string, string> = {}
+    for (const k of DEFAULTS_MAPPING_KEYS) {
+      const row = currentRows.find((m: any) => m.key === k.key)
+      d[k.key] = row?.accountId || ''
+    }
+    setDrafts(d)
+  }, [data, branchId])
+
+  const saveRow = async (key: string, label: string) => {
+    const accountId = drafts[key]
+    if (!accountId) { toast.error(`Select an account for ${label}`); return }
+    try {
+      await apiPost('/api/account-mappings', { key, accountId, branchId: branchId || null })
+      toast.success(`${label} mapping saved`)
+      reload()
+    } catch (e: any) {
+      toast.error(e.message)
+    }
+  }
+
+  const copyFromCompany = async () => {
+    if (!branchId) { toast.info('Select a target branch first'); return }
+    const sources = DEFAULTS_MAPPING_KEYS.filter(k => companyRows.find((m: any) => m.key === k.key))
+    if (!sources.length) { toast.info('No company-level mappings to copy yet'); return }
+    if (!confirm(`Copy ${sources.length} company-level mapping(s) to this branch? Existing branch mappings for those keys will be overwritten.`)) return
+    try {
+      let copied = 0
+      for (const k of sources) {
+        const row = companyRows.find((m: any) => m.key === k.key)
+        if (row) { await apiPost('/api/account-mappings', { key: k.key, accountId: row.accountId, branchId }); copied++ }
+      }
+      toast.success(`Copied ${copied} mapping(s) from company level`)
+      reload()
+    } catch (e: any) {
+      toast.error(e.message)
+    }
+  }
+
+  const canEdit = has('accountMappings.edit')
+
+  return (
+    <Card className="max-w-4xl">
+      <CardContent className="p-6">
+        <div className="flex items-end gap-3 flex-wrap mb-4">
+          <div className="w-64">
+            <FormRow label="Branch">
+              <Select value={branchId || '__global__'} onValueChange={v => setBranchId(v === '__global__' ? '' : v)}>
+                <SelectTrigger><SelectValue placeholder="Company level" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__global__">Company level (default)</SelectItem>
+                  {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.code ? `${b.code} — ${b.name}` : b.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormRow>
+          </div>
+          {branchId && canEdit && (
+            <Button variant="outline" size="sm" onClick={copyFromCompany} className="mb-0.5">
+              <Copy className="h-4 w-4 mr-1" />Copy from company level
+            </Button>
+          )}
+        </div>
+        <div className="space-y-1">
+          {DEFAULTS_MAPPING_KEYS.map(({ key, label }) => {
+            const saved = currentRows.find((m: any) => m.key === key)
+            return (
+              <div key={key} className="grid grid-cols-1 sm:grid-cols-[1fr_2fr_auto] gap-2 items-center py-2 border-b last:border-0">
+                <div>
+                  <div className="font-medium text-sm">{label}</div>
+                  <div className="text-xs text-muted-foreground font-mono">{key}</div>
+                </div>
+                <Select
+                  disabled={!canEdit}
+                  value={drafts[key] || '__none__'}
+                  onValueChange={v => setDrafts(d => ({ ...d, [key]: v === '__none__' ? '' : v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— None —</SelectItem>
+                    {accounts.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <div className="flex items-center gap-2 justify-self-end">
+                  <div className="text-xs text-muted-foreground hidden lg:block max-w-[180px] truncate" title={saved ? `${saved.account?.id} — ${saved.account?.name}` : 'Not configured'}>
+                    {saved ? `${saved.account?.id} — ${saved.account?.name}` : 'Not configured'}
+                  </div>
+                  {canEdit && (
+                    <Button size="sm" variant="outline" onClick={() => saveRow(key, label)} disabled={!drafts[key] || drafts[key] === saved?.accountId}>Save</Button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <div className="text-xs text-muted-foreground mt-3">
+          Company-level mappings apply to every branch unless a branch defines its own. Use "Copy from company level" to seed a branch quickly.
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// =================================================================
+// USERS & PERMISSIONS — one screen: users list (left) + per-role screen
+// permission matrix (right) for the selected user's role.
+// Consolidates the former Users / Roles / Permissions screens.
+// =================================================================
+type PermFlags = { view: boolean; add: boolean; edit: boolean; delete: boolean; print: boolean }
+const PERM_ACTIONS: { key: keyof PermFlags; label: string }[] = [
+  { key: 'view', label: 'View' },
+  { key: 'add', label: 'Add' },
+  { key: 'edit', label: 'Edit' },
+  { key: 'delete', label: 'Delete' },
+  { key: 'print', label: 'Print' },
+]
+
 export function UsersModule() {
   const { has } = useApp()
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
   const [form, setForm] = useState<any>({})
+  const [selectedUser, setSelectedUser] = useState<any>(null)
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const { data, reload } = useFetch<any>('/api/users')
-  const { data: rolesData } = useFetch<any>('/api/roles')
+  const canLoadRoles = has('roles.view')
+  const { data: rolesData } = useFetch<any>(canLoadRoles ? '/api/roles' : null)
   const { data: branchesData } = useFetch<any>('/api/branches')
   const users = data?.users || []
   const roles = rolesData?.roles || []
   const branches = branchesData?.branches || []
+  const selected = selectedUser ? (users.find((u: any) => u.id === selectedUser.id) || selectedUser) : null
+  const [permRoleId, setPermRoleId] = useState<string>('')
+
+  const openAdd = () => {
+    setEditing(null)
+    setForm({ isActive: true, accessibleBranchIds: '*', allBranches: true, branchList: [] })
+    setOpen(true)
+  }
+  const openEdit = (u: any) => {
+    setEditing(u)
+    const accessible = u.accessibleBranchIds || '*'
+    setForm({
+      ...u,
+      password: '',
+      allBranches: accessible === '*',
+      branchList: accessible === '*' ? [] : accessible.split(',').filter(Boolean),
+    })
+    setOpen(true)
+  }
+
+  const saveUser = async () => {
+    if (!form.username || !form.fullName || (!editing && !form.password)) {
+      toast.error('Username, full name' + (!editing ? ', and password are required' : ' are required'))
+      return
+    }
+    if (!editing && !form.roleId) { toast.error('Role is required'); return }
+    const accessible = form.allBranches ? '*' : (form.branchList || []).join(',')
+    const payload: any = {
+      username: form.username, fullName: form.fullName, email: form.email, phone: form.phone,
+      roleId: form.roleId, branchId: form.branchId || null,
+      accessibleBranchIds: accessible, isActive: form.isActive !== false,
+    }
+    if (form.password) payload.password = form.password
+    try {
+      if (editing) {
+        await apiPatch('/api/users', { id: editing.id, ...payload })
+        toast.success('User updated')
+      } else {
+        await apiPost('/api/users', payload)
+        toast.success('User created')
+      }
+      setOpen(false); reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
+  const selectUser = (u: any) => {
+    setSelectedUser(u)
+    if (u?.roleId) setPermRoleId(u.roleId)
+  }
 
   return (
     <div>
-      <PageHeader title="Users"
-        action={has('users.add') ? () => { setForm({ isActive: true, accessibleBranchIds: '*' }); setOpen(true) } : undefined}
+      <PageHeader title="Users & Permissions"
+        action={has('users.add') ? openAdd : undefined}
         actionLabel="Add User" />
-      <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
-      <DataTable
-        columns={[
-          { key: 'username', label: 'Username', mono: true },
-          { key: 'fullName', label: 'Name' },
-          { key: 'email', label: 'Email' },
-          { key: 'role', label: 'Role', render: (r: any) => r.role?.name },
-          { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
-          { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
-        ]}
-        rows={users}
-      />
-      <Modal open={open} onClose={() => setOpen(false)} title="Add User"
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+        {/* Users list */}
+        <div className="xl:col-span-2">
+          <Toolbar>
+            <span className="text-xs text-muted-foreground">Select a user to edit their role's screen permissions</span>
+            <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+          </Toolbar>
+          <DataTable
+            onRowClick={(u: any) => selectUser(u)}
+            columns={[
+              { key: 'username', label: 'Username', mono: true },
+              { key: 'fullName', label: 'Name' },
+              { key: 'email', label: 'Email' },
+              { key: 'role', label: 'Role', render: (r: any) => r.role?.name || '—' },
+              { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
+              { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
+              { key: 'actions', label: 'Actions', render: (r: any) => (
+                <div className="flex gap-1">
+                  {has('users.edit') && (
+                    <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(r) }}><Edit className="h-3.5 w-3.5" /></Button>
+                  )}
+                  {has('users.delete') && (
+                    <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r) }}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  )}
+                </div>
+              ) },
+            ]}
+            rows={users}
+            empty="No users yet"
+          />
+        </div>
+
+        {/* Screen permission matrix for the selected user's role (remounts on role switch) */}
+        <div className="xl:col-span-3">
+          <ScreenPermissionMatrix
+            key={permRoleId || 'none'}
+            roleId={permRoleId}
+            roles={roles}
+            canPickRole={canLoadRoles}
+            selectedUserName={selected?.fullName}
+            selectedRoleName={selected?.role?.name}
+            canSave={has('roles.config')}
+            onRoleChange={setPermRoleId}
+          />
+        </div>
+      </div>
+
+      {/* Add / Edit user modal */}
+      <Modal open={open} onClose={() => setOpen(false)} size="lg" title={editing ? `Edit User — ${editing.username}` : 'Add User'}
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={async () => {
-            try { await apiPost('/api/users', form); toast.success('User created'); setOpen(false); reload() }
-            catch (e: any) { toast.error(e.message) }
-          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+          <Button onClick={saveUser}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormRow label="Username" required><Input value={form.username || ''} onChange={e => setForm({ ...form, username: e.target.value })} /></FormRow>
           <FormRow label="Full Name" required><Input value={form.fullName || ''} onChange={e => setForm({ ...form, fullName: e.target.value })} /></FormRow>
-          <FormRow label="Email"><Input value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
+          <FormRow label="Email"><Input type="email" value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
           <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
-          <FormRow label="Password" required><Input type="password" value={form.password || ''} onChange={e => setForm({ ...form, password: e.target.value })} /></FormRow>
-          <FormRow label="Role" required>
-            <Select value={form.roleId || ''} onValueChange={v => setForm({ ...form, roleId: v })}>
-              <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-              <SelectContent>{roles.map((r: any) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}</SelectContent>
+          <FormRow label={editing ? 'Password' : 'Password'} required={!editing}>
+            <Input type="password" value={form.password || ''} onChange={e => setForm({ ...form, password: e.target.value })} placeholder={editing ? 'Leave blank to keep current password' : ''} />
+          </FormRow>
+          <FormRow label="Role" required={!editing}>
+            <Select
+              disabled={!canLoadRoles}
+              value={form.roleId || ''}
+              onValueChange={v => setForm({ ...form, roleId: v })}>
+              <SelectTrigger><SelectValue placeholder={canLoadRoles ? 'Select role' : (editing?.role?.name || 'No role list access')} /></SelectTrigger>
+              <SelectContent>{roles.map((r: any) => <SelectItem key={r.id} value={r.id}>{r.name}{r.isSystem ? ' (system)' : ''}</SelectItem>)}</SelectContent>
             </Select>
           </FormRow>
           <FormRow label="Primary Branch">
-            <Select value={form.branchId || ''} onValueChange={v => setForm({ ...form, branchId: v })}>
+            <Select value={form.branchId || '__none__'} onValueChange={v => setForm({ ...form, branchId: v === '__none__' ? '' : v })}>
               <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
-              <SelectContent>{branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
-            </Select>
-          </FormRow>
-          <FormRow label="Accessible Branches">
-            <Select value={form.accessibleBranchIds || '*'} onValueChange={v => setForm({ ...form, accessibleBranchIds: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="*">All branches</SelectItem>
+                <SelectItem value="__none__">— None —</SelectItem>
                 {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </FormRow>
+          <FormRow label="Active">
+            <Switch checked={form.isActive !== false} onCheckedChange={v => setForm({ ...form, isActive: v })} />
+          </FormRow>
+          <div className="sm:col-span-2 space-y-2">
+            <div className="flex items-center gap-2">
+              <Switch checked={form.allBranches !== false} onCheckedChange={v => setForm({ ...form, allBranches: v })} id="all-branches" />
+              <Label htmlFor="all-branches" className="text-xs">Accessible branches — all (*)</Label>
+            </div>
+            {form.allBranches === false && (
+              <div className="border rounded p-3 max-h-40 overflow-y-auto scroll-slim grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {branches.map((b: any) => (
+                  <label key={b.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <Checkbox
+                      checked={(form.branchList || []).includes(b.id)}
+                      onCheckedChange={(v: boolean) => {
+                        const list = new Set(form.branchList || [])
+                        if (v) list.add(b.id); else list.delete(b.id)
+                        setForm({ ...form, branchList: Array.from(list) })
+                      }}
+                    />
+                    <span className="truncate">{b.name}</span>
+                  </label>
+                ))}
+                {branches.length === 0 && <div className="text-xs text-muted-foreground">No branches available</div>}
+              </div>
+            )}
+          </div>
         </div>
       </Modal>
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete user"
+        message={`Delete user ${deleteTarget?.username}? The account will be deactivated and hidden.`}
+        onConfirm={async () => {
+          try {
+            const json = await apiDelete(`/api/users?id=${deleteTarget.id}`)
+            toast.success(json.message || 'User deleted')
+            if (selectedUser?.id === deleteTarget.id) setSelectedUser(null)
+            reload()
+          } catch (e: any) { toast.error(e.message) }
+        }}
+      />
     </div>
   )
 }
 
 // =================================================================
-// ROLES
+// SCREEN PERMISSION MATRIX — 52 screens x View/Add/Edit/Delete/Print,
+// loaded & saved per role. Saving applies to the current session
+// immediately (session refresh — no re-login required).
 // =================================================================
-export function RolesModule({ presetTab }: { presetTab?: 'permissions' | 'roles' } = {}) {
-  const { has, session } = useApp()
-  const [selectedRole, setSelectedRole] = useState<string>('')
-  const { data, reload } = useFetch<any>('/api/roles')
-  const roles = data?.roles || []
-  const permissions = data?.permissions || []
-  const current = roles.find((r: any) => r.id === selectedRole) || roles[0]
-  const currentPerms = new Set(current?.permissions?.map((p: any) => p.permission.code) || [])
+function ScreenPermissionMatrix({ roleId, roles, canPickRole, selectedUserName, selectedRoleName, canSave, onRoleChange }: {
+  roleId: string
+  roles: any[]
+  canPickRole: boolean
+  selectedUserName?: string | null
+  selectedRoleName?: string | null
+  canSave: boolean
+  onRoleChange: (roleId: string) => void
+}) {
+  const { refreshSession } = useApp()
+  const { data, loading, reload } = useFetch<any>(roleId ? `/api/screen-permissions?roleId=${roleId}` : null)
+  const [matrix, setMatrix] = useState<Record<string, PermFlags>>({})
+  const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
 
-  const groupedPerms = permissions.reduce((acc: any, p: any) => {
-    if (!acc[p.module]) acc[p.module] = []
-    acc[p.module].push(p)
-    return acc
-  }, {})
+  useEffect(() => {
+    const rows = data?.permissions || []
+    const next: Record<string, PermFlags> = {}
+    for (const s of SCREENS) next[s.key] = { view: false, add: false, edit: false, delete: false, print: false }
+    for (const r of rows) {
+      if (next[r.screenKey]) {
+        next[r.screenKey] = { view: !!r.canView, add: !!r.canAdd, edit: !!r.canEdit, delete: !!r.canDelete, print: !!r.canPrint }
+      }
+    }
+    setMatrix(next)
+    setDirty(false)
+  }, [data, roleId])
 
-  const togglePerm = async (code: string) => {
-    if (!current) return
-    const next = currentPerms.has(code) ? Array.from(currentPerms).filter(c => c !== code) : [...Array.from(currentPerms), code]
-    try {
-      await apiPatch(`/api/roles/${current.id}`, { action: 'permissions', permissionCodes: next })
-      toast.success('Permissions updated')
-      reload()
-    } catch (e: any) { toast.error(e.message) }
+  if (!roleId) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <div className="font-medium mb-1">Screen Permissions</div>
+          <EmptyState message="Select a user (or a role below) to view and edit its screen permission matrix." />
+        </CardContent>
+      </Card>
+    )
   }
 
+  const setFlag = (key: string, action: keyof PermFlags, v: boolean) => {
+    setMatrix(m => ({ ...m, [key]: { ...m[key], [action]: v } }))
+    setDirty(true)
+  }
+  const setAll = (fn: (f: PermFlags) => PermFlags) => {
+    setMatrix(m => {
+      const n: Record<string, PermFlags> = {}
+      for (const k of Object.keys(m)) n[k] = fn(m[k])
+      return n
+    })
+    setDirty(true)
+  }
+  const rowAll = (f?: PermFlags) => !!f && PERM_ACTIONS.every(a => f[a.key])
+  const colAll = (a: keyof PermFlags) => SCREENS.every(s => matrix[s.key]?.[a])
+  const allChecked = SCREENS.every(s => rowAll(matrix[s.key]))
+
+  const toggleRow = (key: string) => {
+    const target = !rowAll(matrix[key])
+    setMatrix(m => ({ ...m, [key]: { view: target, add: target, edit: target, delete: target, print: target } }))
+    setDirty(true)
+  }
+  const toggleCol = (a: keyof PermFlags) => {
+    const target = !colAll(a)
+    setAll(f => ({ ...f, [a]: target }))
+  }
+  const toggleAll = () => {
+    const target = !allChecked
+    setAll(() => ({ view: target, add: target, edit: target, delete: target, print: target }))
+  }
+
+  const save = async () => {
+    if (!roleId) return
+    setSaving(true)
+    try {
+      await apiPost('/api/screen-permissions', {
+        roleId,
+        permissions: SCREENS.map(s => ({
+          screenKey: s.key,
+          canView: matrix[s.key]?.view || false,
+          canAdd: matrix[s.key]?.add || false,
+          canEdit: matrix[s.key]?.edit || false,
+          canDelete: matrix[s.key]?.delete || false,
+          canPrint: matrix[s.key]?.print || false,
+        })),
+      })
+      toast.success('Screen permissions saved — applied to the current session immediately')
+      await refreshSession()
+      reload()
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // group by module, preserving SCREENS order
+  const groups: { module: string; screens: typeof SCREENS }[] = []
+  for (const s of SCREENS) {
+    const g = groups.find(x => x.module === s.module)
+    if (g) g.screens.push(s)
+    else groups.push({ module: s.module, screens: [s] })
+  }
+
+  const roleName = roles.find((r: any) => r.id === roleId)?.name || selectedRoleName || roleId
+
   return (
-    <div>
-      <PageHeader title={presetTab === 'permissions' ? 'Permissions' : 'Roles & Permissions'} />
-      <Toolbar>
-        <Select value={selectedRole || current?.id || ''} onValueChange={setSelectedRole}>
-          <SelectTrigger className="w-64"><SelectValue placeholder="Select role" /></SelectTrigger>
-          <SelectContent>{roles.map((r: any) => <SelectItem key={r.id} value={r.id}>{r.name}{r.isSystem ? ' (system)' : ''}</SelectItem>)}</SelectContent>
-        </Select>
-      </Toolbar>
-      {current && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-          {Object.entries(groupedPerms).map(([mod, perms]: any) => (
-            <Card key={mod}>
-              <CardContent className="p-3">
-                <div className="font-medium mb-2 capitalize">{mod}</div>
-                <div className="space-y-1">
-                  {(perms as any[]).map((p: any) => (
-                    <label key={p.code} className="flex items-center gap-2 text-sm cursor-pointer">
-                      <Checkbox
-                        checked={currentPerms.has(p.code)}
-                        onCheckedChange={() => togglePerm(p.code)}
-                        disabled={current.isSystem && !session?.isSuperAdmin}
-                      />
-                      <span className="font-mono text-xs">{p.action}</span>
-                      {p.description && <span className="text-xs text-muted-foreground">— {p.description}</span>}
-                    </label>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="font-medium">Screen Permissions</div>
+            <Badge variant="secondary">{SCREENS.length} screens</Badge>
+            {selectedUserName && <span className="text-xs text-muted-foreground">for {selectedUserName}</span>}
+          </div>
+          <div className="flex items-center gap-2">
+            {canPickRole && (
+              <Select value={roleId} onValueChange={onRoleChange}>
+                <SelectTrigger className="w-52"><SelectValue placeholder="Select role" /></SelectTrigger>
+                <SelectContent>
+                  {roles.map((r: any) => <SelectItem key={r.id} value={r.id}>{r.name}{r.isSystem ? ' (system)' : ''}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+            <Button variant="outline" size="sm" onClick={toggleAll}>{allChecked ? 'Uncheck all' : 'Check all'}</Button>
+            {canSave && (
+              <Button size="sm" onClick={save} disabled={saving}>
+                <Save className="h-4 w-4 mr-1" />{saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
+              </Button>
+            )}
+          </div>
         </div>
-      )}
-    </div>
+        {!canSave && (
+          <div className="text-xs text-muted-foreground mb-2">Viewing permissions for role <b>{roleName}</b> — you need "Assign permissions to role" to edit.</div>
+        )}
+        {loading ? (
+          <div className="text-sm text-muted-foreground py-6 text-center">Loading permissions…</div>
+        ) : (
+          <div className="max-h-96 overflow-y-auto scroll-slim border rounded">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 border-b sticky top-0 z-10">
+                <tr>
+                  <th className="px-2 py-2 w-8">
+                    <Checkbox checked={allChecked} onCheckedChange={() => toggleAll()} aria-label="Check all screens and actions" />
+                  </th>
+                  <th className="text-left px-2 py-2 font-medium">Screen</th>
+                  {PERM_ACTIONS.map(a => (
+                    <th key={a.key} className="px-2 py-2 font-medium text-center w-16">
+                      <div className="flex flex-col items-center gap-1">
+                        <Checkbox
+                          checked={colAll(a.key)}
+                          onCheckedChange={() => toggleCol(a.key)}
+                          aria-label={`Select all — ${a.label}`}
+                        />
+                        <span className="text-[11px] font-normal text-muted-foreground">{a.label}</span>
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map(g => (
+                  <Fragment key={g.module}>
+                    <tr className="bg-muted/30">
+                      <td colSpan={7} className="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{g.module}</td>
+                    </tr>
+                    {g.screens.map(s => (
+                      <tr key={s.key} className="border-b last:border-0 hover:bg-muted/30">
+                        <td className="px-2 py-1.5">
+                          <Checkbox checked={rowAll(matrix[s.key])} onCheckedChange={() => toggleRow(s.key)} aria-label={`Select all actions — ${s.label}`} />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <div className="font-medium text-xs">{s.label}</div>
+                          <div className="font-mono text-[10px] text-muted-foreground">{s.key}</div>
+                        </td>
+                        {PERM_ACTIONS.map(a => (
+                          <td key={a.key} className="px-2 py-1.5 text-center">
+                            <Checkbox
+                              checked={!!matrix[s.key]?.[a.key]}
+                              onCheckedChange={(v: boolean) => setFlag(s.key, a.key, !!v)}
+                              aria-label={`${s.label} — ${a.label}`}
+                            />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className="text-xs text-muted-foreground mt-2">
+          Changes take effect for the current session immediately after saving (no re-login required). NAV entries and screens without View permission are hidden / blocked.
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

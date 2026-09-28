@@ -101,6 +101,12 @@ export async function makeDietPlanId(): Promise<string> {
   return `DP-${pad(seq, 5)}`
 }
 
+/** BR-001 (branch file) */
+export async function makeBranchId(): Promise<string> {
+  const seq = await reserve('BRANCH')
+  return `BR-${pad(seq, 3)}`
+}
+
 /** LV-0001 */
 export async function makeLeaveId(): Promise<string> {
   const seq = await reserve('LEAVE')

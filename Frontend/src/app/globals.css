@@ -120,3 +120,20 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Slim scrollbars for long scroll panels (Defaults, permission matrix, etc.) */
+.scroll-slim {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.scroll-slim::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-slim::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
+}
+.scroll-slim::-webkit-scrollbar-track {
+  background: transparent;
+}

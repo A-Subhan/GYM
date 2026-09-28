@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, type ReactNode } from 'react'
+import { useEffect, useState, useCallback, useMemo, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -27,7 +27,7 @@ import {
   ListTree, Tag, FileBarChart, CheckCircle2, AlertCircle, Banknote,
   Layers, Crown, Cookie, BanknoteIcon, Send, Activity, Hand,
   AlertTriangle, Check, Filter, Download, Printer,
-  Sun, Moon, SunMoon,
+  Sun, Moon, SunMoon, ShieldAlert,
 } from 'lucide-react'
 import { format as fmtDate } from 'date-fns'
 import { useTheme } from 'next-themes'
@@ -40,7 +40,6 @@ import {
   FinanceReportsModule as FinanceReportsModuleImpl,
   AccountMappingsModule as AccountMappingsModuleImpl,
   FinanceDefaultsModule as FinanceDefaultsModuleImpl,
-  PeriodsModule as PeriodsModuleImpl,
   MembersModule as MembersModuleImpl,
   MembershipsModule as MembershipsModuleImpl,
   AttendanceModule as AttendanceModuleImpl,
@@ -64,12 +63,12 @@ import {
   PayrollMasterFilesModule as PayrollMasterFilesModuleImpl,
   CompanyModule as CompanyModuleImpl,
   UsersModule as UsersModuleImpl,
-  RolesModule as RolesModuleImpl,
+  AdminDefaultsModule as AdminDefaultsModuleImpl,
   AuditModule as AuditModuleImpl,
   PTSessionsModule as PTSessionsModuleImpl,
 } from './module-pages'
 import { BranchesModule as BranchesModuleImpl } from './modules'
-import { AppContext, type AppCtx, type SessionUser, type Branch, useApp } from './app-context'
+import { AppContext, type AppCtx, type SessionUser, type Branch, useApp, canScreen, type ScreenPermRow } from './app-context'
 import {
   Toolbar, DataTable, StatusBadge, Modal, FormRow, EmptyState, SearchInput, ConfirmModal,
 } from './modules'
@@ -253,7 +252,7 @@ const NAV: NavModule[] = [
           { key: 'admin-company', label: 'Company Information', perm: 'company.view' },
           { key: 'admin-finance-defaults', label: 'Finance Defaults', perm: 'finance.settings' },
           { key: 'admin-account-mappings', label: 'Account Mapping', perm: 'accountMappings.view' },
-          { key: 'admin-accounting-defaults', label: 'Accounting Defaults', perm: 'finance.periods' },
+          { key: 'admin-accounting-defaults', label: 'Defaults', perm: 'company.view' },
         ],
       },
       {
@@ -264,9 +263,7 @@ const NAV: NavModule[] = [
       {
         label: 'Master', perm: 'branches.view', screens: [
           { key: 'admin-branches', label: 'Branches', perm: 'branches.view' },
-          { key: 'admin-users', label: 'Users', perm: 'users.view' },
-          { key: 'admin-roles', label: 'Roles', perm: 'roles.view' },
-          { key: 'admin-permissions', label: 'Permissions', perm: 'roles.view' },
+          { key: 'admin-users', label: 'Users & Permissions', perm: 'users.view' },
         ],
       },
     ],
@@ -357,6 +354,7 @@ export default function Home() {
   const [selectedBranchIds, setSelectedBranchIds] = useState<string[]>([])
   const [activeModule, setActiveModule] = useState<ModuleKey>('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [companyName, setCompanyName] = useState<string | null>(null)
 
   const refreshSession = useCallback(async () => {
     setLoadingSession(true)
@@ -382,6 +380,17 @@ export default function Home() {
       setBranches(json.branches || [])
     }
   }, [])
+
+  // Company name for the app shell brand (set once on the Defaults page, shown globally)
+  useEffect(() => {
+    if (!session) { setCompanyName(null); return }
+    let cancelled = false
+    fetch('/api/company')
+      .then(r => (r.ok ? r.json() : null))
+      .then(json => { if (!cancelled && json?.company?.name) setCompanyName(json.company.name) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [session])
 
   useEffect(() => { refreshSession() }, [refreshSession])
 
@@ -432,6 +441,15 @@ export default function Home() {
     return session.permissions.includes(perm)
   }, [session])
 
+  // Session-level screen-permission matrix (gates NAV + screen rendering; see canScreen)
+  const screenPerms = useMemo(() => {
+    const map: Record<string, ScreenPermRow> = {}
+    for (const row of session?.screenPermissions || []) map[row.screenKey] = row
+    return map
+  }, [session])
+  const can = useCallback((screenKey: string, action: 'view' | 'add' | 'edit' | 'delete' | 'print' = 'view') =>
+    canScreen(session, screenKey, action), [session])
+
   if (loadingSession) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -444,26 +462,28 @@ export default function Home() {
     return <LoginScreen login={login} />
   }
 
-  // Filter nav by permissions (3-level: Module → Section → Screen)
+  // Filter nav by permissions (3-level: Module → Section → Screen) + session screen matrix
   const visibleNav = NAV.map((mod: NavModule) => {
     if ('key' in mod) {
       // Single-screen module (Dashboard)
-      return has(mod.perm) ? mod : null
+      return has(mod.perm) && can(mod.key, 'view') ? mod : null
     }
     // Module with sections
     const visibleSections = mod.sections
       .map(section => {
-        const visibleScreens = section.screens.filter(s => has(s.perm))
+        const visibleScreens = section.screens.filter(s => has(s.perm) && can(s.key, 'view'))
         return visibleScreens.length ? { ...section, screens: visibleScreens } : null
       })
       .filter(Boolean) as NavSection[]
     return visibleSections.length ? { ...mod, sections: visibleSections } : null
   }).filter(Boolean) as NavModule[]
 
+  const brand = companyName || 'Contoura Gym'
+
   return (
     <AppContext.Provider value={{
       session, branches, selectedBranchIds, setSelectedBranchIds,
-      has, refreshSession, logout, login,
+      has, can, screenPerms, companyName, setCompanyName, refreshSession, logout, login,
     }}>
       <div className="min-h-screen bg-muted/30">
         {/* Topbar */}
@@ -480,15 +500,16 @@ export default function Home() {
                 active={activeModule}
                 onNavigate={(k) => { setActiveModule(k); setSidebarOpen(false) }}
                 session={session}
+                brand={brand}
                 onLogout={logout}
               />
             </SheetContent>
           </Sheet>
 
-          <div className="font-semibold text-lg flex items-center gap-2">
-            <div className="h-7 w-7 rounded bg-primary/15 text-primary flex items-center justify-center text-sm font-bold">C</div>
-            <span className="hidden sm:inline">Contoura Gym</span>
-            <span className="sm:hidden text-base">Contoura</span>
+          <div className="font-semibold text-lg flex items-center gap-2 min-w-0">
+            <div className="h-7 w-7 rounded bg-primary/15 text-primary flex items-center justify-center text-sm font-bold shrink-0">C</div>
+            <span className="hidden sm:inline truncate max-w-[220px] lg:max-w-[320px]" title={brand}>{brand}</span>
+            <span className="sm:hidden text-base truncate max-w-[120px]">{companyName || 'Contoura'}</span>
           </div>
 
           <div className="flex-1" />
@@ -524,6 +545,7 @@ export default function Home() {
               active={activeModule}
               onNavigate={setActiveModule}
               session={session}
+              brand={brand}
               onLogout={logout}
             />
           </aside>
@@ -561,12 +583,12 @@ function ThemeToggle() {
 // =================================================================
 // Sidebar — nested Module → Section → Screen
 // =================================================================
-function SidebarContent({ nav, active, onNavigate, session, onLogout }: any) {
+function SidebarContent({ nav, active, onNavigate, session, brand, onLogout }: any) {
   return (
     <div className="h-full flex flex-col">
       <div className="h-14 border-b flex items-center px-4 gap-2">
         <div className="h-7 w-7 rounded bg-primary/15 text-primary flex items-center justify-center text-sm font-bold">C</div>
-        <div className="font-semibold">Contoura Gym</div>
+        <div className="font-semibold truncate">{brand || 'Contoura Gym'}</div>
       </div>
       <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5 text-sm">
         {nav.map((mod: NavModule) => {
@@ -753,7 +775,34 @@ function LoginScreen({ login }: { login: (u: string, p: string) => Promise<boole
 // =================================================================
 // Module Router
 // =================================================================
+function AccessDeniedPanel({ screenKey }: { screenKey: string }) {
+  return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <Card className="max-w-md w-full">
+        <CardContent className="p-8 text-center">
+          <ShieldAlert className="h-10 w-10 mx-auto text-destructive" />
+          <div className="text-xl font-semibold mt-3">Access denied</div>
+          <div className="text-sm text-muted-foreground mt-2">
+            Your role does not have <b>View</b> permission for this screen
+            {screenKey ? <span className="font-mono text-xs"> ({screenKey})</span> : null}.
+            Contact an administrator to request access in Users &amp; Permissions.
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// Compat redirect for consolidated/legacy admin keys (e.g. Roles, Permissions → Users & Permissions)
+function RedirectToModule({ target, setActive }: { target: ModuleKey, setActive: (m: ModuleKey) => void }) {
+  useEffect(() => { setActive(target) }, [target, setActive])
+  return <div className="text-sm text-muted-foreground">Redirecting…</div>
+}
+
 function ModuleRouter({ active, setActive }: { active: ModuleKey, setActive: (m: ModuleKey) => void }) {
+  const { can } = useApp()
+  // Session-level screen gating: a saved permission row without View blocks rendering
+  if (active !== 'login' && !can(active, 'view')) return <AccessDeniedPanel screenKey={active} />
   switch (active) {
     case 'dashboard': return <DashboardModule />
     // Finance → Vouchers
@@ -815,8 +864,8 @@ function ModuleRouter({ active, setActive }: { active: ModuleKey, setActive: (m:
     // Admin → Master Files
     case 'admin-branches': return <BranchesModule />
     case 'admin-users': return <UsersModule />
-    case 'admin-roles': return <RolesModule />
-    case 'admin-permissions': return <PermissionsModule />
+    case 'admin-roles': return <RedirectToModule target="admin-users" setActive={setActive} />
+    case 'admin-permissions': return <RedirectToModule target="admin-users" setActive={setActive} />
     // Gym → Operations (new)
     case 'gym-fitness-goals': return <FitnessGoalsModule />
     case 'gym-body-progress': return <ProgressModule />
@@ -900,7 +949,6 @@ function PayrollMasterFilesModule() { return <PayrollMasterFilesModuleImpl /> }
 function CompanyModule() { return <CompanyModuleImpl /> }
 function BranchesModule() { return <BranchesModuleImpl /> }
 function UsersModule() { return <UsersModuleImpl /> }
-function RolesModule() { return <RolesModuleImpl /> }
 function AuditModule() { return <AuditModuleImpl /> }
 function FitnessGoalsModule() { return <NotImplemented name="Fitness Goals" /> }
 function TrainerAvailabilityModule() { return <NotImplemented name="Trainer Availability" /> }
@@ -924,8 +972,7 @@ function StaffAttendanceStub() { return <NotImplemented name="Staff Attendance" 
 function LeaveApprovalModule() { return <LeavesModuleImpl presetStatus="Pending" /> }
 function PayrollReportsModule() { return <NotImplemented name="Payroll Reports" /> }
 function CoaConfigStub() { return <NotImplemented name="COA Configuration" /> }
-function AccountingDefaultsModule() { return <PeriodsModuleImpl /> }
-function PermissionsModule() { return <RolesModuleImpl presetTab="permissions" /> }
+function AccountingDefaultsModule() { return <AdminDefaultsModuleImpl /> }
 function PTSessionsModule() { return <PTSessionsModuleImpl /> }
 
 // Universal Master Files Screen — reusable dropdown + grid for Department/Designation/Education/Currency/etc.

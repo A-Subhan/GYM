@@ -2,6 +2,15 @@ import { db } from './db'
 import { getSessionToken, verifyToken, type TokenPayload } from './jwt'
 import { PERMISSION_CODES } from './permissions'
 
+export type SessionScreenPermission = {
+  screenKey: string
+  canView: boolean
+  canAdd: boolean
+  canEdit: boolean
+  canDelete: boolean
+  canPrint: boolean
+}
+
 export type SessionUser = {
   id: string
   username: string
@@ -15,6 +24,8 @@ export type SessionUser = {
   accessibleBranchIds: string
   isSuperAdmin: boolean
   permissions: string[]
+  /** per-screen permission matrix for the user's role (empty for Super Admin / Owner — never gated) */
+  screenPermissions: SessionScreenPermission[]
   lastLoginAt: Date | null
 }
 
@@ -26,7 +37,7 @@ export async function getSession(): Promise<SessionUser | null> {
 
   const user = await db.user.findUnique({
     where: { id: payload.userId },
-    include: { role: { include: { permissions: { include: { permission: true } } } } },
+    include: { role: { include: { permissions: { include: { permission: true } }, screenPermissions: true } } },
   })
   if (!user || !user.isActive || user.isDeleted) return null
 
@@ -46,6 +57,16 @@ export async function getSession(): Promise<SessionUser | null> {
     accessibleBranchIds: user.accessibleBranchIds,
     isSuperAdmin,
     permissions: isSuperAdmin ? PERMISSION_CODES : perms,
+    screenPermissions: isSuperAdmin
+      ? []
+      : (user.role?.screenPermissions ?? []).map(r => ({
+          screenKey: r.screenKey,
+          canView: r.canView,
+          canAdd: r.canAdd,
+          canEdit: r.canEdit,
+          canDelete: r.canDelete,
+          canPrint: r.canPrint,
+        })),
     lastLoginAt: user.lastLoginAt,
   }
 }
