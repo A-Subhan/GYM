@@ -1,9 +1,9 @@
 -- ============================================================================
--- Contoura Gym Management System — STEP 5: Triggers (FINAL design)
+-- Contoura Gym Management System - STEP 5: Triggers (FINAL design)
 -- ============================================================================
 -- * updatedAt maintenance triggers for the hot tables
 -- * payroll status audit trail
--- * trg_Defaults_CompanyNameLock — Defaults.companyName is WRITE-ONCE
+-- * trg_Defaults_CompanyNameLock - Defaults.companyName is WRITE-ONCE
 --   (documented in Backend/prisma/schema.prisma): once a company name is set
 --   it cannot be changed or cleared. First INSERT may set it freely.
 --
@@ -101,7 +101,7 @@ GO
 
 -- ---------------------------------------------------------------------------
 -- Admin Defaults: companyName is WRITE-ONCE
--- (Backend/prisma/schema.prisma — model Defaults, see trg_Defaults_CompanyNameLock)
+-- (Backend/prisma/schema.prisma - model Defaults, see trg_Defaults_CompanyNameLock)
 -- ---------------------------------------------------------------------------
 CREATE OR ALTER TRIGGER dbo.trg_Defaults_CompanyNameLock ON dbo.Defaults AFTER UPDATE AS
 BEGIN

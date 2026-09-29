@@ -1,0 +1,52 @@
+-- ============================================================================
+-- Contoura Gym Management System - FRESH INSTALL SCRIPTS (SQL Server)
+-- ============================================================================
+-- RUN ORDER (on an EMPTY database; each file is a separate SSMS query window
+-- or sqlcmd invocation, executed top to bottom):
+--
+--   01_create_database.sql      optional  (creates GymDB; skip if it exists)
+--   02_schema_tables.sql        required  (69 tables + indexes + foreign keys)
+--   03_views_functions.sql      required  (8 views, 3 functions)
+--   04_stored_procedures.sql    required  (6 stored procedures)
+--   05_triggers.sql             required  (7 triggers)
+--   06_master_data.sql          required  (company, branches, roles, permissions,
+--                                         admin user, chart of accounts incl.
+--                                         the ROOT anchor row, account mappings,
+--                                         financial year, plans, shifts, staff...)
+--   07_sample_data.sql          OPTIONAL  (October 2026 demo month; safe to skip)
+--
+-- Everything is pure ASCII (UTF-8 without BOM), so SSMS reads the files
+-- correctly regardless of codepage.
+--
+-- WHAT YOU SHOULD SEE
+--   * Steps 02-06 end with their own "... complete" message. If ANY statement
+--     failed, the step prints the error, rolls itself back and THROWS - the
+--     success message can never appear after a failed statement.
+--   * 06 is re-runnable: on an already-seeded database it prints
+--     "Step 06: master data already present - skipped." and changes nothing.
+--   * 07 detects existing sample data and skips itself the same way.
+--
+-- EXPECTED STATE AFTER 06 (before 07)
+--   * SELECT COUNT(*) FROM sys.tables;                       -> 69
+--   * SELECT name FROM sys.tables WHERE name IN ('Account','charts');
+--       -> exactly one row: charts  (the legacy 'Account' table is gone)
+--   * Login: admin / admin123  (user 'admin', role 'Super Admin')
+--   * dbo.charts contains 13 rows, including the 'ROOT' anchor row.
+--     NOTE: 'ROOT' (name: Chart of Accounts Root) is a REQUIRED sentinel row -
+--     charts.parentCode is NOT NULL with a self-referencing FK and the
+--     application uses 'ROOT' as the tree-root parent. Do not delete it.
+--
+-- VERIFICATION QUERIES (all of these pass after 02-06)
+--   SELECT COUNT(*) FROM sys.tables;                                  -- 69
+--   SELECT name FROM sys.tables WHERE name IN ('Account','charts');   -- charts
+--   SELECT COUNT(*) FROM dbo.charts;                                  -- 13
+--   SELECT COUNT(*) FROM dbo.AccountMapping;                          -- 8
+--   SELECT COUNT(*) FROM dbo.[User] WHERE username = N'admin';        -- 1
+--   EXEC dbo.sp_GetDashboardStats;                                    -- 1 row
+--   EXEC dbo.sp_CalculatePayroll @month = 1, @year = 2026, @staffId = N'x';  -- runs
+--   SELECT name FROM sys.procedures ORDER BY name;
+--
+-- ARCHIVE
+--   Database/_archive/ holds the old one-off migration scripts and scratch
+--   files. They are NOT part of a fresh install - do not run them.
+-- ============================================================================

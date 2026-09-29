@@ -1,5 +1,5 @@
 -- ============================================================================
--- Contoura Gym Management System — STEP 2: Schema & Tables (FINAL design)
+-- Contoura Gym Management System - STEP 2: Schema & Tables (FINAL design)
 -- ============================================================================
 -- Creates the complete GymDB relational schema, matching
 -- Backend/prisma/schema.prisma EXACTLY (table names, columns, types,
@@ -18,10 +18,10 @@
 --     [payrollmasterfile] (HR masters).
 --
 -- Layout (safe to re-run on a partially-built database):
---   SECTION 1  Tables — created WITHOUT foreign keys, in one pass, so no
+--   SECTION 1  Tables - created WITHOUT foreign keys, in one pass, so no
 --              forward references can ever fail. 69 tables.
 --   SECTION 2  Nonclustered indexes.
---   SECTION 3  Foreign keys — added only after ALL tables exist.
+--   SECTION 3  Foreign keys - added only after ALL tables exist.
 --
 -- Requirements: SQL Server 2016+ on an empty or partial GymDB
 -- (run 01_create_database.sql first). No SQLCMD mode required.
@@ -38,7 +38,7 @@ PRINT 'Step 02: creating schema ...';
 GO
 
 -- ===========================================================================
--- SECTION 1 of 3 — TABLES (no FKs; all foreign keys are added in SECTION 3)
+-- SECTION 1 of 3 - TABLES (no FKs; all foreign keys are added in SECTION 3)
 -- ===========================================================================
 
 -- ---- table 1/69: Branch ----------------------------------
@@ -1357,7 +1357,7 @@ GO
 
 
 -- ===========================================================================
--- SECTION 2 of 3 — NONCLUSTERED INDEXES
+-- SECTION 2 of 3 - NONCLUSTERED INDEXES
 -- ===========================================================================
 
 -- indexes on [ScreenPermission]
@@ -1659,7 +1659,7 @@ GO
 
 
 -- ===========================================================================
--- SECTION 3 of 3 — FOREIGN KEYS (all tables now exist)
+-- SECTION 3 of 3 - FOREIGN KEYS (all tables now exist)
 -- ===========================================================================
 
 -- foreign keys on [dbo].[Branch]
@@ -2058,7 +2058,7 @@ PRINT 'Step 02 complete: 69 tables, indexes and 90 foreign keys created.';
 GO
 
 -- --------------------------------------------------------------------------
--- Post-build sanity check (informational only — no error on empty database)
+-- Post-build sanity check (informational only - no error on empty database)
 -- --------------------------------------------------------------------------
 SELECT N'tables'    AS [object], COUNT(*) AS [count] FROM sys.tables
 UNION ALL SELECT N'views',                  COUNT(*) FROM sys.views

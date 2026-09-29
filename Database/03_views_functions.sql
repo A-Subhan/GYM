@@ -1,5 +1,5 @@
 -- ============================================================================
--- Contoura Gym Management System — STEP 3: Views and Functions (FINAL design)
+-- Contoura Gym Management System - STEP 3: Views and Functions (FINAL design)
 -- ============================================================================
 -- Reporting views and scalar functions over the FINAL schema:
 --   * charts.id IS the account code (no separate Account/code columns)

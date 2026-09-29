@@ -1,5 +1,5 @@
 -- ============================================================================
--- Contoura Gym Management System — STEP 7: Sample Data (FINAL design, optional)
+-- Contoura Gym Management System - STEP 7: Sample Data (FINAL design, optional)
 -- ============================================================================
 -- A small, coherent month of demo operations (October 2026) for branch BR-001
 -- (+ one member at BR-002), built entirely on top of 06_master_data.sql.
@@ -27,6 +27,7 @@ USE [GymDB];
 GO
 
 SET NOCOUNT ON;
+SET XACT_ABORT ON;
 GO
 
 IF NOT EXISTS (SELECT 1 FROM dbo.Member WHERE id = N'BR-001/OCT26/00001')
@@ -49,8 +50,12 @@ BEGIN
         ;THROW 55101, 'Step 07: anchor rows missing (branch/role/plan/staff) - run 06_master_data.sql first.', 1;
     END
 
+    BEGIN TRAN;
+
+    BEGIN TRY
+
     -- ---------------------------------------------------------------------
-    -- 1) Additional application user (reception desk — password: admin123)
+    -- 1) Additional application user (reception desk - password: admin123)
     -- ---------------------------------------------------------------------
     INSERT INTO [User] ([id], [username], [email], [fullName], [passwordHash], [roleId], [branchId], [accessibleBranchIds], [phone], [isActive], [failedLoginCount], [mustChangePassword], [createdAt], [updatedAt], [isDeleted])
     VALUES ('user-reception', 'reception', 'reception@contouragym.com', N'Nida Kamran', '$2b$10$4sWId8YdsNlr39HgQ51wE.5rFtEFE3l5APRnRO6rYlE15bOUryvpy', @ROLE_REC, @BR1, N'*', N'+92 321 0000001', 1, 0, 0, SYSDATETIME(), SYSDATETIME(), 0);
@@ -93,7 +98,7 @@ BEGIN
     ('fp-0001', 'BR-001/OCT26/00001', 'CRV/BR-001/OCT26/000001', 5000, N'Cash', '01001', SYSDATETIME());
 
     -- ---------------------------------------------------------------------
-    -- 6) Opening trial balance (balanced) — OTV/BR-001/OCT26/000001
+    -- 6) Opening trial balance (balanced) - OTV/BR-001/OCT26/000001
     -- ---------------------------------------------------------------------
     INSERT INTO dbo.OpenTB ([id], [voucherType], [voucherDate], [branchId], [description], [reference], [totalDebit], [totalCredit], [difference], [isBalanced], [status], [postedById], [createdAt], [updatedAt]) VALUES
     ('OTV/BR-001/OCT26/000001', 'OTV', '2026-10-01T00:00:00', @BR1, N'Opening balances for October 2026', NULL, 78000, 78000, 0, 1, 'Posted', @ADMIN, SYSDATETIME(), SYSDATETIME());
@@ -124,7 +129,7 @@ BEGIN
     ('cbl-0004', 'CPV/BR-001/OCT26/000001', '01001', 0,    2500, 2500, 0, 0, 2500, N'Paid in cash',       N'BILL-K-E-2210', 'Active', SYSDATETIME());
 
     -- ---------------------------------------------------------------------
-    -- 8) Bank payment (rent by cheque) — BPV/BR-001/OCT26/000001
+    -- 8) Bank payment (rent by cheque) - BPV/BR-001/OCT26/000001
     -- ---------------------------------------------------------------------
     INSERT INTO dbo.BankBook ([id], [voucherType], [voucherDate], [branchId], [bookChartId], [description], [reference], [paymentMode], [totalAmount], [status], [postedById], [createdAt], [updatedAt]) VALUES
     ('BPV/BR-001/OCT26/000001', 'BPV', '2026-10-08T00:00:00', @BR1, '01002', N'Branch rent paid by cheque', N'RENT-OCT-26', 'Cheque', 15000, 'Posted', @ADMIN, SYSDATETIME(), SYSDATETIME());
@@ -134,7 +139,7 @@ BEGIN
     ('bbl-0002', 'BPV/BR-001/OCT26/000001', '01002', 15000, 0,   15000, 0, 0, 15000, N'Cheque issued', N'RENT-OCT-26', 'CH-100234', 15000, N'Meezan Bank', N'Pending', 'Active', SYSDATETIME());
 
     -- ---------------------------------------------------------------------
-    -- 9) Journal voucher (supplies bought on account) — JV/BR-001/OCT26/000001
+    -- 9) Journal voucher (supplies bought on account) - JV/BR-001/OCT26/000001
     -- ---------------------------------------------------------------------
     INSERT INTO dbo.JV ([id], [voucherType], [voucherDate], [branchId], [description], [reference], [totalDebit], [totalCredit], [status], [postedById], [createdAt], [updatedAt]) VALUES
     ('JV/BR-001/OCT26/000001', 'JV', '2026-10-09T00:00:00', @BR1, N'Gym supplies purchased on account', N'INV-7723', 1200, 1200, 'Posted', @ADMIN, SYSDATETIME(), SYSDATETIME());
@@ -246,7 +251,7 @@ BEGIN
     ('audit-0001', N'SEED', N'database', N'Sample data (step 07) installed', SYSDATETIME());
 
     -- ---------------------------------------------------------------------
-    -- 16) IdSequence initialisation — counters just past every sample id
+    -- 16) IdSequence initialisation - counters just past every sample id
     --     (keys per Backend/src/lib/ids.ts)
     -- ---------------------------------------------------------------------
     UPDATE s
@@ -282,6 +287,13 @@ BEGIN
         (N'EQUIPMENT',             2), (N'EMPLOYEE',           6)
     ) d([key], nextVal)
     WHERE NOT EXISTS (SELECT 1 FROM dbo.IdSequence s WHERE s.[key] = d.[key]);
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+        ;THROW;
+    END CATCH
+
+    COMMIT TRAN;
 
     PRINT 'Step 07 complete: sample data installed (October 2026 demo month).';
 

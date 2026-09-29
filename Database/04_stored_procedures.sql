@@ -1,5 +1,5 @@
 -- ============================================================================
--- Contoura Gym Management System — STEP 4: Stored Procedures (FINAL design)
+-- Contoura Gym Management System - STEP 4: Stored Procedures (FINAL design)
 -- ============================================================================
 -- Server-side helpers for reporting and administration over the FINAL schema:
 --   * dashboards, trial balance, income statement (over the four book tables)
@@ -16,6 +16,12 @@ GO
 
 SET QUOTED_IDENTIFIER ON;
 SET ANSI_NULLS ON;
+GO
+
+-- Error tracking: each procedure's own batch prints its error, and the final
+-- batch turns any creation failure into a nonzero exit / no success message.
+IF OBJECT_ID(N'tempdb..#sql_errors') IS NOT NULL DROP TABLE #sql_errors;
+CREATE TABLE #sql_errors (object_name sysname NOT NULL, message nvarchar(2048) NOT NULL);
 GO
 
 -- ---------------------------------------------------------------------------
@@ -39,13 +45,13 @@ BEGIN
         (SELECT ISNULL(SUM(f.balance), 0) FROM dbo.Fee f
           WHERE f.balance > 0 AND f.status <> N'Voided'
             AND (@branchId IS NULL OR f.branchId = @branchId))              AS outstandingFees,
-        (SELECT ISNULL(SUM(l.credit - l.debit), 0)
+        (SELECT ISNULL(SUM(cl.credit - cl.debit), 0)
            FROM dbo.CashBook  cb JOIN dbo.CashBookLine cl ON cl.voucherId = cb.id JOIN dbo.charts c ON c.id = cl.accountId
           WHERE cb.status = N'Posted' AND c.accountType = N'Revenue'
             AND MONTH(cb.voucherDate) = MONTH(GETDATE())
             AND YEAR(cb.voucherDate)  = YEAR(GETDATE())
             AND (@branchId IS NULL OR cb.branchId = @branchId))             +
-        (SELECT ISNULL(SUM(l.credit - l.debit), 0)
+        (SELECT ISNULL(SUM(bl.credit - bl.debit), 0)
            FROM dbo.BankBook  bb JOIN dbo.BankBookLine bl ON bl.voucherId = bb.id JOIN dbo.charts c ON c.id = bl.accountId
           WHERE bb.status = N'Posted' AND c.accountType = N'Revenue'
             AND MONTH(bb.voucherDate) = MONTH(GETDATE())
@@ -147,8 +153,8 @@ GO
 -- Payroll calculation helper (earnings only; deductions handled by the app)
 -- ---------------------------------------------------------------------------
 CREATE OR ALTER PROCEDURE dbo.sp_CalculatePayroll
-    @[month] INT,
-    @[year]  INT,
+    @month INT,
+    @year  INT,
     @staffId NVARCHAR(50)
 AS
 BEGIN
@@ -188,5 +194,19 @@ BEGIN
 END
 GO
 
-PRINT 'Step 04 complete: final stored procedures created.';
+-- Verify every procedure was actually created. (A failed CREATE PROCEDURE only
+-- prints an error; it does not stop later batches, so we check for existence.)
+IF OBJECT_ID(N'dbo.sp_GetDashboardStats',  N'P') IS NULL INSERT INTO #sql_errors VALUES (N'sp_GetDashboardStats',  N'not created - see error above');
+IF OBJECT_ID(N'dbo.sp_GetTrialBalance',    N'P') IS NULL INSERT INTO #sql_errors VALUES (N'sp_GetTrialBalance',    N'not created - see error above');
+IF OBJECT_ID(N'dbo.sp_GetIncomeStatement', N'P') IS NULL INSERT INTO #sql_errors VALUES (N'sp_GetIncomeStatement', N'not created - see error above');
+IF OBJECT_ID(N'dbo.sp_GetMemberStatement', N'P') IS NULL INSERT INTO #sql_errors VALUES (N'sp_GetMemberStatement', N'not created - see error above');
+IF OBJECT_ID(N'dbo.sp_CalculatePayroll',   N'P') IS NULL INSERT INTO #sql_errors VALUES (N'sp_CalculatePayroll',   N'not created - see error above');
+IF OBJECT_ID(N'dbo.sp_ResetAdminPassword', N'P') IS NULL INSERT INTO #sql_errors VALUES (N'sp_ResetAdminPassword', N'not created - see error above');
+
+IF EXISTS (SELECT 1 FROM #sql_errors)
+BEGIN
+    ;THROW 51904, N'Step 04 FAILED: one or more stored procedures were not created. Review the errors above.', 1;
+END
+
+PRINT N'Step 04 complete: all 6 stored procedures created.';
 GO
