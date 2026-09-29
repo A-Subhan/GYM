@@ -38,19 +38,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const existing = await db.taxHead.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: 'Tax head not found' }, { status: 404 })
 
-  // Check if tax head is used in any posted book voucher line
-  const lineCount = await db.bookVoucherLine.count({
-    where: { taxAccountId: id },
-  })
-  if (lineCount > 0) {
-    // Soft delete (deactivate)
-    await db.taxHead.update({ where: { id }, data: { isActive: false } })
-    await db.auditLog.create({
-      data: { userId: session.id, action: 'DELETE', module: 'tax', details: JSON.stringify({ id, softDelete: true }) },
-    })
-    return NextResponse.json({ softDeleted: true, message: 'Tax head is in use — deactivated instead of deleted.' })
-  }
-
+  // Final schema: book lines carry tax inline (taxPercent/taxAmount) with no
+  // FK back to the tax head, so there is nothing to reference-check — delete.
   await db.taxHead.delete({ where: { id } })
   await db.auditLog.create({
     data: { userId: session.id, action: 'DELETE', module: 'tax', details: JSON.stringify({ id, hardDelete: true }) },

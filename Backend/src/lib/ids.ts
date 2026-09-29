@@ -1,25 +1,43 @@
 import { db } from './db'
 
 // =================================================================
-// Business ID generation — atomic, per-branch, per-period sequences
+// Business ID generation — atomic, per-branch, per-period sequences.
 //
-// Formats (client-confirmed):
+// FINAL CONTRACT FORMATS (Database/migrations seed these exact keys):
 //   Book vouchers : {CRV|CPV|BRV|BPV|JV|OTV}/{branchCode}/{MMMyy}/{000001}
-//   Reversal      : append -R  ->  CRV/MAIN/Sep25/000001-R
-//   Knock-off Bill: OTB-{branchCode}/{0000001}
-//   Members etc.  : {branchCode}/{MMMyy}/{00001}
-//   Prospects     : p-00001
-//   Follow-ups    : f-000001
-//   Workout plans : WO-00001
-//   Diet plans    : DP-00001
-//   Leaves        : LV-0001
-//   Memberships   : MP-0001 (plans), fees {branchCode}/{MMMyy}/{00001}
+//   Reversal      : append -R  ->  CRV/BR-001/SEP26/000001-R
+//   Knock-off bill: OTB-{branchCode}/{0000001}          key KOFF/{branchCode}
+//   Member        : {branchCode}/{MMMyy}/{00001}        key MEMBER/{branchCode}/{MMMyy}
+//   Membershipplan: {branchCode}/{MMMyy}/{00001}        key PLAN/{branchCode}/{MMMyy}
+//   Attendance    : {branchCode}/{MMMyy}/{00001}        key ATTENDANCE/{branchCode}/{MMMyy}
+//   Prospect      : {branchCode}/p-00001                key PROSPECT/{branchCode}
+//   Follow-up     : {branchCode}/fw-000001              key FOLLOWUP/{branchCode}
+//   Progress entry: {branchCode}/Pg-000001              key PROGRESS/{branchCode}
+//   Freeze        : f-000001                            key FREEZE
+//   Workout plan  : WO-000001                           key WORKOUTPLAN
+//   Diet plan     : DP-000001                           key DIETPLAN
+//   Fee           : {branchCode}/{MMMyy}/{00001}        key FEE/{branchCode}/{MMMyy} *
+//   Leave         : LV-0001                             key LEAVE
+//   Branch        : BR-001                              key BRANCH
+//   Equipment     : EQ-00001                            key EQUIPMENT
+//   Employee      : EMP-00001                           key EMPLOYEE
+//   PT session    : PT-00001                            key PTSESSION
+//   POS sale      : POS/{branchCode}/{MMMyy}/{00001}    key POS/{branchCode}/{MMMyy}
+//   Payroll run   : PAY/{branchCode}/{MMMyy}/{00001}    key PAY/{branchCode}/{MMMyy}
+//
+// MMMyy is UPPERCASE (SEP26) — the migration scripts seed the sequence keys
+// with the uppercase form and generate ids like OTV/BR-001/SEP26/000001.
+//
+// * No FEE sequence key is seeded by Database/migrations (fee ids were
+//   regenerated in place). makeFeeId therefore reconciles the counter with
+//   the existing Fee rows for that branch/period before reserving.
 // =================================================================
 
-export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const
 
+/** Uppercase month + 2-digit year, e.g. 'SEP26'. */
 export function mmmYY(d: Date = new Date()): string {
-  return `${MONTHS[d.getMonth()]}${String(d.getFullYear()).slice(-2)}`
+  return `${MONTHS[d.getMonth()]}${String(d.getFullYear()).slice(-2)}`.toUpperCase()
 }
 
 export function pad(n: number, width: number): string {
@@ -30,9 +48,11 @@ export function pad(n: number, width: number): string {
  * Atomically reserves the next number for a sequence key.
  * Creates the key on first use (starting at 1).
  * Runs as its own transaction so concurrent callers serialize on the row.
+ * `minNext` guarantees the returned number is >= minNext (used by makeFeeId
+ * to jump past ids that already exist without a seeded sequence row).
  */
-export async function nextSequence(key: string): Promise<number> {
-  return reserve(key)
+export async function nextSequence(key: string, minNext = 1): Promise<number> {
+  return reserve(key, minNext)
 }
 
 export async function peekSequence(key: string): Promise<number> {
@@ -41,11 +61,14 @@ export async function peekSequence(key: string): Promise<number> {
 }
 
 /** Reserve next number for a composite key and return it (1-based). */
-async function reserve(key: string): Promise<number> {
+async function reserve(key: string, minNext = 1): Promise<number> {
   const row = await db.$transaction(async (tx) => {
     const existing = await tx.idSequence.findUnique({ where: { key } })
-    if (existing) return tx.idSequence.update({ where: { key }, data: { next: { increment: 1 } } })
-    return tx.idSequence.create({ data: { key, next: 2 } })
+    if (existing) {
+      const target = Math.max(existing.next, minNext)
+      return tx.idSequence.update({ where: { key }, data: { next: target + 1 } })
+    }
+    return tx.idSequence.create({ data: { key, next: minNext + 1 } })
   })
   return row.next - 1
 }
@@ -54,97 +77,126 @@ async function reserve(key: string): Promise<number> {
 
 export type BookVoucherPrefix = 'CRV' | 'CPV' | 'BRV' | 'BPV' | 'JV' | 'OTV'
 
-/** e.g. makeBookVoucherId('CRV', 'MAIN', new Date()) -> CRV/MAIN/Sep25/000001 */
+/** e.g. makeBookVoucherId('CRV', 'BR-001', new Date()) -> CRV/BR-001/SEP26/000001 */
 export async function makeBookVoucherId(prefix: BookVoucherPrefix, branchCode: string, date: Date): Promise<string> {
   const key = `${prefix}/${branchCode}/${mmmYY(date)}`
   const seq = await reserve(key)
   return `${key}/${pad(seq, 6)}`
 }
 
-/** Knock-off bill id: OTB-{branch}/{0000001} */
+/** Knock-off bill id: OTB-{branch}/{0000001}, key KOFF/{branch} */
 export async function makeKnockOffBillId(branchCode: string): Promise<string> {
-  const key = `KOFF/${branchCode}`
-  const seq = await reserve(key)
+  const seq = await reserve(`KOFF/${branchCode}`)
   return `OTB-${branchCode}/${pad(seq, 7)}`
 }
 
-// --- Business ids ------------------------------------------------------
+// --- Per-branch, per-period ids -----------------------------------------
 
-/** {branchCode}/{MMMyy}/{00001} — members, fees, invoices, etc. */
+/** {branchCode}/{MMMyy}/{00001} — members (MEMBER), plans (PLAN), attendance (ATTENDANCE) */
 export async function makeBranchPeriodId(entity: string, branchCode: string, date: Date, width = 5): Promise<string> {
   const key = `${entity}/${branchCode}/${mmmYY(date)}`
   const seq = await reserve(key)
   return `${branchCode}/${mmmYY(date)}/${pad(seq, width)}`
 }
 
-/** p-00001 */
-export async function makeProspectId(): Promise<string> {
-  const seq = await reserve('PROSPECT')
-  return `p-${pad(seq, 5)}`
+/**
+ * Fee id {branchCode}/{MMMyy}/{00001}. The migrations regenerate fee ids but
+ * do NOT seed a FEE sequence row, so the counter is reconciled with the
+ * highest existing Fee id for that branch/period before reserving.
+ */
+export async function makeFeeId(branchCode: string, date: Date): Promise<string> {
+  const mon = mmmYY(date)
+  const key = `FEE/${branchCode}/${mon}`
+  const prefix = `${branchCode}/${mon}/`
+  const rows = await db.fee.findMany({ where: { id: { startsWith: prefix } }, select: { id: true } })
+  const maxSeq = rows.reduce((m, r) => {
+    const n = Number(r.id.slice(prefix.length))
+    return Number.isFinite(n) && n > m ? n : m
+  }, 0)
+  const seq = await reserve(key, maxSeq + 1)
+  return `${prefix}${pad(seq, 5)}`
 }
 
-/** f-000001 */
-export async function makeFollowUpId(): Promise<string> {
-  const seq = await reserve('FOLLOWUP')
+// --- Per-branch ids ------------------------------------------------------
+
+/** {branchCode}/p-00001, key PROSPECT/{branchCode} */
+export async function makeProspectId(branchCode: string): Promise<string> {
+  const seq = await reserve(`PROSPECT/${branchCode}`)
+  return `${branchCode}/p-${pad(seq, 5)}`
+}
+
+/** {branchCode}/fw-000001, key FOLLOWUP/{branchCode} */
+export async function makeFollowUpId(branchCode: string): Promise<string> {
+  const seq = await reserve(`FOLLOWUP/${branchCode}`)
+  return `${branchCode}/fw-${pad(seq, 6)}`
+}
+
+/** {branchCode}/Pg-000001, key PROGRESS/{branchCode} */
+export async function makeProgressEntryId(branchCode: string): Promise<string> {
+  const seq = await reserve(`PROGRESS/${branchCode}`)
+  return `${branchCode}/Pg-${pad(seq, 6)}`
+}
+
+// --- Global sequence ids --------------------------------------------------
+
+/** f-000001 (membership freeze), key FREEZE */
+export async function makeFreezeId(): Promise<string> {
+  const seq = await reserve('FREEZE')
   return `f-${pad(seq, 6)}`
 }
 
-/** WO-00001 */
+/** WO-000001 (workout plans), key WORKOUTPLAN */
 export async function makeWorkoutPlanId(): Promise<string> {
   const seq = await reserve('WORKOUTPLAN')
-  return `WO-${pad(seq, 5)}`
+  return `WO-${pad(seq, 6)}`
 }
 
-/** DP-00001 */
+/** DP-000001 (diet plans), key DIETPLAN */
 export async function makeDietPlanId(): Promise<string> {
   const seq = await reserve('DIETPLAN')
-  return `DP-${pad(seq, 5)}`
+  return `DP-${pad(seq, 6)}`
 }
 
-/** BR-001 (branch file) */
+/** BR-001 (branch file), key BRANCH */
 export async function makeBranchId(): Promise<string> {
   const seq = await reserve('BRANCH')
   return `BR-${pad(seq, 3)}`
 }
 
-/** LV-0001 */
+/** LV-0001 (leaves), key LEAVE */
 export async function makeLeaveId(): Promise<string> {
   const seq = await reserve('LEAVE')
   return `LV-${pad(seq, 4)}`
 }
 
-/** MP-0001 (membership plans) */
-export async function makeMembershipPlanId(): Promise<string> {
-  const seq = await reserve('MEMBERSHIPPLAN')
-  return `MP-${pad(seq, 4)}`
+/** EMP-00001 (staff), key EMPLOYEE */
+export async function makeEmployeeId(): Promise<string> {
+  const seq = await reserve('EMPLOYEE')
+  return `EMP-${pad(seq, 5)}`
 }
 
-/** PT-00001 (personal training sessions) */
-export async function makePtSessionId(): Promise<string> {
-  const seq = await reserve('PTSESSION')
-  return `PT-${pad(seq, 5)}`
-}
-
-/** FRZ-0001 (membership freezes) */
-export async function makeFreezeId(): Promise<string> {
-  const seq = await reserve('FREEZE')
-  return `FRZ-${pad(seq, 4)}`
-}
-
-/** EQ-00001 (equipment) */
+/** EQ-00001 (equipment), key EQUIPMENT */
 export async function makeEquipmentId(): Promise<string> {
   const seq = await reserve('EQUIPMENT')
   return `EQ-${pad(seq, 5)}`
 }
 
-/** POS/{branchCode}/{MMMyy}/{00001} */
+/** PT-00001 (personal training sessions), key PTSESSION */
+export async function makePtSessionId(): Promise<string> {
+  const seq = await reserve('PTSESSION')
+  return `PT-${pad(seq, 5)}`
+}
+
+// --- Combined formats ------------------------------------------------------
+
+/** POS/{branchCode}/{MMMyy}/{00001}, key POS/{branchCode}/{MMMyy} */
 export async function makePosSaleId(branchCode: string, date: Date): Promise<string> {
   const key = `POS/${branchCode}/${mmmYY(date)}`
   const seq = await reserve(key)
   return `POS/${branchCode}/${mmmYY(date)}/${pad(seq, 5)}`
 }
 
-/** PAY/{branchCode}/{MMMyy}/{00001} (payroll runs) */
+/** PAY/{branchCode}/{MMMyy}/{00001} (payroll runs), key PAY/{branchCode}/{MMMyy} */
 export async function makePayrollId(branchCode: string, date: Date): Promise<string> {
   const key = `PAY/${branchCode}/${mmmYY(date)}`
   const seq = await reserve(key)

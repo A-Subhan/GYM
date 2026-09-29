@@ -95,7 +95,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   // Soft delete only: mark deleted/inactive, never hard-delete (history must be preserved)
   const existing = await db.member.findFirst({ where: { id, isDeleted: false } })
   if (!existing) return NextResponse.json({ error: 'Member not found' }, { status: 404 })
-  await db.member.update({ where: { id }, data: { isDeleted: true, status: 'Inactive', isActive: false } })
-  await db.auditLog.create({ data: { userId: session.id, action: 'DELETE', module: 'members', details: JSON.stringify({ id, softDelete: true, memberId: existing.memberId }) } })
+  await db.member.update({ where: { id }, data: { isDeleted: true, deletedAt: new Date(), status: 'Inactive', isActive: false } })
+  await db.auditLog.create({ data: { userId: session.id, action: 'DELETE', module: 'members', details: JSON.stringify({ id, softDelete: true, memberId: existing.id }) } })
   return NextResponse.json({ success: true, softDeleted: true })
 }

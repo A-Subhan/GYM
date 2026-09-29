@@ -1,24 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, getSelectedBranchIds } from './auth'
-import { postBookVoucher, reverseBookVoucher, type BookVoucherType } from './book-vouchers'
+import { postBookVoucher, reverseBookVoucher, bookDelegates, type BookVoucherType, type BookType } from './book-vouchers'
 
 // =================================================================
 // Shared REST handlers for the four dedicated book voucher stores:
 //   CASHBOOK (/api/cashbook, CRV|CPV)
-//   BANKBOOK (/api/bankbook, BRV|BPV — also creates Cheque rows)
+//   BANKBOOK (/api/bankbook, BRV|BPV — cheque fields live on BankBookLine)
 //   JV       (/api/journal-vouchers)
 //   OTB      (/api/opening-tb — allows unbalanced save)
-// The voucher id IS the voucher number (e.g. CRV/BR-001/Sep25/000001).
+// The voucher id IS the voucher number (e.g. CRV/BR-001/SEP26/000001).
 // =================================================================
 
-export type BookApiBookType = 'CASHBOOK' | 'BANKBOOK' | 'JV' | 'OTB'
+export type BookApiBookType = BookType
 
-const TABLE: Record<BookApiBookType, 'cashbookVoucher' | 'bankbookVoucher' | 'journalVoucher' | 'openTbVoucher'> = {
-  CASHBOOK: 'cashbookVoucher',
-  BANKBOOK: 'bankbookVoucher',
-  JV: 'journalVoucher',
-  OTB: 'openTbVoucher',
+const DELEGATES: Record<BookApiBookType, { voucher: string; line: string }> = {
+  CASHBOOK: bookDelegates('CASHBOOK'),
+  BANKBOOK: bookDelegates('BANKBOOK'),
+  JV: bookDelegates('JV'),
+  OTB: bookDelegates('OTB'),
 }
 
 const TYPES: Record<BookApiBookType, BookVoucherType[]> = {
@@ -61,27 +61,10 @@ function normalizeLine(l: any) {
   }
 }
 
-async function createChequesForVoucher(voucherId: string, voucherDate: Date, lines: any[], chequeDate?: string | null) {
-  const rows = (lines || []).filter((l: any) => l.chequeNo)
-  for (const l of rows) {
-    await db.cheque.create({
-      data: {
-        voucherId,
-        chequeNo: l.chequeNo,
-        chequeDate: chequeDate ? new Date(chequeDate) : voucherDate,
-        bankName: l.chequeBankName || null,
-        amount: Number(l.amount) || 0,
-        status: 'Hold',
-      },
-    })
-  }
-}
-
 function includeFor(bookType: BookApiBookType) {
   const base = { lines: { include: { account: true } } }
   if (bookType === 'CASHBOOK') return { branch: true, bookChart: true, ...base }
-  if (bookType === 'BANKBOOK') return { branch: true, bookChart: true, cheques: true, ...base }
-  if (bookType === 'OTB') return { branch: true, knockOffs: { include: { account: true } }, ...base }
+  if (bookType === 'BANKBOOK') return { branch: true, bookChart: true, ...base }
   return { branch: true, ...base }
 }
 
@@ -100,11 +83,16 @@ function buildWhere(bookType: BookApiBookType, url: URL, allowed: string[] | nul
   const dateFilter = from || to
     ? { voucherDate: { ...(from ? { gte: new Date(from) } : {}), ...(to ? { lte: new Date(to) } : {}) } }
     : {}
+  // Branch filter: the requested branch is intersected with the caller's allowed
+  // branches (a restricted user may only narrow, never widen, the scope).
+  let branchFilter: string[] | null = allowed
+  if (branchParam && branchParam !== 'all') {
+    branchFilter = allowed ? allowed.filter((b) => b === branchParam) : [branchParam]
+  }
   return {
     where: {
       voucherType: voucherType ? { in: voucherType } : undefined,
-      ...(allowed ? { branchId: { in: allowed } } : {}),
-      ...(branchParam && branchParam !== 'all' ? { branchId: branchParam } : {}),
+      ...(branchFilter ? { branchId: { in: branchFilter } } : {}),
       ...(status ? { status } : {}),
       ...dateFilter,
       ...(search ? { OR: [{ id: { contains: search } }, { description: { contains: search } }, { reference: { contains: search } }] } : {}),
@@ -113,6 +101,8 @@ function buildWhere(bookType: BookApiBookType, url: URL, allowed: string[] | nul
 }
 
 export function bookVoucherApi(bookType: BookApiBookType) {
+  const delegate = DELEGATES[bookType].voucher
+
   // GET list -----------------------------------------------------------
   async function list(req: NextRequest) {
     const session = await getSession()
@@ -121,7 +111,7 @@ export function bookVoucherApi(bookType: BookApiBookType) {
     const allowed = getSelectedBranchIds(session, url.searchParams.get('branches'))
     const built = buildWhere(bookType, url, allowed)
     if (built.__invalid) return NextResponse.json({ error: `type must be one of ${TYPES[bookType].join('|')}` }, { status: 400 })
-    const vouchers = await (db as any)[TABLE[bookType]].findMany({
+    const vouchers = await (db as any)[delegate].findMany({
       where: built.where,
       include: includeFor(bookType),
       orderBy: { voucherDate: 'desc' },
@@ -135,7 +125,7 @@ export function bookVoucherApi(bookType: BookApiBookType) {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const { id } = await params
-    const voucher = await (db as any)[TABLE[bookType]].findUnique({
+    const voucher = await (db as any)[delegate].findUnique({
       where: { id },
       include: includeFor(bookType),
     })
@@ -178,9 +168,6 @@ export function bookVoucherApi(bookType: BookApiBookType) {
         postedById: data.postedById || session.id,
         allowUnbalanced: data.allowUnbalanced === true,
       })
-      if (bookType === 'BANKBOOK' && data.paymentMode === 'Cheque') {
-        await createChequesForVoucher(voucher.id, new Date(data.voucherDate), data.lines || [], data.chequeDate)
-      }
       return NextResponse.json({ voucher, difference: (voucher as any).difference ?? null })
     } catch (e: any) {
       return NextResponse.json({ error: e.message || 'Failed to post voucher' }, { status: 400 })
@@ -195,7 +182,7 @@ export function bookVoucherApi(bookType: BookApiBookType) {
 
     const { id } = await params
     const data = await req.json()
-    const existing = await (db as any)[TABLE[bookType]].findUnique({ where: { id } })
+    const existing = await (db as any)[delegate].findUnique({ where: { id } })
     if (!existing) return NextResponse.json({ error: 'Voucher not found' }, { status: 404 })
     if (existing.status === 'Reversed') return NextResponse.json({ error: 'Reversed vouchers cannot be edited' }, { status: 400 })
 
@@ -222,13 +209,6 @@ export function bookVoucherApi(bookType: BookApiBookType) {
         allowUnbalanced: data.allowUnbalanced === true,
         existingVoucherId: id,
       })
-      if (bookType === 'BANKBOOK') {
-        // refresh cheque rows to match the edited lines
-        await db.cheque.deleteMany({ where: { voucherId: id } })
-        if ((data.paymentMode ?? existing.paymentMode) === 'Cheque') {
-          await createChequesForVoucher(id, new Date(data.voucherDate || existing.voucherDate), data.lines || [], data.chequeDate)
-        }
-      }
       return NextResponse.json({ voucher, difference: (voucher as any).difference ?? null })
     } catch (e: any) {
       return NextResponse.json({ error: e.message || 'Failed to update voucher' }, { status: 400 })
@@ -244,7 +224,7 @@ export function bookVoucherApi(bookType: BookApiBookType) {
 
     if (data.action === 'reverse') {
       if (!session.permissions.includes('vouchers.reverse')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      const existing = await (db as any)[TABLE[bookType]].findUnique({ where: { id } })
+      const existing = await (db as any)[delegate].findUnique({ where: { id } })
       if (!existing) return NextResponse.json({ error: 'Voucher not found' }, { status: 404 })
       try {
         const reversalId = await reverseBookVoucher(id, existing.voucherType, session.id, data.reason || 'Manual reversal')

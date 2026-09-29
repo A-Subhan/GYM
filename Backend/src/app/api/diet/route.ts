@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
+import { makeDietPlanId } from '@/lib/ids'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const MEALS = ['Breakfast', 'Brunch', 'Lunch', 'Snack', 'Dinner', 'Late Night', 'Pre Workout', 'Post Workout']
@@ -38,8 +39,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Business id: DP-000001 (global sequence; the plan id IS the business id)
+  const id = await makeDietPlanId()
   const plan = await db.dietPlan.create({
     data: {
+      id,
       name: String(data.name),
       description: data.description ? String(data.description) : null,
       branchId: data.branchId || session.branchId,

@@ -50,7 +50,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       include: { staff: STAFF_SELECT, branch: BRANCH_SELECT },
     })
     await db.auditLog.create({
-      data: { userId: session.id, action: data.status.toUpperCase(), module: 'leaves', details: JSON.stringify({ id, leaveNo: leave.leaveNo }) },
+      data: { userId: session.id, action: data.status.toUpperCase(), module: 'leaves', details: JSON.stringify({ id, leaveNo: leave.id }) },
     })
     return NextResponse.json({ leave: updated })
   }
@@ -72,11 +72,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   if (data.leaveType && data.leaveType !== leave.leaveType) {
-    const leaveType = await db.masterFile.findFirst({
-      where: { masterType: 'LeaveType', name: data.leaveType, isActive: true },
+    const leaveType = await db.payrollMasterFile.findFirst({
+      where: { masterType: 'Leave Type', name: data.leaveType, isActive: true },
     })
     if (!leaveType) {
-      return NextResponse.json({ error: `Invalid leave type "${data.leaveType}" — pick one from Leave Type master` }, { status: 400 })
+      return NextResponse.json({ error: `Invalid leave type "${data.leaveType}" — pick one from the HR Leave Type master` }, { status: 400 })
     }
     updateData.leaveType = leaveType.name
   }
@@ -101,7 +101,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     include: { staff: STAFF_SELECT, branch: BRANCH_SELECT },
   })
   await db.auditLog.create({
-    data: { userId: session.id, action: 'UPDATE', module: 'leaves', details: JSON.stringify({ id, leaveNo: leave.leaveNo }) },
+    data: { userId: session.id, action: 'UPDATE', module: 'leaves', details: JSON.stringify({ id, leaveNo: leave.id }) },
   })
   return NextResponse.json({ leave: updated })
 }

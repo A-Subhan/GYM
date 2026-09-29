@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
   if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
 
   try {
-    // Employee ID: client-supplied wins, otherwise atomic sequence EMP-0001, EMP-0002, …
+    // Employee ID: client-supplied wins, otherwise atomic sequence EMP-00001, EMP-00002, …
     if (data.shiftId === undefined) data.shiftId = null
     const staff = await db.$transaction(async (tx) => {
       let employeeId = typeof data.employeeId === 'string' ? data.employeeId.trim() : ''
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
           update: { next: { increment: 1 } },
           create: { key: 'EMPLOYEE', next: 2 },
         })
-        employeeId = `EMP-${String(seqRow.next - 1).padStart(4, '0')}`
+        employeeId = `EMP-${String(seqRow.next - 1).padStart(5, '0')}`
       }
       return tx.staff.create({ data: { employeeId, ...staffFields(data) }, include: { branch: true, shift: true } })
     })

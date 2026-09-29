@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
+import { makeWorkoutPlanId } from '@/lib/ids'
 
 export async function GET() {
   const session = await getSession()
@@ -22,8 +23,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Day "${d.dayName}" must have at least one exercise` }, { status: 400 })
     }
   }
+  // Business id: WO-000001 (global sequence; the plan id IS the business id)
+  const id = await makeWorkoutPlanId()
   const plan = await db.workoutPlan.create({
     data: {
+      id,
       name: String(data.name),
       description: data.description ? String(data.description) : null,
       isGeneral: data.isGeneral !== false,

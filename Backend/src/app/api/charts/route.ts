@@ -60,9 +60,13 @@ export async function POST(req: NextRequest) {
   const isControl = data.isControl === true
   const isDetail = isControl ? false : data.isDetail !== false
 
+  // Final schema: a single NOT NULL parentCode column ('ROOT' = tree root).
+  // `parentId` is still accepted from callers and mapped onto parentCode.
+  const parentCode = String(data.parentCode || data.parentId || '').trim().toUpperCase() || 'ROOT'
+
   if (isDetail) {
-    if (!data.parentId) return NextResponse.json({ error: 'Detail accounts must have a Parent (control) account' }, { status: 400 })
-    const parent = await db.chart.findUnique({ where: { id: data.parentId } })
+    if (parentCode === 'ROOT') return NextResponse.json({ error: 'Detail accounts must have a Parent (control) account' }, { status: 400 })
+    const parent = await db.chart.findUnique({ where: { id: parentCode } })
     if (!parent) return NextResponse.json({ error: 'Parent account not found' }, { status: 400 })
     if (!parent.isControl) return NextResponse.json({ error: 'Detail accounts must be created under a control account' }, { status: 400 })
   }
@@ -74,7 +78,7 @@ export async function POST(req: NextRequest) {
       data: {
         id: code,
         name: String(data.name).trim(),
-        parentId: data.parentId || null,
+        parentCode,
         accountType: data.accountType,
         bookType: data.bookType || null,
         accountTag: data.accountTag || null,
@@ -93,7 +97,14 @@ export async function POST(req: NextRequest) {
         strn: data.strn || null,
         ntn: data.ntn || null,
         fbr: data.fbr || null,
+        otherName: data.otherName || null,
+        referenceNumber: data.referenceNumber || null,
+        faxNumber: data.faxNumber || null,
+        city: data.city || null,
+        country: data.country || null,
+        website: data.website || null,
         paymentTerms: data.paymentTerms || null,
+        registrationNumber: data.registrationNumber || null,
         description: data.description || null,
       },
     })

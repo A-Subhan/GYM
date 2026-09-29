@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, getSelectedBranchIds } from '@/lib/auth'
-import { makeBranchPeriodId } from '@/lib/ids'
+import { makeBranchPeriodId, makeFeeId } from '@/lib/ids'
 
 type FeeRow = Awaited<ReturnType<typeof db.fee.create>>
 
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
       ...(status ? { status } : {}),
       ...(search ? {
         OR: [
-          { memberId: { contains: search } },
+          { id: { contains: search } },
           { firstName: { contains: search } },
           { lastName: { contains: search } },
           { phone: { contains: search } },
@@ -70,20 +70,21 @@ export async function POST(req: NextRequest) {
   const billingStartDate = data.billingStartDate ? new Date(data.billingStartDate) : joiningDate
 
   // Branch code is required for the business member ID: {branchCode}/{MMMyy}/{00001}
+  // (the member id IS the business id — there is no separate memberId column).
   const branch = await db.branch.findUnique({ where: { id: data.branchId } })
   if (!branch) return NextResponse.json({ error: 'Invalid branch' }, { status: 400 })
   const memberId = await makeBranchPeriodId('MEMBER', branch.code, joiningDate)
 
-  // Auto-generate the first period fee row (same transaction as member creation)
+  // Auto-generate the first period fee row (id = {branchCode}/{MMMyy}/{00001})
   let feeNo: string | null = null
   if (data.membershipPlanId) {
-    feeNo = await makeBranchPeriodId('FEE', branch.code, billingStartDate)
+    feeNo = await makeFeeId(branch.code, billingStartDate)
   }
 
   const { member, fee } = await db.$transaction(async (tx) => {
     const created = await tx.member.create({
       data: {
-        memberId,
+        id: memberId,
         firstName: data.firstName,
         lastName: data.lastName,
         gender: data.gender,
@@ -119,7 +120,7 @@ export async function POST(req: NextRequest) {
       dueDate.setDate(dueDate.getDate() + feeRelaxationDays + 10)
       createdFee = await tx.fee.create({
         data: {
-          feeNo,
+          id: feeNo,
           memberId: created.id,
           branchId: created.branchId,
           billingPeriodStart: billingStartDate,

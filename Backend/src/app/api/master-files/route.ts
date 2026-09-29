@@ -4,9 +4,10 @@ import { getSession } from '@/lib/auth'
 
 const MASTER_TYPES = [
   'Department', 'Designation', 'Education', 'Currency', 'Allowance',
-  'Shift', 'LeaveType', 'MembershipSource', 'ProspectSource', 'EquipmentCategory', 'Equipment',
+  'Shift', 'MembershipSource', 'ProspectSource', 'EquipmentCategory', 'Equipment',
   'Banks', 'CardTypes', 'ExerciseCategories', 'TrainerSpecializations', 'FoodCategories', 'ItemCategories', 'Units', 'Brands', 'Warehouses', 'MaintenanceTypes',
 ]
+// NOTE: leave types moved to dbo.payrollmasterfile (masterType = 'Leave Type')
 
 export async function GET(req: NextRequest) {
   const session = await getSession()

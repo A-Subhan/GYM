@@ -21,10 +21,10 @@ export async function GET(req: NextRequest) {
     db.prospect.count({ where: { status: { not: 'Converted' } } }),
     // Posted book vouchers across all four dedicated stores
     Promise.all([
-      db.cashbookVoucher.count({ where: { status: 'Posted', ...(allowed ? { branchId: { in: allowed } } : {}) } }),
-      db.bankbookVoucher.count({ where: { status: 'Posted', ...(allowed ? { branchId: { in: allowed } } : {}) } }),
+      db.cashBook.count({ where: { status: 'Posted', ...(allowed ? { branchId: { in: allowed } } : {}) } }),
+      db.bankBook.count({ where: { status: 'Posted', ...(allowed ? { branchId: { in: allowed } } : {}) } }),
       db.journalVoucher.count({ where: { status: 'Posted', ...(allowed ? { branchId: { in: allowed } } : {}) } }),
-      db.openTbVoucher.count({ where: { status: 'Posted', ...(allowed ? { branchId: { in: allowed } } : {}) } }),
+      db.openingTbVoucher.count({ where: { status: 'Posted', ...(allowed ? { branchId: { in: allowed } } : {}) } }),
     ]).then(([c, b, j, o]) => c + b + j + o),
     db.fee.aggregate({
       where: { paymentDate: { gte: todayStart }, ...(allowed ? { branchId: { in: allowed } } : {}) },
@@ -37,10 +37,10 @@ export async function GET(req: NextRequest) {
   // Cash + bank movement today from the dedicated book stores (Posted only)
   const branchFilter = allowed ? { branchId: { in: allowed } } : {}
   const [cashIn, cashOut, bankIn, bankOut, monthlyFeeCollection, recentActivity] = await Promise.all([
-    db.cashbookVoucher.aggregate({ where: { status: 'Posted', voucherType: 'CRV', voucherDate: { gte: todayStart }, ...branchFilter }, _sum: { totalAmount: true } }),
-    db.cashbookVoucher.aggregate({ where: { status: 'Posted', voucherType: 'CPV', voucherDate: { gte: todayStart }, ...branchFilter }, _sum: { totalAmount: true } }),
-    db.bankbookVoucher.aggregate({ where: { status: 'Posted', voucherType: 'BRV', voucherDate: { gte: todayStart }, ...branchFilter }, _sum: { totalAmount: true } }),
-    db.bankbookVoucher.aggregate({ where: { status: 'Posted', voucherType: 'BPV', voucherDate: { gte: todayStart }, ...branchFilter }, _sum: { totalAmount: true } }),
+    db.cashBook.aggregate({ where: { status: 'Posted', voucherType: 'CRV', voucherDate: { gte: todayStart }, ...branchFilter }, _sum: { totalAmount: true } }),
+    db.cashBook.aggregate({ where: { status: 'Posted', voucherType: 'CPV', voucherDate: { gte: todayStart }, ...branchFilter }, _sum: { totalAmount: true } }),
+    db.bankBook.aggregate({ where: { status: 'Posted', voucherType: 'BRV', voucherDate: { gte: todayStart }, ...branchFilter }, _sum: { totalAmount: true } }),
+    db.bankBook.aggregate({ where: { status: 'Posted', voucherType: 'BPV', voucherDate: { gte: todayStart }, ...branchFilter }, _sum: { totalAmount: true } }),
     db.fee.aggregate({ where: { paymentDate: { gte: monthStart }, ...(allowed ? { branchId: { in: allowed } } : {}) }, _sum: { paidAmount: true } }),
     db.auditLog.findMany({ orderBy: { createdAt: 'desc' }, take: 8, include: { user: { select: { fullName: true } } } }),
   ])
@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
     else alertStatus = 'Overdue'
     return {
       feeId: f.id,
-      feeNo: f.feeNo,
+      feeNo: f.id,
       memberName: `${f.member.firstName} ${f.member.lastName || ''}`,
       phone: f.member.phone,
       dueDate: f.dueDate,

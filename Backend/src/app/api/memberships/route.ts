@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
-import { makeMembershipPlanId } from '@/lib/ids'
+import { makeBranchPeriodId } from '@/lib/ids'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const plans = await db.membershipPlan.findMany({ orderBy: { code: 'asc' } })
+  const url = new URL(req.url)
+  const branchId = url.searchParams.get('branchId')
+  const plans = await db.membershipPlan.findMany({
+    where: { ...(branchId && branchId !== 'all' ? { branchId } : {}) },
+    include: { branch: { select: { id: true, name: true, code: true } } },
+    orderBy: { name: 'asc' },
+  })
   return NextResponse.json({ plans })
 }
 
@@ -16,31 +22,34 @@ export async function POST(req: NextRequest) {
   if (!session.permissions.includes('memberships.add')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const data = await req.json()
   if (!data.name || !String(data.name).trim()) return NextResponse.json({ error: 'Name is required' }, { status: 400 })
+  if (!data.branchId) return NextResponse.json({ error: 'Branch is required' }, { status: 400 })
   const durationDays = Number(data.durationDays)
   if (!durationDays || durationDays < 1) return NextResponse.json({ error: 'Duration must be at least 1 day' }, { status: 400 })
   const amount = Number(data.amount)
   if (isNaN(amount) || amount < 0) return NextResponse.json({ error: 'Amount must be a non-negative number' }, { status: 400 })
 
-  // Auto-generate the plan code (MP-0001, MP-0002, …) unless explicitly supplied.
-  // Previously a count-based code was used, which collided with existing rows and
-  // made plan creation fail with a unique-constraint error — that is the add bug.
-  const code = (data.code && String(data.code).trim()) || await makeMembershipPlanId()
+  // Plans are branch-scoped (branchId NOT NULL in the final schema) and the
+  // plan id IS the business id: {branchCode}/{MMMyy}/{00001}.
+  const branch = await db.branch.findUnique({ where: { id: data.branchId } })
+  if (!branch) return NextResponse.json({ error: 'Invalid branch' }, { status: 400 })
 
   try {
+    const id = await makeBranchPeriodId('PLAN', branch.code, new Date())
     const plan = await db.membershipPlan.create({
       data: {
-        code,
+        id,
         name: String(data.name).trim(),
         durationDays,
         amount,
         description: data.description,
+        branchId: data.branchId,
         isActive: data.isActive !== false,
       },
     })
     return NextResponse.json({ plan })
   } catch (e: any) {
     if (e?.code === 'P2002') {
-      return NextResponse.json({ error: `Plan code "${code}" already exists — please try again` }, { status: 400 })
+      return NextResponse.json({ error: 'A plan with this id already exists — please try again' }, { status: 400 })
     }
     throw e
   }

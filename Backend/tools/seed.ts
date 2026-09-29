@@ -1,6 +1,7 @@
 import { db } from '../src/lib/db'
 import { hashPassword } from '../src/lib/hash'
 import { PERMISSIONS, SYSTEM_ROLE_PERMISSIONS } from '../src/lib/permissions'
+import { mmmYY, pad } from '../src/lib/ids'
 
 async function main() {
   console.log('Seeding database...')
@@ -30,21 +31,20 @@ async function main() {
   }
   console.log(`  ✓ ${Object.keys(SYSTEM_ROLE_PERMISSIONS).length} system roles`)
 
-  // 3. Company — name left unlocked so the Defaults page performs the one-time set + lock
-  const company = await db.company.upsert({
-    where: { companyId: 'CTR-01' },
-    update: {},
-    create: {
-      companyId: 'CTR-01',
-      name: '',
-      nameLocked: false,
-      address: 'Main Boulevard, Karachi',
-      phone: '+92 21 0000000',
-      email: 'info@contouragym.com',
-      accountingType: 'FIFO',
-    },
-  })
-  console.log(`  ✓ Company ${company.companyId}`)
+  // 3. Admin Defaults — single-row dbo.Defaults table (Company table removed).
+  //    companyName is write-once: left unset here so the Defaults page performs the one-time set.
+  const existingDefaults = await db.defaults.findFirst()
+  if (!existingDefaults) {
+    await db.defaults.create({
+      data: {
+        address: 'Main Boulevard, Karachi',
+        phone: '+92 21 0000000',
+        email: 'info@contouragym.com',
+        financeType: 'FIFO',
+      },
+    })
+  }
+  console.log('  ✓ admin defaults row')
 
   // 4. Branch (root Control node)
   const branch = await db.branch.upsert({
@@ -80,7 +80,8 @@ async function main() {
     console.log('  ✓ admin user updated with verified hash')
   }
 
-  // 6. COA root heads + detail accounts — table `charts`, id = account code
+  // 6. COA root heads + detail accounts — table `charts`, id = account code,
+  //    parentCode NOT NULL ('ROOT' sentinel for tree roots)
   const rootHeads = [
     { code: '01', name: 'Assets', accountType: 'Asset', isControl: true, isDetail: false },
     { code: '02', name: 'Liabilities', accountType: 'Liability', isControl: true, isDetail: false },
@@ -92,7 +93,7 @@ async function main() {
     await db.chart.upsert({
       where: { id: h.code },
       update: {},
-      create: { id: h.code, name: h.name, accountType: h.accountType, isControl: h.isControl, isDetail: h.isDetail, branchId: branch.id },
+      create: { id: h.code, name: h.name, accountType: h.accountType, isControl: h.isControl, isDetail: h.isDetail, parentCode: 'ROOT', branchId: branch.id },
     })
   }
   const assets = await db.chart.findUnique({ where: { id: '01' } })
@@ -107,7 +108,7 @@ async function main() {
       await db.chart.upsert({
         where: { id: d.id },
         update: {},
-        create: { ...d, isControl: false, isDetail: true, parentId: assets.id, branchId: branch.id },
+        create: { ...d, isControl: false, isDetail: true, parentCode: assets.id, branchId: branch.id },
       })
     }
   }
@@ -121,7 +122,7 @@ async function main() {
       await db.chart.upsert({
         where: { id: d.id },
         update: {},
-        create: { ...d, isControl: false, isDetail: true, parentId: rev.id, branchId: branch.id },
+        create: { ...d, isControl: false, isDetail: true, parentCode: rev.id, branchId: branch.id },
       })
     }
   }
@@ -130,7 +131,7 @@ async function main() {
     await db.chart.upsert({
       where: { id: '02001' },
       update: {},
-      create: { id: '02001', name: 'Sales Tax Payable', accountType: 'Liability', isControl: false, isDetail: true, parentId: lia.id, branchId: branch.id },
+      create: { id: '02001', name: 'Sales Tax Payable', accountType: 'Liability', isControl: false, isDetail: true, parentCode: lia.id, branchId: branch.id },
     })
   }
   console.log('  ✓ charts (COA) root heads + default detail accounts')
@@ -174,8 +175,8 @@ async function main() {
 
   for (const m of mappings) {
     if (!m.accountId) continue
-    const existing = await db.accountMapping.findFirst({ where: { key: m.key, branchId: null } })
-    if (!existing) await db.accountMapping.create({ data: { key: m.key, accountId: m.accountId, branchId: null } })
+    const existing = await db.accountMapping.findFirst({ where: { key: m.key, branchId: branch.id } })
+    if (!existing) await db.accountMapping.create({ data: { key: m.key, accountId: m.accountId, branchId: branch.id } })
     else await db.accountMapping.update({ where: { id: existing.id }, data: { accountId: m.accountId } })
   }
   console.log(`  ✓ ${mappings.length} account mappings`)
@@ -197,16 +198,19 @@ async function main() {
   }
   console.log('  ✓ financial year + periods')
 
-  // 10. Default membership plans
-  for (const [code, name, days, amount] of [
-    ['MP-001', 'Monthly', 30, 3000],
-    ['MP-002', 'Quarterly', 90, 8000],
-    ['MP-003', 'Annual', 365, 30000],
-  ] as const) {
+  // 10. Default membership plans — id IS the business id {branch}/{MMMyy}/{00001}
+  const mon = mmmYY(new Date())
+  const planSeeds = [
+    { name: 'Monthly', days: 30, amount: 3000 },
+    { name: 'Quarterly', days: 90, amount: 8000 },
+    { name: 'Annual', days: 365, amount: 30000 },
+  ]
+  for (const [i, p] of planSeeds.entries()) {
+    const planId = `${branch.code}/${mon}/${pad(i + 1, 5)}`
     await db.membershipPlan.upsert({
-      where: { code },
+      where: { id: planId },
       update: {},
-      create: { code, name, durationDays: days, amount, description: `${name} plan` },
+      create: { id: planId, name: p.name, durationDays: p.days, amount: p.amount, description: `${p.name} plan`, branchId: branch.id },
     })
   }
   console.log('  ✓ default membership plans')
@@ -225,21 +229,22 @@ async function main() {
   }
   console.log('  ✓ default shifts')
 
-  // 12. Leave types — LeaveType table removed; now MasterFile(masterType='LeaveType')
+  // 12. Leave types — dbo.payrollmasterfile (masterType = 'Leave Type');
+  //     Leave.leaveType stores the type NAME.
   for (const lt of [
     { name: 'Casual', allowedDays: 10, isPaid: true },
     { name: 'Sick', allowedDays: 10, isPaid: true },
     { name: 'Paid', allowedDays: 5, isPaid: true },
     { name: 'Unpaid', allowedDays: 0, isPaid: false },
   ]) {
-    const extra = JSON.stringify(lt)
-    await db.masterFile.upsert({
-      where: { masterType_name: { masterType: 'LeaveType', name: lt.name } },
+    const extra = JSON.stringify({ allowedDays: lt.allowedDays, isPaid: lt.isPaid })
+    await db.payrollMasterFile.upsert({
+      where: { masterType_name: { masterType: 'Leave Type', name: lt.name } },
       update: { extra },
-      create: { masterType: 'LeaveType', code: lt.name.toUpperCase().slice(0, 3), name: lt.name, extra, isActive: true },
+      create: { masterType: 'Leave Type', name: lt.name, extra, isActive: true },
     })
   }
-  console.log('  ✓ leave types (master files)')
+  console.log('  ✓ leave types (payrollmasterfile)')
 
   // 13. Allowances
   for (const a of [
@@ -253,11 +258,11 @@ async function main() {
   console.log('  ✓ allowances')
 
   // 14. Default trainer staff
-  const existingTrainer = await db.staff.findFirst({ where: { employeeId: 'EMP-0001' } })
+  const existingTrainer = await db.staff.findFirst({ where: { employeeId: 'EMP-00001' } })
   if (!existingTrainer) {
     await db.staff.create({
       data: {
-        employeeId: 'EMP-0001',
+        employeeId: 'EMP-00001',
         firstName: 'Imran',
         lastName: 'Khan',
         phone: '03001234567',
@@ -271,23 +276,30 @@ async function main() {
         basicSalary: 40000,
       },
     })
-    console.log('  ✓ default trainer (EMP-0001)')
+    console.log('  ✓ default trainer (EMP-00001)')
   }
 
-  // 15. Payroll master file defaults (earnings / deductions heads)
+  // 15. Payroll master file defaults — earning/deduction heads stored as
+  //     payrollmasterfile rows (masterType 'Earning'/'Deduction', calcType and
+  //     amount serialized in `extra`)
   for (const p of [
-    { code: 'PMF-001', name: 'Basic Salary', type: 'Earning', calcType: 'Fixed', amount: 0, isActive: true },
-    { code: 'PMF-002', name: 'Fuel Allowance', type: 'Earning', calcType: 'Fixed', amount: 0, isActive: true },
-    { code: 'PMF-003', name: 'House Rent Allowance', type: 'Earning', calcType: 'Fixed', amount: 0, isActive: true },
-    { code: 'PMF-004', name: 'Overtime', type: 'Earning', calcType: 'Percent', amount: 0, isActive: true },
-    { code: 'PMF-005', name: 'SESSI', type: 'Deduction', calcType: 'Percent', amount: 6, isActive: true },
-    { code: 'PMF-006', name: 'EOBI', type: 'Deduction', calcType: 'Fixed', amount: 1000, isActive: true },
-    { code: 'PMF-007', name: 'Advance Recovery', type: 'Deduction', calcType: 'Fixed', amount: 0, isActive: true },
+    { name: 'Basic Salary', masterType: 'Earning', calcType: 'Fixed', amount: 0 },
+    { name: 'Fuel Allowance', masterType: 'Earning', calcType: 'Fixed', amount: 0 },
+    { name: 'House Rent Allowance', masterType: 'Earning', calcType: 'Fixed', amount: 0 },
+    { name: 'Overtime', masterType: 'Earning', calcType: 'Percent', amount: 0 },
+    { name: 'SESSI', masterType: 'Deduction', calcType: 'Percent', amount: 6 },
+    { name: 'EOBI', masterType: 'Deduction', calcType: 'Fixed', amount: 1000 },
+    { name: 'Advance Recovery', masterType: 'Deduction', calcType: 'Fixed', amount: 0 },
   ]) {
     await db.payrollMasterFile.upsert({
-      where: { code: p.code },
+      where: { masterType_name: { masterType: p.masterType, name: p.name } },
       update: {},
-      create: p,
+      create: {
+        masterType: p.masterType,
+        name: p.name,
+        extra: JSON.stringify({ calcType: p.calcType, amount: p.amount }),
+        isActive: true,
+      },
     })
   }
   console.log('  ✓ payroll master file defaults')

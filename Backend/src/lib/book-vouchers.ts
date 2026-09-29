@@ -2,15 +2,20 @@ import { db } from './db'
 import { makeBookVoucherId, type BookVoucherPrefix } from './ids'
 
 // =================================================================
-// Dedicated book voucher posting (replaces generic Voucher)
-//   CRV Cash Receipt      : cash book DEBITED,  detail lines CREDITED
-//   CPV Cash Payment      : cash book CREDITED, detail lines DEBITED
-//   BRV Bank Receipt      : bank book DEBITED,  detail lines CREDITED
-//   BPV Bank Payment      : bank book CREDITED, detail lines DEBITED
-//   JV  Journal           : user enters Dr/Cr manually (must balance)
-//   OTV Opening TB        : user enters Dr/Cr; may be saved unbalanced
-//                           (difference parked, can be knocked off later)
-// Voucher ID == Voucher Number, e.g. CRV/MAIN/Sep25/000001; reversal appends -R.
+// Dedicated book voucher posting (four books, each with its own line
+// table after the SQL Server migration):
+//   CASHBOOK -> CashBook  + CashBookLine   (CRV Cash Receipt / CPV Cash Payment)
+//   BANKBOOK -> BankBook  + BankBookLine   (BRV Bank Receipt / BPV Bank Payment)
+//   JV       -> JV        + JVLine         (manual Dr/Cr, must balance)
+//   OTB      -> OpenTB    + OpenTBLine     (opening TB; may be saved unbalanced)
+//
+// Posting rules:
+//   CRV / BRV (receipts): book account DEBITED,  detail lines CREDITED
+//   CPV / BPV (payments): book account CREDITED, detail lines DEBITED
+//   JV  : user enters Dr/Cr manually (must balance)
+//   OTV : user enters Dr/Cr; may be saved unbalanced (difference parked)
+//
+// Voucher ID == Voucher Number, e.g. CRV/BR-001/SEP26/000001; reversal appends -R.
 // =================================================================
 
 export type BookType = 'CASHBOOK' | 'BANKBOOK' | 'JV' | 'OTB'
@@ -22,10 +27,10 @@ export interface BookLineInput {
   debit?: number           // explicit for JV/OTV
   credit?: number          // explicit for JV/OTV
   lineDescription?: string
-  title?: string
+  title?: string           // cash/bank books only
   reference?: string
-  billType?: string        // Bill Type (Dr/Cr mapping per BILL_TYPE_SIDES)
-  taxRate?: number
+  billType?: string        // cash/bank books only (Dr/Cr mapping per BILL_TYPE_SIDES)
+  taxRate?: number         // stored as taxPercent on the line
   taxAmount?: number
   chequeNo?: string
   chequeBankName?: string
@@ -56,6 +61,16 @@ export function bookTypeFor(voucherType: BookVoucherType): BookType {
   return 'OTB'
 }
 
+/** Prisma delegate names for the voucher + line tables of a book. */
+export function bookDelegates(bookType: BookType): { voucher: string; line: string } {
+  switch (bookType) {
+    case 'CASHBOOK': return { voucher: 'cashBook', line: 'cashBookLine' }
+    case 'BANKBOOK': return { voucher: 'bankBook', line: 'bankBookLine' }
+    case 'JV': return { voucher: 'journalVoucher', line: 'journalVoucherLine' }
+    default: return { voucher: 'openingTbVoucher', line: 'openingTbLine' }
+  }
+}
+
 function usesBookAccount(voucherType: BookVoucherType): boolean {
   return voucherType === 'CRV' || voucherType === 'CPV' || voucherType === 'BRV' || voucherType === 'BPV'
 }
@@ -63,6 +78,16 @@ function usesBookAccount(voucherType: BookVoucherType): boolean {
 /** true when the book account is DEBITED (receipts); false when CREDITED (payments) */
 function bookIsDebited(voucherType: BookVoucherType): boolean {
   return voucherType === 'CRV' || voucherType === 'BRV'
+}
+
+/** Lines carrying tax totals (cash/bank/JV) vs plain lines (OpenTB). */
+function lineHasTax(bookType: BookType): boolean {
+  return bookType !== 'OTB'
+}
+
+/** Lines carry title/billType/cheque columns (cash + bank books only). */
+function lineHasChequeFields(bookType: BookType): boolean {
+  return bookType === 'CASHBOOK' || bookType === 'BANKBOOK'
 }
 
 interface FinalLine {
@@ -86,36 +111,38 @@ function r2(n: number): number {
   return Math.round(Number(n || 0) * 100) / 100
 }
 
-async function persistLines(
-  tx: any,
-  voucherId: string,
-  voucherType: BookVoucherType,
-  bookType: BookType,
-  lines: FinalLine[],
-) {
+/** Build the create payload for the appropriate line table. */
+function lineData(bookType: BookType, voucherId: string, voucherType: BookVoucherType, l: FinalLine): Record<string, unknown> {
+  const data: Record<string, unknown> = {
+    voucherId,
+    accountId: l.accountId,
+    debit: r2(l.debit),
+    credit: r2(l.credit),
+    amount: r2(l.amount),
+    lineDescription: l.lineDescription,
+    reference: l.reference,
+    status: l.status || 'Active',
+  }
+  if (lineHasTax(bookType)) {
+    data.taxPercent = r2(l.taxRate)
+    data.taxAmount = r2(l.taxAmount)
+    data.total = r2(r2(l.amount) + r2(l.taxAmount))
+  }
+  if (lineHasChequeFields(bookType)) {
+    data.title = l.title
+    data.billType = l.billType
+    data.chequeNo = l.chequeNo
+    data.chequeAmount = l.chequeAmount ?? (l.chequeNo ? r2(l.amount) : null) // cheque amount synced with amount
+    data.chequeBankName = l.chequeBankName
+    data.chequeStatus = l.chequeNo ? 'Hold' : null
+  }
+  return data
+}
+
+async function persistLines(tx: any, bookType: BookType, voucherId: string, voucherType: BookVoucherType, lines: FinalLine[]) {
+  const { line } = bookDelegates(bookType)
   for (const l of lines) {
-    await tx.bookVoucherLine.create({
-      data: {
-        voucherId,
-        voucherType,
-        bookType,
-        accountId: l.accountId,
-        debit: r2(l.debit),
-        credit: r2(l.credit),
-        amount: r2(l.amount),
-        lineDescription: l.lineDescription,
-        title: l.title,
-        reference: l.reference,
-        billType: l.billType,
-        taxRate: l.taxRate,
-        taxAmount: l.taxAmount,
-        chequeNo: l.chequeNo,
-        chequeAmount: l.chequeAmount ?? (l.chequeNo ? r2(l.amount) : null), // cheque amount synced with amount
-        chequeBankName: l.chequeBankName,
-        chequeStatus: l.chequeNo ? 'Hold' : null,
-        status: l.status,
-      },
-    })
+    await tx[line].create({ data: lineData(bookType, voucherId, voucherType, l) })
   }
 }
 
@@ -167,7 +194,7 @@ export async function postBookVoucher(input: PostBookVoucherInput) {
       status: 'Active',
     })
   } else {
-    // JV / OTV — explicit debit/credit per line; bill type may force the side
+    // JV / OTV — explicit debit/credit per line; bill type may force the side (cash/bank only field, kept for symmetry)
     if (!input.lines.length) throw new Error('Voucher must have at least one line')
     finalLines = input.lines.map((l) => {
       let debit = r2(l.debit ?? 0)
@@ -218,15 +245,16 @@ export async function postBookVoucher(input: PostBookVoucherInput) {
     voucherId = await makeBookVoucherId(input.voucherType as BookVoucherPrefix, input.branchCode, input.voucherDate)
   }
 
+  const { voucher: voucherDelegate, line: lineDelegate } = bookDelegates(bookType)
+
   return await db.$transaction(async (tx) => {
     if (isEdit) {
       // ensure exists + still editable (only non-reversed)
-      const table = bookTable(bookType)
-      const existing = await (tx as any)[table].findUnique({ where: { id: voucherId } })
+      const existing = await (tx as any)[voucherDelegate].findUnique({ where: { id: voucherId } })
       if (!existing) throw new Error('Voucher not found for edit')
       if (existing.status === 'Reversed') throw new Error('Reversed vouchers cannot be edited')
-      await tx.bookVoucherLine.deleteMany({ where: { voucherId } })
-      await (tx as any)[table].update({
+      await (tx as any)[lineDelegate].deleteMany({ where: { voucherId } })
+      await (tx as any)[voucherDelegate].update({
         where: { id: voucherId },
         data: {
           voucherDate: input.voucherDate,
@@ -242,8 +270,8 @@ export async function postBookVoucher(input: PostBookVoucherInput) {
           updatedAt: new Date(),
         },
       })
-      await persistLines(tx, voucherId, input.voucherType, bookType, finalLines)
-      const updated = await (tx as any)[table].findUnique({
+      await persistLines(tx, bookType, voucherId, input.voucherType, finalLines)
+      const updated = await (tx as any)[voucherDelegate].findUnique({
         where: { id: voucherId },
         include: { lines: { include: { account: true } } },
       })
@@ -276,27 +304,17 @@ export async function postBookVoucher(input: PostBookVoucherInput) {
       }
     }
 
-    const table = bookTable(bookType)
-    const voucher = await (tx as any)[table].create({ data })
-    await persistLines(tx, voucherId, input.voucherType, bookType, finalLines)
+    await (tx as any)[voucherDelegate].create({ data })
+    await persistLines(tx, bookType, voucherId, input.voucherType, finalLines)
     await tx.auditLog.create({
       data: { userId: input.postedById, action: 'POST', module: 'book-vouchers', details: JSON.stringify({ voucherId, voucherType: input.voucherType, totalDebit, totalCredit }) },
     })
-    const created = await (tx as any)[table].findUnique({
+    const created = await (tx as any)[voucherDelegate].findUnique({
       where: { id: voucherId },
       include: { lines: { include: { account: true } } },
     })
     return created
   })
-}
-
-function bookTable(bookType: BookType): 'cashbookVoucher' | 'bankbookVoucher' | 'journalVoucher' | 'openTbVoucher' {
-  switch (bookType) {
-    case 'CASHBOOK': return 'cashbookVoucher'
-    case 'BANKBOOK': return 'bankbookVoucher'
-    case 'JV': return 'journalVoucher'
-    default: return 'openTbVoucher'
-  }
 }
 
 // =================================================================
@@ -347,14 +365,14 @@ export async function resolveSideForBillType(billType: string, accountId: string
 
 export async function reverseBookVoucher(voucherId: string, voucherType: BookVoucherType, userId: string, reason: string) {
   const bookType = bookTypeFor(voucherType)
-  const table = bookTable(bookType)
+  const { voucher: voucherDelegate, line: lineDelegate } = bookDelegates(bookType)
   const reversalId = `${voucherId}-R`
 
   return await db.$transaction(async (tx) => {
-    const v: any = await (tx as any)[table].findUnique({ where: { id: voucherId }, include: { lines: true } })
+    const v: any = await (tx as any)[voucherDelegate].findUnique({ where: { id: voucherId }, include: { lines: true } })
     if (!v) throw new Error('Voucher not found')
     if (v.status === 'Reversed') throw new Error('Voucher already reversed')
-    const dupe = await (tx as any)[table].findUnique({ where: { id: reversalId } })
+    const dupe = await (tx as any)[voucherDelegate].findUnique({ where: { id: reversalId } })
     if (dupe) throw new Error('Voucher already reversed')
 
     const data: any = {
@@ -382,34 +400,36 @@ export async function reverseBookVoucher(voucherId: string, voucherType: BookVou
         data.isBalanced = false
       }
     }
-    await (tx as any)[table].create({ data })
+    await (tx as any)[voucherDelegate].create({ data })
 
     for (const l of v.lines) {
-      await tx.bookVoucherLine.create({
-        data: {
-          voucherId: reversalId,
-          voucherType: v.voucherType,
-          bookType,
-          accountId: l.accountId,
-          debit: l.credit,
-          credit: l.debit,
-          amount: l.amount,
-          lineDescription: `Reversal: ${l.lineDescription || ''}`.slice(0, 250),
-          title: l.title,
-          reference: l.reference,
-          billType: l.billType,
-          taxRate: l.taxRate,
-          taxAmount: l.taxAmount,
-          chequeNo: l.chequeNo,
-          chequeAmount: l.chequeAmount,
-          chequeBankName: l.chequeBankName,
-          chequeStatus: l.chequeStatus,
-          status: 'Active',
-        },
-      })
+      const linePayload: any = {
+        voucherId: reversalId,
+        accountId: l.accountId,
+        debit: l.credit,
+        credit: l.debit,
+        amount: l.amount,
+        lineDescription: `Reversal: ${l.lineDescription || ''}`.slice(0, 250),
+        reference: l.reference,
+        status: 'Active',
+      }
+      if (lineHasTax(bookType)) {
+        linePayload.taxPercent = l.taxPercent
+        linePayload.taxAmount = l.taxAmount
+        linePayload.total = l.total
+      }
+      if (lineHasChequeFields(bookType)) {
+        linePayload.title = l.title
+        linePayload.billType = l.billType
+        linePayload.chequeNo = l.chequeNo
+        linePayload.chequeAmount = l.chequeAmount
+        linePayload.chequeBankName = l.chequeBankName
+        linePayload.chequeStatus = l.chequeStatus
+      }
+      await (tx as any)[lineDelegate].create({ data: linePayload })
     }
 
-    await (tx as any)[table].update({ where: { id: voucherId }, data: { status: 'Reversed', reversedById: userId, reversedAt: new Date(), reversalReason: reason } })
+    await (tx as any)[voucherDelegate].update({ where: { id: voucherId }, data: { status: 'Reversed', reversedById: userId, reversedAt: new Date(), reversalReason: reason } })
     await tx.auditLog.create({ data: { userId, action: 'REVERSE', module: 'book-vouchers', details: JSON.stringify({ voucherId, reversalId, reason }) } })
 
     return reversalId
@@ -417,26 +437,36 @@ export async function reverseBookVoucher(voucherId: string, voucherType: BookVou
 }
 
 // =================================================================
-// Ledger/balance helpers over BookVoucherLine
+// Ledger/balance helpers over the four line tables
 // =================================================================
 
+/** Debit/credit sums for one account across Posted vouchers (optionally up to a date). */
 export async function getChartBalance(chartId: string, asOf?: Date): Promise<{ debit: number; credit: number; balance: number }> {
-  // Vouchers posted (not reversed) up to asOf
-  const dateFilter = asOf ? { voucherDate: { lte: asOf } } : {}
+  const voucherFilter = { status: 'Posted', ...(asOf ? { voucherDate: { lte: asOf } } : {}) }
   const [c, b, j, o] = await Promise.all([
-    db.cashbookVoucher.findMany({ where: { status: 'Posted', ...dateFilter }, select: { id: true } }),
-    db.bankbookVoucher.findMany({ where: { status: 'Posted', ...dateFilter }, select: { id: true } }),
-    db.journalVoucher.findMany({ where: { status: 'Posted', ...dateFilter }, select: { id: true } }),
-    db.openTbVoucher.findMany({ where: { status: 'Posted', ...dateFilter }, select: { id: true } }),
+    db.cashBookLine.aggregate({
+      where: { accountId: chartId, status: 'Active', voucher: voucherFilter },
+      _sum: { debit: true, credit: true },
+    }),
+    db.bankBookLine.aggregate({
+      where: { accountId: chartId, status: 'Active', voucher: voucherFilter },
+      _sum: { debit: true, credit: true },
+    }),
+    db.journalVoucherLine.aggregate({
+      where: { accountId: chartId, status: 'Active', voucher: voucherFilter },
+      _sum: { debit: true, credit: true },
+    }),
+    db.openingTbLine.aggregate({
+      where: { accountId: chartId, status: 'Active', voucher: voucherFilter },
+      _sum: { debit: true, credit: true },
+    }),
   ])
-  const voucherIds = [...c, ...b, ...j, ...o].map((x: any) => x.id)
-  if (!voucherIds.length) return { debit: 0, credit: 0, balance: 0 }
-  const lines = await db.bookVoucherLine.findMany({
-    where: { accountId: chartId, status: 'Active', voucherId: { in: voucherIds } },
-    select: { debit: true, credit: true },
-  })
-  const debit = r2(lines.reduce((s, l) => s + l.debit, 0))
-  const credit = r2(lines.reduce((s, l) => s + l.credit, 0))
+  const debit = r2(
+    (c._sum.debit || 0) + (b._sum.debit || 0) + (j._sum.debit || 0) + (o._sum.debit || 0),
+  )
+  const credit = r2(
+    (c._sum.credit || 0) + (b._sum.credit || 0) + (j._sum.credit || 0) + (o._sum.credit || 0),
+  )
   return { debit, credit, balance: r2(debit - credit) }
 }
 
@@ -446,40 +476,22 @@ export async function getChartBalanceBetween(
   from: Date,
   to: Date,
 ): Promise<{ opening: number; debit: number; credit: number; balance: number }> {
-  const idsBefore = await postedVoucherIdsBefore(from)
-  const idsIn = await postedVoucherIdsBetween(from, to)
-  const [openingLines, periodLines] = await Promise.all([
-    db.bookVoucherLine.findMany({
-      where: { accountId: chartId, status: 'Active', voucherId: { in: idsBefore } },
-      select: { debit: true, credit: true },
-    }),
-    db.bookVoucherLine.findMany({
-      where: { accountId: chartId, status: 'Active', voucherId: { in: idsIn } },
-      select: { debit: true, credit: true },
-    }),
+  const beforeFilter = { status: 'Posted', voucherDate: { lt: from } }
+  const inFilter = { status: 'Posted', voucherDate: { gte: from, lte: to } }
+  const sums = await Promise.all([
+    db.cashBookLine.aggregate({ where: { accountId: chartId, status: 'Active', voucher: beforeFilter }, _sum: { debit: true, credit: true } }),
+    db.bankBookLine.aggregate({ where: { accountId: chartId, status: 'Active', voucher: beforeFilter }, _sum: { debit: true, credit: true } }),
+    db.journalVoucherLine.aggregate({ where: { accountId: chartId, status: 'Active', voucher: beforeFilter }, _sum: { debit: true, credit: true } }),
+    db.openingTbLine.aggregate({ where: { accountId: chartId, status: 'Active', voucher: beforeFilter }, _sum: { debit: true, credit: true } }),
+    db.cashBookLine.aggregate({ where: { accountId: chartId, status: 'Active', voucher: inFilter }, _sum: { debit: true, credit: true } }),
+    db.bankBookLine.aggregate({ where: { accountId: chartId, status: 'Active', voucher: inFilter }, _sum: { debit: true, credit: true } }),
+    db.journalVoucherLine.aggregate({ where: { accountId: chartId, status: 'Active', voucher: inFilter }, _sum: { debit: true, credit: true } }),
+    db.openingTbLine.aggregate({ where: { accountId: chartId, status: 'Active', voucher: inFilter }, _sum: { debit: true, credit: true } }),
   ])
-  const opening = r2(openingLines.reduce((s, l) => s + l.debit - l.credit, 0))
-  const debit = r2(periodLines.reduce((s, l) => s + l.debit, 0))
-  const credit = r2(periodLines.reduce((s, l) => s + l.credit, 0))
+  const sumDebit = (idx: number[]) => r2(idx.reduce((s, i) => s + (sums[i]._sum.debit || 0), 0))
+  const sumCredit = (idx: number[]) => r2(idx.reduce((s, i) => s + (sums[i]._sum.credit || 0), 0))
+  const opening = r2(sumDebit([0, 1, 2, 3]) - sumCredit([0, 1, 2, 3]))
+  const debit = sumDebit([4, 5, 6, 7])
+  const credit = sumCredit([4, 5, 6, 7])
   return { opening, debit, credit, balance: r2(opening + debit - credit) }
-}
-
-async function postedVoucherIdsBefore(date: Date): Promise<string[]> {
-  const [c, b, j, o] = await Promise.all([
-    db.cashbookVoucher.findMany({ where: { status: 'Posted', voucherDate: { lt: date } }, select: { id: true } }),
-    db.bankbookVoucher.findMany({ where: { status: 'Posted', voucherDate: { lt: date } }, select: { id: true } }),
-    db.journalVoucher.findMany({ where: { status: 'Posted', voucherDate: { lt: date } }, select: { id: true } }),
-    db.openTbVoucher.findMany({ where: { status: 'Posted', voucherDate: { lt: date } }, select: { id: true } }),
-  ])
-  return [...c, ...b, ...j, ...o].map((x: any) => x.id)
-}
-
-async function postedVoucherIdsBetween(from: Date, to: Date): Promise<string[]> {
-  const [c, b, j, o] = await Promise.all([
-    db.cashbookVoucher.findMany({ where: { status: 'Posted', voucherDate: { gte: from, lte: to } }, select: { id: true } }),
-    db.bankbookVoucher.findMany({ where: { status: 'Posted', voucherDate: { gte: from, lte: to } }, select: { id: true } }),
-    db.journalVoucher.findMany({ where: { status: 'Posted', voucherDate: { gte: from, lte: to } }, select: { id: true } }),
-    db.openTbVoucher.findMany({ where: { status: 'Posted', voucherDate: { gte: from, lte: to } }, select: { id: true } }),
-  ])
-  return [...c, ...b, ...j, ...o].map((x: any) => x.id)
 }

@@ -1,22 +1,30 @@
 -- ============================================================================
--- Contoura Gym Management System — STEP 3: Views and Functions
+-- Contoura Gym Management System - STEP 3: Views and Functions (FINAL design)
 -- ============================================================================
--- Reporting views and scalar functions used for analytics and convenience.
+-- Reporting views and scalar functions over the FINAL schema:
+--   * charts.id IS the account code (no separate Account/code columns)
+--   * ledger data lives in the four book tables CashBook/BankBook/JV/OpenTB
+--     joined to their line tables (CashBookLine/BankBookLine/JVLine/OpenTBLine)
+--   * fee payments reference book vouchers via FeePayment.bookVoucherId
+--
+-- Every CREATE ... statement is the first statement in its own batch (GO).
 -- Safe to re-run (CREATE OR ALTER).
+-- Run after 02_schema_tables.sql on the GymDB database.
 -- ============================================================================
 
 USE [GymDB];
 GO
 
--- ================================================================
--- FUNCTIONS
--- ================================================================
-
--- Age of a member/staff from date of birth
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_NULLS ON;
 GO
+
+-- ---------------------------------------------------------------------------
+-- Scalar functions
+-- ---------------------------------------------------------------------------
+
 CREATE OR ALTER FUNCTION dbo.fn_CalculateAge (@dob DATETIME2)
-RETURNS INT
-AS
+RETURNS INT AS
 BEGIN
     IF @dob IS NULL RETURN NULL;
     DECLARE @age INT = DATEDIFF(YEAR, @dob, GETDATE());
@@ -25,126 +33,141 @@ BEGIN
 END
 GO
 
--- Current outstanding balance of a member (sum of unpaid fee balances)
-GO
 CREATE OR ALTER FUNCTION dbo.fn_MemberOutstanding (@memberId NVARCHAR(50))
-RETURNS DECIMAL(18,2)
-AS
+RETURNS DECIMAL(18,2) AS
 BEGIN
     DECLARE @bal DECIMAL(18,2);
     SELECT @bal = ISNULL(SUM(balance), 0)
-    FROM dbo.[Fee]
+    FROM dbo.Fee
     WHERE memberId = @memberId AND status <> N'Voided';
     RETURN ISNULL(@bal, 0);
 END
 GO
 
--- Net movement (debit - credit) posted on an account, optionally within a range
-GO
+-- account balance over ALL FOUR book line tables
 CREATE OR ALTER FUNCTION dbo.fn_AccountBalance (@accountId NVARCHAR(50), @fromDate DATETIME2 = NULL, @toDate DATETIME2 = NULL)
-RETURNS DECIMAL(18,2)
-AS
+RETURNS DECIMAL(18,2) AS
 BEGIN
     DECLARE @bal DECIMAL(18,2);
+    IF NOT EXISTS (SELECT 1 FROM dbo.charts WHERE id = @accountId) RETURN 0;
     SELECT @bal = ISNULL(SUM(ISNULL(l.debit,0) - ISNULL(l.credit,0)), 0)
-    FROM dbo.VoucherLine l
-    INNER JOIN dbo.Voucher v ON v.id = l.voucherId
-    WHERE l.accountId = @accountId
-      AND v.status = N'Posted'
-      AND (@fromDate IS NULL OR v.voucherDate >= @fromDate)
-      AND (@toDate   IS NULL OR v.voucherDate <= @toDate);
+    FROM (
+        SELECT cb.voucherDate, cl.debit, cl.credit
+        FROM dbo.CashBook cb JOIN dbo.CashBookLine cl ON cl.voucherId = cb.id
+        WHERE cb.status = N'Posted' AND cl.accountId = @accountId
+        UNION ALL
+        SELECT bb.voucherDate, bl.debit, bl.credit
+        FROM dbo.BankBook bb JOIN dbo.BankBookLine bl ON bl.voucherId = bb.id
+        WHERE bb.status = N'Posted' AND bl.accountId = @accountId
+        UNION ALL
+        SELECT j.voucherDate, jl.debit, jl.credit
+        FROM dbo.JV j JOIN dbo.JVLine jl ON jl.voucherId = j.id
+        WHERE j.status = N'Posted' AND jl.accountId = @accountId
+        UNION ALL
+        SELECT o.voucherDate, ol.debit, ol.credit
+        FROM dbo.OpenTB o JOIN dbo.OpenTBLine ol ON ol.voucherId = o.id
+        WHERE o.status = N'Posted' AND ol.accountId = @accountId
+    ) l
+    WHERE (@fromDate IS NULL OR l.voucherDate >= @fromDate)
+      AND (@toDate   IS NULL OR l.voucherDate <= @toDate);
     RETURN ISNULL(@bal, 0);
 END
 GO
 
--- ================================================================
--- VIEWS
--- ================================================================
+-- ---------------------------------------------------------------------------
+-- Views
+-- ---------------------------------------------------------------------------
 
--- Active members with plan and branch info
+-- Trial balance over the four books (charts.id = account code)
+CREATE OR ALTER VIEW dbo.vw_TrialBalance
+AS
+WITH ledger AS (
+    SELECT cl.accountId, cl.debit, cl.credit FROM dbo.CashBook  cb JOIN dbo.CashBookLine  cl ON cl.voucherId = cb.id WHERE cb.status = N'Posted'
+    UNION ALL
+    SELECT bl.accountId, bl.debit, bl.credit FROM dbo.BankBook  bb JOIN dbo.BankBookLine  bl ON bl.voucherId = bb.id WHERE bb.status = N'Posted'
+    UNION ALL
+    SELECT jl.accountId, jl.debit, jl.credit FROM dbo.JV        j  JOIN dbo.JVLine        jl ON jl.voucherId = j.id  WHERE j.status  = N'Posted'
+    UNION ALL
+    SELECT ol.accountId, ol.debit, ol.credit FROM dbo.OpenTB    o  JOIN dbo.OpenTBLine    ol ON ol.voucherId = o.id  WHERE o.status  = N'Posted'
+)
+SELECT  c.id AS accountCode, c.name AS accountName, c.accountType, c.bookType,
+        c.accountTag, c.isDetail,
+        ISNULL(SUM(ISNULL(l.debit, 0)), 0)  AS totalDebit,
+        ISNULL(SUM(ISNULL(l.credit, 0)), 0) AS totalCredit,
+        ISNULL(SUM(ISNULL(l.debit, 0) - ISNULL(l.credit, 0)), 0) AS netBalance
+FROM dbo.charts c
+LEFT JOIN ledger l ON l.accountId = c.id
+WHERE c.isDetail = 1
+GROUP BY c.id, c.name, c.accountType, c.bookType, c.accountTag, c.isDetail;
 GO
+
 CREATE OR ALTER VIEW dbo.vw_ActiveMembers
 AS
-SELECT  m.id, m.memberId, m.firstName, m.lastName,
+SELECT  m.id, m.id AS memberCode, m.firstName, m.lastName,
         (m.firstName + N' ' + m.lastName) AS fullName,
         m.gender, m.phone, m.email, m.status, m.joiningDate,
         m.billingStartDate, m.isActive,
-        p.name AS planName, p.code AS planCode, p.amount AS planAmount,
+        p.name AS planName, p.id AS planCode, p.amount AS planAmount,
         b.name AS branchName, b.code AS branchCode,
         s.firstName + N' ' + s.lastName AS trainerName,
         dbo.fn_MemberOutstanding(m.id) AS outstandingBalance
-FROM dbo.[Member] m
+FROM dbo.Member m
 LEFT JOIN dbo.MembershipPlan p ON p.id = m.membershipPlanId
 LEFT JOIN dbo.Branch b         ON b.id = m.branchId
 LEFT JOIN dbo.Staff s          ON s.id = m.assignedTrainerId
 WHERE m.isDeleted = 0 AND m.isActive = 1;
 GO
 
--- Fees that still carry an outstanding balance
-GO
 CREATE OR ALTER VIEW dbo.vw_OutstandingFees
 AS
-SELECT  f.id, f.feeNo, f.memberId, (m.firstName + N' ' + m.lastName) AS memberName,
-        m.memberId AS memberCode, f.billingPeriodStart, f.billingPeriodEnd,
+SELECT  f.id, f.memberId, (m.firstName + N' ' + m.lastName) AS memberName,
+        m.id AS memberCode, f.billingPeriodStart, f.billingPeriodEnd,
         f.amount, f.discount, f.paidAmount, f.balance, f.dueDate, f.status,
         b.name AS branchName,
         DATEDIFF(DAY, f.dueDate, GETDATE()) AS daysOverdue
-FROM dbo.[Fee] f
-INNER JOIN dbo.[Member] m ON m.id = f.memberId
-LEFT JOIN dbo.Branch b    ON b.id = f.branchId
+FROM dbo.Fee f
+INNER JOIN dbo.Member m ON m.id = f.memberId
+LEFT JOIN dbo.Branch b  ON b.id = f.branchId
 WHERE f.balance > 0 AND f.status <> N'Voided';
 GO
 
--- Trial balance: per-account posted debit/credit totals
-GO
-CREATE OR ALTER VIEW dbo.vw_TrialBalance
-AS
-SELECT  a.id AS accountId, a.code, a.name AS accountName, a.accountType, a.bookType,
-        a.accountTag, a.isDetail,
-        ISNULL(SUM(ISNULL(l.debit, 0)), 0)  AS totalDebit,
-        ISNULL(SUM(ISNULL(l.credit, 0)), 0) AS totalCredit,
-        ISNULL(SUM(ISNULL(l.debit, 0) - ISNULL(l.credit, 0)), 0) AS netBalance
-FROM dbo.[Account] a
-LEFT JOIN dbo.VoucherLine l ON l.accountId = a.id
-LEFT JOIN dbo.Voucher v     ON v.id = l.voucherId AND v.status = N'Posted'
-WHERE a.isDetail = 1
-GROUP BY a.id, a.code, a.name, a.accountType, a.bookType, a.accountTag, a.isDetail;
-GO
-
--- Monthly revenue (fee income + POS income) from posted vouchers
-GO
 CREATE OR ALTER VIEW dbo.vw_MonthlyRevenue
 AS
-SELECT  YEAR(v.voucherDate) AS [year], MONTH(v.voucherDate) AS [month],
-        a.accountTag,
+WITH ledger AS (
+    SELECT cb.voucherDate, cl.accountId, cl.debit, cl.credit FROM dbo.CashBook cb JOIN dbo.CashBookLine cl ON cl.voucherId = cb.id WHERE cb.status = N'Posted'
+    UNION ALL
+    SELECT bb.voucherDate, bl.accountId, bl.debit, bl.credit FROM dbo.BankBook bb JOIN dbo.BankBookLine bl ON bl.voucherId = bb.id WHERE bb.status = N'Posted'
+    UNION ALL
+    SELECT j.voucherDate,  jl.accountId, jl.debit, jl.credit FROM dbo.JV j      JOIN dbo.JVLine       jl ON jl.voucherId = j.id  WHERE j.status  = N'Posted'
+    UNION ALL
+    SELECT o.voucherDate,  ol.accountId, ol.debit, ol.credit FROM dbo.OpenTB o  JOIN dbo.OpenTBLine   ol ON ol.voucherId = o.id  WHERE o.status  = N'Posted'
+)
+SELECT  YEAR(l.voucherDate) AS [year], MONTH(l.voucherDate) AS [month],
+        c.accountTag,
         SUM(ISNULL(l.credit, 0) - ISNULL(l.debit, 0)) AS revenue
-FROM dbo.Voucher v
-INNER JOIN dbo.VoucherLine l ON l.voucherId = v.id
-INNER JOIN dbo.[Account] a   ON a.id = l.accountId
-WHERE v.status = N'Posted' AND a.accountType = N'Revenue'
-GROUP BY YEAR(v.voucherDate), MONTH(v.voucherDate), a.accountTag;
+FROM ledger l
+INNER JOIN dbo.charts c ON c.id = l.accountId
+WHERE c.accountType = N'Revenue'
+GROUP BY YEAR(l.voucherDate), MONTH(l.voucherDate), c.accountTag;
 GO
 
--- Attendance with member context (gym reports)
-GO
 CREATE OR ALTER VIEW dbo.vw_AttendanceLog
 AS
 SELECT  a.id, a.date, a.checkIn, a.checkOut, a.notes,
-        m.memberId AS memberCode, (m.firstName + N' ' + m.lastName) AS memberName,
+        m.id AS memberCode, (m.firstName + N' ' + m.lastName) AS memberName,
         m.membershipPlanId, p.name AS planName,
         b.name AS branchName, b.id AS branchId
 FROM dbo.Attendance a
-INNER JOIN dbo.[Member] m ON m.id = a.memberId
+INNER JOIN dbo.Member m ON m.id = a.memberId
 LEFT JOIN dbo.MembershipPlan p ON p.id = m.membershipPlanId
 LEFT JOIN dbo.Branch b ON b.id = a.branchId;
 GO
 
--- Payroll register per staff per month
-GO
 CREATE OR ALTER VIEW dbo.vw_PayrollRegister
 AS
 SELECT  p.id, p.payrollNo, p.[month], p.[year], p.basicSalary, p.totalAllowances,
         p.overtimeAmount, p.totalEarnings, p.totalDeductions, p.netPay, p.status,
+        p.bookVoucherId,
         s.employeeId, (s.firstName + N' ' + s.lastName) AS staffName,
         s.designation, s.department,
         b.name AS branchName
@@ -153,8 +176,6 @@ INNER JOIN dbo.Staff s ON s.id = p.staffId
 LEFT JOIN dbo.Branch b ON b.id = p.branchId;
 GO
 
--- Inventory stock status with reorder flags
-GO
 CREATE OR ALTER VIEW dbo.vw_StockStatus
 AS
 SELECT  i.id, i.code, i.name, i.category, i.unit, i.quantity, i.reorderLevel,
@@ -167,23 +188,37 @@ LEFT JOIN dbo.Branch b ON b.id = i.branchId
 WHERE i.status <> N'Deleted';
 GO
 
--- Class enrollment counts
-GO
-CREATE OR ALTER VIEW dbo.vw_ClassEnrollmentSummary
+-- unified ledger across the four books (line types vary per book)
+CREATE OR ALTER VIEW dbo.vw_BookLedger
 AS
-SELECT  c.id AS classId, c.name AS className, c.capacity, c.dayOfWeek,
-        c.startTime, c.endTime, c.status,
-        (s.firstName + N' ' + s.lastName) AS trainerName,
-        b.name AS branchName,
-        COUNT(e.id) AS enrolled,
-        (c.capacity - COUNT(e.id)) AS seatsLeft
-FROM dbo.GymClass c
-LEFT JOIN dbo.Staff s ON s.id = c.trainerId
-LEFT JOIN dbo.Branch b ON b.id = c.branchId
-LEFT JOIN dbo.ClassEnrollment e ON e.classId = c.id AND e.status = N'Active'
-GROUP BY c.id, c.name, c.capacity, c.dayOfWeek, c.startTime, c.endTime, c.status,
-         s.firstName, s.lastName, b.name;
+SELECT 'CASHBOOK' AS bookType, cl.id AS lineId, cl.voucherId, cb.voucherType, cb.voucherDate,
+       cb.branchId, cl.accountId, c.name AS accountName, c.accountType,
+       cl.debit, cl.credit, cl.amount, cl.taxPercent, cl.taxAmount, cl.total,
+       cl.billType, cl.chequeNo, cl.chequeAmount, cl.lineDescription, cl.status AS lineStatus, cb.status AS voucherStatus
+FROM dbo.CashBook cb JOIN dbo.CashBookLine cl ON cl.voucherId = cb.id
+JOIN dbo.charts c ON c.id = cl.accountId
+UNION ALL
+SELECT 'BANKBOOK', bl.id, bl.voucherId, bb.voucherType, bb.voucherDate,
+       bb.branchId, bl.accountId, c.name, c.accountType,
+       bl.debit, bl.credit, bl.amount, bl.taxPercent, bl.taxAmount, bl.total,
+       bl.billType, bl.chequeNo, bl.chequeAmount, bl.lineDescription, bl.status, bb.status
+FROM dbo.BankBook bb JOIN dbo.BankBookLine bl ON bl.voucherId = bb.id
+JOIN dbo.charts c ON c.id = bl.accountId
+UNION ALL
+SELECT 'JV', jl.id, jl.voucherId, j.voucherType, j.voucherDate,
+       j.branchId, jl.accountId, c.name, c.accountType,
+       jl.debit, jl.credit, jl.amount, jl.taxPercent, jl.taxAmount, jl.total,
+       NULL, NULL, NULL, jl.lineDescription, jl.status, j.status
+FROM dbo.JV j JOIN dbo.JVLine jl ON jl.voucherId = j.id
+JOIN dbo.charts c ON c.id = jl.accountId
+UNION ALL
+SELECT 'OTB', ol.id, ol.voucherId, o.voucherType, o.voucherDate,
+       o.branchId, ol.accountId, c.name, c.accountType,
+       ol.debit, ol.credit, ol.amount, NULL, NULL, NULL,
+       NULL, NULL, NULL, ol.lineDescription, ol.status, o.status
+FROM dbo.OpenTB o JOIN dbo.OpenTBLine ol ON ol.voucherId = o.id
+JOIN dbo.charts c ON c.id = ol.accountId;
 GO
 
-PRINT 'Step 03 complete: views and functions created.';
+PRINT 'Step 03 complete: final views and functions created.';
 GO

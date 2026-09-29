@@ -41,32 +41,47 @@ function r2(n: number): number {
 
 /** All Active voucher lines (with parent voucher info) for one account, from Posted vouchers only. */
 async function postedLinesForAccount(accountId: string): Promise<PostedLine[]> {
-  const lines = await db.bookVoucherLine.findMany({
-    where: { accountId, status: 'Active' },
-    include: {
-      cashbookVoucher: { select: { id: true, voucherType: true, voucherDate: true, branchId: true, status: true, description: true } },
-      bankbookVoucher: { select: { id: true, voucherType: true, voucherDate: true, branchId: true, status: true, description: true } },
-      journalVoucher: { select: { id: true, voucherType: true, voucherDate: true, branchId: true, status: true, description: true } },
-      openTbVoucher: { select: { id: true, voucherType: true, voucherDate: true, branchId: true, status: true, description: true } },
-    },
-  })
+  const voucherSelect = { id: true, voucherType: true, voucherDate: true, branchId: true, status: true, description: true }
+  // Four separate line tables (final schema) — union them per account
+  const [cashLines, bankLines, jvLines, otbLines] = await Promise.all([
+    db.cashBookLine.findMany({
+      where: { accountId, status: 'Active', voucher: { status: 'Posted' } },
+      include: { voucher: { select: voucherSelect } },
+    }),
+    db.bankBookLine.findMany({
+      where: { accountId, status: 'Active', voucher: { status: 'Posted' } },
+      include: { voucher: { select: voucherSelect } },
+    }),
+    db.journalVoucherLine.findMany({
+      where: { accountId, status: 'Active', voucher: { status: 'Posted' } },
+      include: { voucher: { select: voucherSelect } },
+    }),
+    db.openingTbLine.findMany({
+      where: { accountId, status: 'Active', voucher: { status: 'Posted' } },
+      include: { voucher: { select: voucherSelect } },
+    }),
+  ])
   const out: PostedLine[] = []
-  for (const l of lines) {
-    const v = l.cashbookVoucher || l.bankbookVoucher || l.journalVoucher || l.openTbVoucher
-    if (!v || v.status !== 'Posted') continue
+  const push = (l: any, bookType: string) => {
+    const v = l.voucher
+    if (!v || v.status !== 'Posted') return
     out.push({
       date: v.voucherDate,
       voucherNo: v.id,
       type: v.voucherType,
-      bookType: l.bookType,
+      bookType,
       branchId: v.branchId,
       description: l.lineDescription || v.description,
       debit: l.debit,
       credit: l.credit,
-      taxAmount: l.taxAmount,
-      taxRate: l.taxRate,
+      taxAmount: l.taxAmount ?? 0,
+      taxRate: l.taxPercent ?? 0,
     })
   }
+  for (const l of cashLines) push(l, 'CASHBOOK')
+  for (const l of bankLines) push(l, 'BANKBOOK')
+  for (const l of jvLines) push(l, 'JV')
+  for (const l of otbLines) push(l, 'OTB')
   out.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
   return out
 }
@@ -82,10 +97,10 @@ async function postedVouchers(opts: { from?: Date; to?: Date; allowed?: string[]
   }
   const select = { id: true, voucherType: true, voucherDate: true, branchId: true, description: true, reference: true, status: true, branch: true }
   const [cash, bank, jv, otb] = await Promise.all([
-    db.cashbookVoucher.findMany({ where: { status: 'Posted', ...dateFilter, ...branchFilter, ...(opts.voucherType ? { voucherType: opts.voucherType } : {}) }, select: { ...select, totalAmount: true } }),
-    db.bankbookVoucher.findMany({ where: { status: 'Posted', ...dateFilter, ...branchFilter, ...(opts.voucherType ? { voucherType: opts.voucherType } : {}) }, select: { ...select, totalAmount: true } }),
+    db.cashBook.findMany({ where: { status: 'Posted', ...dateFilter, ...branchFilter, ...(opts.voucherType ? { voucherType: opts.voucherType } : {}) }, select: { ...select, totalAmount: true } }),
+    db.bankBook.findMany({ where: { status: 'Posted', ...dateFilter, ...branchFilter, ...(opts.voucherType ? { voucherType: opts.voucherType } : {}) }, select: { ...select, totalAmount: true } }),
     db.journalVoucher.findMany({ where: { status: 'Posted', ...dateFilter, ...branchFilter, ...(opts.voucherType ? { voucherType: opts.voucherType } : {}) }, select: { ...select, totalDebit: true, totalCredit: true } }),
-    db.openTbVoucher.findMany({ where: { status: 'Posted', ...dateFilter, ...branchFilter, ...(opts.voucherType ? { voucherType: opts.voucherType } : {}) }, select: { ...select, totalDebit: true, totalCredit: true, difference: true, isBalanced: true } }),
+    db.openingTbVoucher.findMany({ where: { status: 'Posted', ...dateFilter, ...branchFilter, ...(opts.voucherType ? { voucherType: opts.voucherType } : {}) }, select: { ...select, totalDebit: true, totalCredit: true, difference: true, isBalanced: true } }),
   ])
   const rows: any[] = []
   for (const v of cash) {
@@ -248,8 +263,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ report: { title: 'Voucher Register', from, to, vouchers: vouchers.map(({ store, ...rest }: any) => rest) } })
     }
     // Day Book: group by bookType with lines
-    const STORE_TABLE: Record<string, 'cashbookVoucher' | 'bankbookVoucher' | 'journalVoucher' | 'openTbVoucher'> = {
-      CASHBOOK: 'cashbookVoucher', BANKBOOK: 'bankbookVoucher', JV: 'journalVoucher', OTB: 'openTbVoucher',
+    const STORE_TABLE: Record<string, string> = {
+      CASHBOOK: 'cashBook', BANKBOOK: 'bankBook', JV: 'journalVoucher', OTB: 'openingTbVoucher',
     }
     const groupsMap: Record<string, any[]> = { CASHBOOK: [], BANKBOOK: [], JV: [], OTB: [] }
     for (const v of vouchers) {
@@ -295,26 +310,22 @@ export async function GET(req: NextRequest) {
 
   // ---------- Tax Report ----------
   if (reportKey === 'tax-report') {
-    const lines = await db.bookVoucherLine.findMany({
-      where: { taxAmount: { gt: 0 }, status: 'Active' },
-      include: {
-        account: true,
-        cashbookVoucher: { include: { branch: true } },
-        bankbookVoucher: { include: { branch: true } },
-        journalVoucher: { include: { branch: true } },
-        openTbVoucher: { include: { branch: true } },
-      },
-      take: 5000,
-    })
-    const rows = lines
-      .map(l => {
-        const v: any = l.cashbookVoucher || l.bankbookVoucher || l.journalVoucher || l.openTbVoucher
+    // Tax data lives inline on the book lines (taxPercent/taxAmount) — union all four line tables
+    const lineQueries = [
+      db.cashBookLine.findMany({ where: { taxAmount: { gt: 0 }, status: 'Active' }, include: { account: true, voucher: { include: { branch: true } } }, take: 5000 }),
+      db.bankBookLine.findMany({ where: { taxAmount: { gt: 0 }, status: 'Active' }, include: { account: true, voucher: { include: { branch: true } } }, take: 5000 }),
+      db.journalVoucherLine.findMany({ where: { taxAmount: { gt: 0 }, status: 'Active' }, include: { account: true, voucher: { include: { branch: true } } }, take: 5000 }),
+    ]
+    const allLines = (await Promise.all(lineQueries)).flat()
+    const rows = allLines
+      .map((l: any) => {
+        const v = l.voucher
         if (!v || v.status !== 'Posted') return null
         if (v.voucherDate < from || v.voucherDate > to) return null
         if (allowed && !allowed.includes(v.branchId)) return null
         return {
           date: v.voucherDate, voucherNo: v.id, branch: v.branch?.name,
-          account: l.account.name, taxableAmount: r2(l.debit + l.credit), taxAmount: l.taxAmount, taxRate: l.taxRate,
+          account: l.account.name, taxableAmount: r2(l.debit + l.credit), taxAmount: l.taxAmount, taxRate: l.taxPercent,
         }
       })
       .filter(Boolean)
@@ -359,8 +370,8 @@ export async function GET(req: NextRequest) {
       const daysPastDue = Math.max(0, Math.floor((asOf.getTime() - new Date(f.dueDate).getTime()) / 86400000))
       return {
         member: `${f.member.firstName} ${f.member.lastName || ''}`.trim(),
-        memberId: f.member.memberId,
-        feeNo: f.feeNo,
+        memberId: f.member.id,
+        feeNo: f.id,
         dueDate: f.dueDate,
         amount: f.amount,
         balance: f.balance,
