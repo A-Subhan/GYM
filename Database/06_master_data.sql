@@ -1,24 +1,22 @@
 -- ============================================================================
--- Contoura Gym Management System — STEP 6: Master Data (FINAL schema)
+-- Contoura Gym Management System - STEP 6: Master Data (required to run)
 -- ============================================================================
--- Seeds the final-schema tables: Defaults (company write-once), charts
--- (id = account code, parentCode hierarchy), branches, roles/permissions
--- (removed-module screens excluded), master files (gymmasterfile,
--- payrollmasterfile), staff, shifts, allowances.
--- Account ids ARE the account CODES; AccountMapping/FinanceDefaults reference
--- codes. Use on an EMPTY database created by steps 01-05 (plain INSERTs).
--- ============================================================================
--- ============================================================================
--- Contoura Gym Management System — STEP 6: Master Data (required to run)
--- ============================================================================
--- Seeds everything the application needs to boot and to pass authentication:
---   Company, Branches, Roles, Permissions (148), Role assignments, the admin
---   user, Chart of Accounts, Financial Years + periods, Tax Heads, Account
---   Mappings, Finance defaults, Membership plans, Shifts, Leave types,
---   Allowances, Master files, base staff (trainer) and Food items.
+-- Seeds everything the application needs to boot and to pass authentication,
+-- against the FINAL schema:
+--   Defaults (company settings, write-once name), Branches (hierarchy),
+--   Roles, Permissions (148), RolePermission grants, the admin user
+--   (login: admin / admin123), Chart of Accounts ([charts], id = account
+--   code, parentCode='ROOT' for tree roots), Financial Years + periods,
+--   Tax Heads, Account Mappings + Finance Defaults, Membership plans
+--   (business ids BR-001/SEP26/000xx), Shifts, payrollmasterfile Leave Types,
+--   Allowances, MasterFile departments/designations/educations, gymmasterfile
+--   categories (001 Exercise / 002 Equipment / 003 Exercise Type), base
+--   staff (trainer EMP-0001) and Food items.
 --
--- Login created here:  admin / admin123
--- ============================================================================
+-- Plain INSERTs intended for an EMPTY database created by steps 01-05.
+-- Account ids ARE the account codes; AccountMapping/FinanceDefaults
+-- reference codes directly.
+-- ===========================================================================
 
 USE [GymDB];
 GO
@@ -26,6 +24,30 @@ GO
 SET NOCOUNT ON;
 GO
 
+SET QUOTED_IDENTIFIER ON;
+SET ANSI_NULLS ON;
+SET XACT_ABORT ON;
+
+-- Error tracking + skip flag (temp tables survive across GO batches).
+IF OBJECT_ID(N'tempdb..#sql_errors') IS NOT NULL DROP TABLE #sql_errors;
+CREATE TABLE #sql_errors (step nvarchar(100) NOT NULL, message nvarchar(2048) NOT NULL);
+IF OBJECT_ID(N'tempdb..#skip') IS NOT NULL DROP TABLE #skip;
+CREATE TABLE #skip (reason nvarchar(200) NOT NULL);
+
+-- Re-run guard: if master data is already seeded, this file does nothing.
+IF EXISTS (SELECT 1 FROM dbo.[Defaults])
+    INSERT INTO #skip VALUES (N'master data already present');
+GO
+
+-- ============================================================================
+-- Main seed: ONE transaction. Any statement failure rolls back everything and
+-- is recorded in #sql_errors, so the success message at the end cannot lie.
+-- ============================================================================
+IF NOT EXISTS (SELECT 1 FROM #skip) AND NOT EXISTS (SELECT 1 FROM #sql_errors)
+BEGIN
+    BEGIN TRAN;
+
+    BEGIN TRY
 -- Company (1 rows)
 INSERT INTO [Defaults] ([id], [companyName], [address], [phone], [email], [website], [logo], [strn], [ntn], [fbr], [financeType], [coaLevelDigits], [coaLocked], [createdAt], [updatedAt]) VALUES ('cmud5j43g0046tznc5jceve4o', 'Contoura Gym', 'Main Boulevard, Karachi', '+92 21 0000000', 'info@contouragym.com', NULL, NULL, NULL, NULL, NULL, 'FIFO', '2', 0, '2026-09-22T20:53:50.332Z', '2026-09-22T20:53:50.332Z');
 
@@ -656,13 +678,19 @@ INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('cmud5j43c0045tz
 -- User (1 rows)
 INSERT INTO [User] ([id], [username], [email], [fullName], [passwordHash], [roleId], [branchId], [accessibleBranchIds], [phone], [photo], [isActive], [failedLoginCount], [lastLoginAt], [mustChangePassword], [createdAt], [updatedAt], [isDeleted]) VALUES ('cmud5j47c0049tznc3bh3jh9h', 'admin', 'admin@contouragym.com', 'System Administrator', '$2b$10$4sWId8YdsNlr39HgQ51wE.5rFtEFE3l5APRnRO6rYlE15bOUryvpy', 'cmud5j3ud003ztznciorwbydo', 'cmud5j43h0047tznc4kq99n5k', '*', NULL, NULL, 1, 0, '2026-09-23T11:58:33.500Z', 0, '2026-09-22T20:53:50.473Z', '2026-09-23T15:35:44.137Z', 0);
 
--- Account (12 rows)
+-- Account (13 rows: 1 ROOT anchor + 5 control roots + 7 detail accounts)
+-- The 'ROOT' anchor row is REQUIRED: parentCode is NOT NULL and carries a
+-- self-referencing FK to charts.id, while the application uses the sentinel
+-- value 'ROOT' for tree roots (Backend/src/app/api/charts/route.ts and
+-- Backend/tools/seed.ts). Without this row, charts_parentCode_fkey rejects
+-- every root account and the whole seed cascades into FK failures.
+INSERT INTO [charts] ([id], [name], [parentCode], [accountType], [bookType], [accountTag], [isControl], [isDetail], [isActive], [branchId], [contactName], [phone], [email], [address], [bankName], [bankAccountNo], [bankBranch], [cnic], [ntn], [strn], [fbr], [otherName], [referenceNumber], [faxNumber], [city], [country], [website], [paymentTerms], [registrationNumber], [description], [createdAt], [updatedAt]) VALUES ('ROOT', 'Chart of Accounts Root', 'ROOT', 'Asset', NULL, NULL, 1, 0, 1, 'cmud5j43h0047tznc4kq99n5k', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, N'Sentinel parent for top-level accounts', '2026-09-22T20:54:10.390Z', '2026-09-22T20:54:10.390Z');
 INSERT INTO [charts] ([id], [name], [parentCode], [accountType], [bookType], [accountTag], [isControl], [isDetail], [isActive], [branchId], [contactName], [phone], [email], [address], [bankName], [bankAccountNo], [bankBranch], [cnic], [ntn], [strn], [fbr], [otherName], [referenceNumber], [faxNumber], [city], [country], [website], [paymentTerms], [registrationNumber], [description], [createdAt], [updatedAt]) VALUES ('01', 'Assets', 'ROOT', 'Asset', NULL, NULL, 1, 0, 1, 'cmud5j43h0047tznc4kq99n5k', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-09-22T20:54:10.391Z', '2026-09-22T20:54:10.391Z');
 INSERT INTO [charts] ([id], [name], [parentCode], [accountType], [bookType], [accountTag], [isControl], [isDetail], [isActive], [branchId], [contactName], [phone], [email], [address], [bankName], [bankAccountNo], [bankBranch], [cnic], [ntn], [strn], [fbr], [otherName], [referenceNumber], [faxNumber], [city], [country], [website], [paymentTerms], [registrationNumber], [description], [createdAt], [updatedAt]) VALUES ('02', 'Liabilities', 'ROOT', 'Liability', NULL, NULL, 1, 0, 1, 'cmud5j43h0047tznc4kq99n5k', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-09-22T20:54:10.392Z', '2026-09-22T20:54:10.392Z');
 INSERT INTO [charts] ([id], [name], [parentCode], [accountType], [bookType], [accountTag], [isControl], [isDetail], [isActive], [branchId], [contactName], [phone], [email], [address], [bankName], [bankAccountNo], [bankBranch], [cnic], [ntn], [strn], [fbr], [otherName], [referenceNumber], [faxNumber], [city], [country], [website], [paymentTerms], [registrationNumber], [description], [createdAt], [updatedAt]) VALUES ('03', 'Capital / Equity', 'ROOT', 'Equity', NULL, NULL, 1, 0, 1, 'cmud5j43h0047tznc4kq99n5k', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-09-22T20:54:10.393Z', '2026-09-22T20:54:10.393Z');
 INSERT INTO [charts] ([id], [name], [parentCode], [accountType], [bookType], [accountTag], [isControl], [isDetail], [isActive], [branchId], [contactName], [phone], [email], [address], [bankName], [bankAccountNo], [bankBranch], [cnic], [ntn], [strn], [fbr], [otherName], [referenceNumber], [faxNumber], [city], [country], [website], [paymentTerms], [registrationNumber], [description], [createdAt], [updatedAt]) VALUES ('04', 'Revenue', 'ROOT', 'Revenue', NULL, NULL, 1, 0, 1, 'cmud5j43h0047tznc4kq99n5k', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-09-22T20:54:10.394Z', '2026-09-22T20:54:10.394Z');
 INSERT INTO [charts] ([id], [name], [parentCode], [accountType], [bookType], [accountTag], [isControl], [isDetail], [isActive], [branchId], [contactName], [phone], [email], [address], [bankName], [bankAccountNo], [bankBranch], [cnic], [ntn], [strn], [fbr], [otherName], [referenceNumber], [faxNumber], [city], [country], [website], [paymentTerms], [registrationNumber], [description], [createdAt], [updatedAt]) VALUES ('05', 'Expense', 'ROOT', 'Expense', NULL, NULL, 1, 0, 1, 'cmud5j43h0047tznc4kq99n5k', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-09-22T20:54:10.395Z', '2026-09-22T20:54:10.395Z');
-INSERT INTO [charts] ([id], [name], [parentCode], [accountType], [bookType], [accountTag], [isControl], [isDetail], [isActive], [branchId], [contactName], [phone], [email], [address], [bankName], [bankAccountNo], [bankBranch], [cnic], [ntn], [strn], [fbr], [otherName], [referenceNumber], [faxNumber], [city], [country], [website], [paymentTerms], [registrationNumber], [description], [createdAt], [updatedAt]) VALUES ('01002', 'Bank — Current A/C', '01', 'Asset', 'Bank', 'Bank', 0, 1, 1, 'cmud5j43h0047tznc4kq99n5k', NULL, NULL, NULL, NULL, 'HBL', '0000000000000000', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-09-22T20:54:10.398Z', '2026-09-23T11:40:02.202Z');
+INSERT INTO [charts] ([id], [name], [parentCode], [accountType], [bookType], [accountTag], [isControl], [isDetail], [isActive], [branchId], [contactName], [phone], [email], [address], [bankName], [bankAccountNo], [bankBranch], [cnic], [ntn], [strn], [fbr], [otherName], [referenceNumber], [faxNumber], [city], [country], [website], [paymentTerms], [registrationNumber], [description], [createdAt], [updatedAt]) VALUES ('01002', 'Bank - Current A/C', '01', 'Asset', 'Bank', 'Bank', 0, 1, 1, 'cmud5j43h0047tznc4kq99n5k', NULL, NULL, NULL, NULL, 'HBL', '0000000000000000', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-09-22T20:54:10.398Z', '2026-09-23T11:40:02.202Z');
 INSERT INTO [charts] ([id], [name], [parentCode], [accountType], [bookType], [accountTag], [isControl], [isDetail], [isActive], [branchId], [contactName], [phone], [email], [address], [bankName], [bankAccountNo], [bankBranch], [cnic], [ntn], [strn], [fbr], [otherName], [referenceNumber], [faxNumber], [city], [country], [website], [paymentTerms], [registrationNumber], [description], [createdAt], [updatedAt]) VALUES ('01003', 'Membership Receivable', '01', 'Asset', NULL, 'Customer', 0, 1, 1, 'cmud5j43h0047tznc4kq99n5k', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-09-22T20:54:10.400Z', '2026-09-23T11:40:02.205Z');
 INSERT INTO [charts] ([id], [name], [parentCode], [accountType], [bookType], [accountTag], [isControl], [isDetail], [isActive], [branchId], [contactName], [phone], [email], [address], [bankName], [bankAccountNo], [bankBranch], [cnic], [ntn], [strn], [fbr], [otherName], [referenceNumber], [faxNumber], [city], [country], [website], [paymentTerms], [registrationNumber], [description], [createdAt], [updatedAt]) VALUES ('04001', 'Membership Fee Income', '04', 'Revenue', NULL, NULL, 0, 1, 1, 'cmud5j43h0047tznc4kq99n5k', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-09-22T20:54:10.401Z', '2026-09-23T11:40:02.207Z');
 INSERT INTO [charts] ([id], [name], [parentCode], [accountType], [bookType], [accountTag], [isControl], [isDetail], [isActive], [branchId], [contactName], [phone], [email], [address], [bankName], [bankAccountNo], [bankBranch], [cnic], [ntn], [strn], [fbr], [otherName], [referenceNumber], [faxNumber], [city], [country], [website], [paymentTerms], [registrationNumber], [description], [createdAt], [updatedAt]) VALUES ('04002', 'POS Sales Income', '04', 'Revenue', NULL, NULL, 0, 1, 1, 'cmud5j43h0047tznc4kq99n5k', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, '2026-09-22T20:54:10.403Z', '2026-09-23T11:40:02.208Z');
@@ -771,9 +799,22 @@ GO
 -- Login: admin / admin123
 -- ============================================================================
 
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+        INSERT INTO #sql_errors VALUES (N'06 main seed', ERROR_MESSAGE());
+        ;THROW;
+    END CATCH
+END
+GO
+
 -- ============================================================================
 -- ADDITIONAL MASTER DATA (extends the seed above)
+-- Runs only if the main seed succeeded; same transaction.
 -- ============================================================================
+IF NOT EXISTS (SELECT 1 FROM #skip) AND NOT EXISTS (SELECT 1 FROM #sql_errors)
+BEGIN
+    BEGIN TRY
 
 -- Expense detail accounts used by payroll / purchase vouchers
 INSERT INTO [charts] ([id], [name], [parentCode], [accountType], [bookType], [accountTag], [isControl], [isDetail], [isActive], [branchId], [contactName], [phone], [email], [address], [bankName], [bankAccountNo], [bankBranch], [cnic], [ntn], [strn], [fbr], [otherName], [referenceNumber], [faxNumber], [city], [country], [website], [paymentTerms], [registrationNumber], [description], [createdAt], [updatedAt]) VALUES ('05001', 'Salaries Expense', '05', 'Expense', NULL, NULL, 0, 1, 1, 'cmud5j43h0047tznc4kq99n5k', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Staff salaries and wages', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
@@ -809,9 +850,22 @@ INSERT INTO [FoodItem] ([id], [code], [name], [category], [calories], [protein],
 INSERT INTO [FoodItem] ([id], [code], [name], [category], [calories], [protein], [carbs], [fat], [servingSize], [unit], [status], [createdAt], [updatedAt]) VALUES ('food-0003', 'FOOD-0003', 'Banana', 'Fruit', 89, 1.1, 22.8, 0.3, '1 medium', 'pc', 'Active', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
 INSERT INTO [FoodItem] ([id], [code], [name], [category], [calories], [protein], [carbs], [fat], [servingSize], [unit], [status], [createdAt], [updatedAt]) VALUES ('food-0004', 'FOOD-0004', 'Whey Protein Scoop', 'Supplement', 120, 24, 3, 1.5, '1 scoop (30 g)', 'scoop', 'Active', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
 
-PRINT 'Step 06 complete: master data seeded (login: admin / admin123).';
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+        INSERT INTO #sql_errors VALUES (N'06 additional master', ERROR_MESSAGE());
+        ;THROW;
+    END CATCH
+END
 GO
 
+-- ============================================================================
+-- Final master rows (owner capital account, exercise catalog, gym/payroll
+-- master files). Runs only if everything above succeeded; same transaction.
+-- ============================================================================
+IF NOT EXISTS (SELECT 1 FROM #skip) AND NOT EXISTS (SELECT 1 FROM #sql_errors)
+BEGIN
+    BEGIN TRY
 -- Owner Capital detail account (equity) for opening-balance entries
 INSERT INTO [charts] ([id], [name], [parentCode], [accountType], [bookType], [accountTag], [isControl], [isDetail], [isActive], [branchId], [contactName], [phone], [email], [address], [bankName], [bankAccountNo], [bankBranch], [cnic], [ntn], [strn], [fbr], [otherName], [referenceNumber], [faxNumber], [city], [country], [website], [paymentTerms], [registrationNumber], [description], [createdAt], [updatedAt]) VALUES ('03001', 'Owner Capital', '03', 'Equity', NULL, NULL, 0, 1, 1, 'cmud5j43h0047tznc4kq99n5k', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Owners'' equity contribution', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
 
@@ -840,3 +894,30 @@ INSERT INTO [payrollmasterfile] ([id], [masterType], [name], [description], [ext
 SELECT LOWER(REPLACE(NEWID(),'-','')), 'Country', t.name, NULL, NULL, NULL, 1, SYSDATETIME(), SYSDATETIME()
 FROM (VALUES ('Pakistan'),('United Arab Emirates'),('Saudi Arabia')) t(name)
 WHERE NOT EXISTS (SELECT 1 FROM [payrollmasterfile] p WHERE p.masterType = 'Country' AND p.name = t.name);
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+        INSERT INTO #sql_errors VALUES (N'06 final master rows', ERROR_MESSAGE());
+        ;THROW;
+    END CATCH
+END
+GO
+
+-- ============================================================================
+-- Final gate: the success message prints ONLY if nothing failed.
+-- ============================================================================
+IF EXISTS (SELECT 1 FROM #sql_errors)
+BEGIN
+    ;THROW 51906, N'Step 06 FAILED: master data seeding was rolled back. Review the errors above, then re-run this file on a clean database.', 1;
+END
+
+IF NOT EXISTS (SELECT 1 FROM #skip)
+BEGIN
+    COMMIT TRAN;
+    PRINT N'Step 06 complete: master data seeded (login: admin / admin123).';
+END
+ELSE
+BEGIN
+    PRINT N'Step 06: master data already present - skipped.';
+END
+GO
