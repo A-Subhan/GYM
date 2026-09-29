@@ -792,7 +792,8 @@ INSERT INTO [MasterFile] ([id], [masterType], [code], [name], [description], [is
 INSERT INTO [MasterFile] ([id], [masterType], [code], [name], [description], [isActive], [extra], [createdAt], [updatedAt]) VALUES ('cmue9lvdf0017otttyjepq7qd', 'TrainerSpecializations', '007', 'Cross Training', NULL, 1, NULL, '2026-09-23T15:35:43.635Z', '2026-09-23T15:35:43.635Z');
 INSERT INTO [MasterFile] ([id], [masterType], [code], [name], [description], [isActive], [extra], [createdAt], [updatedAt]) VALUES ('cmue9lvdh001bottthwl2npiy', 'TrainerSpecializations', '008', 'Other', NULL, 1, NULL, '2026-09-23T15:35:43.637Z', '2026-09-23T15:35:43.637Z');
 
-GO
+-- NOTE: no GO here - the BEGIN TRAN/BEGIN TRY opened above must stay in the
+-- same batch as its END TRY/BEGIN CATCH below (TRY cannot span batches).
 
 -- ============================================================================
 -- Done. The database is ready.
