@@ -1,74 +1,156 @@
 -- ============================================================================
--- Contoura Gym Management System - FRESH INSTALL SCRIPTS (SQL Server)
+-- Contoura Gym Management System - DATABASE README
 -- ============================================================================
--- RUN ORDER (on an EMPTY database; each file is a separate SSMS query window
--- or sqlcmd invocation, executed top to bottom):
+-- RUN ORDER for an EXISTING database that is in a PARTIAL upgrade state
+-- (e.g. 08_upgrade_2026_09.sql and/or 09_upgrade_finance_hr.sql failed
+-- partway through):
 --
---   01_create_database.sql      optional  (creates GymDB; skip if it exists)
---   02_schema_tables.sql        required  (74 tables + indexes + foreign keys)
---   03_views_functions.sql      required  (8 views, 3 functions)
---   04_stored_procedures.sql    required  (6 stored procedures)
---   05_triggers.sql             required  (7 triggers)
---   06_master_data.sql          required  (company, branches, admin user (User Type
---                                         = Admin), chart of accounts incl. the
---                                         ROOT anchor row, account mappings,
---                                         financial year, master files, plans,
---                                         shifts, staff...)
---   07_sample_data.sql          OPTIONAL  (October 2026 demo month; safe to skip)
---   08_upgrade_2026_09.sql      OPTIONAL  (ONLY for an EXISTING GymDB that was
---                                         built with the older 02-06: adds
---                                         userType/joiningFee, creates the three
---                                         master/detail pairs, migrates legacy
---                                         master data, merges the Exercise table
---                                         into gymmaster. Idempotent, re-runnable.)
---   09_upgrade_finance_hr.sql   OPTIONAL  (ONLY for an EXISTING GymDB; run AFTER 08:
---                                         voucher soft delete (isDeleted/deletedBy/
---                                         deletedAt), book line ids C|B|J|O/{year}/
---                                         {000001}, Staff id+employeeId merged into
---                                         ONE column (id = EMP-00001), Shift and
---                                         CalendarDay ids 001/002/003. Idempotent,
---                                         transaction-wrapped, fails loud.)
---   09_verify.sql               AFTER 09  (row counts before/after + id format
---                                         checks - confirms NO DATA WAS LOST.)
+--   1. BACKUP YOUR DATABASE FIRST:
+--        BACKUP DATABASE GymDB TO DISK = 'C:\path\GymDB_before_10.bak'
+--        WITH FORMAT, NAME = 'GymDB before step 10 repair';
 --
--- Everything is pure ASCII (UTF-8 without BOM), so SSMS reads the files
--- correctly regardless of codepage.
+--   2. Run the repair script (idempotent, safe to re-run):
+--        Database/10_upgrade_repair.sql
+--      This will:
+--        - Print a PREFLIGHT report of the detected state of every object.
+--        - Create dbo._UpgradeLog (permanent log table).
+--        - Fix User.userType (was Msg 207 in 08).
+--        - Create the 6 master/detail tables (was Msg 208 in 08).
+--        - Migrate legacy Exercise/MasterFile/payrollmasterfile/gymmasterfile
+--          data into the new master/detail tables.
+--        - Merge Staff.employeeId into Staff.id (EMP-xxxxx format).
+--        - Renumber Shift ids to 001/002/003 and CalendarDay ids to 001/002.
+--        - Create ScreenPermission + UserPermission tables.
+--        - Create gym operation tables (TrainerAvailability,
+--          TrainerSchedule, FitnessGoal, PersonalTrainingSession,
+--          StaffDocument, KnockOff).
+--        - Add Member.joiningFee, Staff.isDeleted, Member soft-delete.
+--        - Print "SUCCESS" or "FAILED: <step names>".
+--      All steps use sp_executesql (not inline EXEC(...+QUOTENAME+...) which
+--      caused Msg 102 in the old 09 script). Legacy tables are RENAMED to
+--      *_legacy_bak, never DROPPED.
 --
--- WHAT YOU SHOULD SEE
---   * Steps 02-06 end with their own "... complete" message. If ANY statement
---     failed, the step prints the error, rolls itself back and THROWS - the
---     success message can never appear after a failed statement.
---   * 06 is re-runnable: on an already-seeded database it prints
---     "Step 06: master data already present - skipped." and changes nothing.
---   * 07 detects existing sample data and skips itself the same way.
+--   3. Run the verification script:
+--        Database/10_verify.sql
+--      This prints PASS/FAIL for each check and a final summary:
+--        "ALL PASS"  -> database is in the target state.
+--        "FAILED: <items>" -> check the detail column for reasons.
 --
--- EXPECTED STATE AFTER 06 (before 07)
---   * SELECT COUNT(*) FROM sys.tables;                       -> 74
---   * SELECT name FROM sys.tables WHERE name IN ('Account','charts');
---       -> exactly one row: charts  (the legacy 'Account' table is gone)
---   * Login: admin / admin123  (user 'admin', User Type = Admin - full rights)
---   * dbo.charts contains 13 rows, including the 'ROOT' anchor row.
---     NOTE: 'ROOT' (name: Chart of Accounts Root) is a REQUIRED sentinel row -
---     charts.parentCode is NOT NULL with a self-referencing FK and the
---     application uses 'ROOT' as the tree-root parent. Do not delete it.
---   * Master files seeded: gymmaster (001 Exercises, 002 Equipment,
---     003 Equipment Category), financemaster (001 Banks, 002 Card Types),
---     payrollmaster (001 Education ... 008 Deduction) with items.
---     Detail codes = master code + 3-digit sequence (001001, 001002, ...).
+-- ============================================================================
+-- RUN ORDER for a FRESH INSTALL (empty database):
 --
--- VERIFICATION QUERIES (all of these pass after 02-06)
---   SELECT COUNT(*) FROM sys.tables;                                  -- 74
---   SELECT name FROM sys.tables WHERE name IN ('Account','charts');   -- charts
---   SELECT COUNT(*) FROM dbo.charts;                                  -- 13
---   SELECT COUNT(*) FROM dbo.AccountMapping;                          -- 8
---   SELECT COUNT(*) FROM dbo.[User] WHERE username = N'admin';        -- 1
---   SELECT [userType] FROM dbo.[User] WHERE username = N'admin';      -- Admin
---   SELECT COUNT(*) FROM dbo.gymmasterdetail WHERE masterId = '001';  -- 6
---   EXEC dbo.sp_GetDashboardStats;                                    -- 1 row
---   EXEC dbo.sp_CalculatePayroll @month = 1, @year = 2026, @staffId = N'x';  -- runs
---   SELECT name FROM sys.procedures ORDER BY name;
+--   01_create_database.sql      (optional; creates GymDB)
+--   02_schema_tables.sql        (74 tables + indexes + foreign keys)
+--   03_views_functions.sql      (8 views, 3 functions)
+--   04_stored_procedures.sql    (6 stored procedures)
+--   05_triggers.sql             (7 triggers)
+--   06_master_data.sql          (company, branches, admin user, COA, mappings,
+--                               master files, plans, shifts, staff)
+--   07_sample_data.sql          (OPTIONAL; October 2026 demo month)
 --
--- ARCHIVE
---   Database/_archive/ holds the old one-off migration scripts and scratch
---   files. They are NOT part of a fresh install - do not run them.
+--   After 02-06, the database is already in the final state.
+--   10_upgrade_repair.sql is NOT needed on a fresh install (it will detect
+--   everything is in place and skip every step, printing "SUCCESS").
+--
+-- ============================================================================
+-- RUN ORDER for an UNTOUCHED database built from OLDER 02-06 scripts
+-- (before the 2026-09 feature set):
+--
+--   1. BACKUP YOUR DATABASE.
+--   2. Run 10_upgrade_repair.sql (handles ALL upgrade work that 08 and 09
+--      attempted to do, but with correct T-SQL syntax and idempotent logic).
+--   3. Run 10_verify.sql.
+--
+--   Do NOT run 08_upgrade_2026_09.sql or 09_upgrade_finance_hr.sql — they
+--   contain the bugs that caused the partial state. 10_upgrade_repair.sql
+--   supersedes both.
+--
+-- ============================================================================
+-- WHAT 10_upgrade_repair.sql FIXES (vs the old 08/09 scripts):
+--
+--   08 bug: Msg 207 Invalid column name 'userType'
+--     Cause: ALTER TABLE ADD [userType] and UPDATE ... SET [userType] in the
+--            same batch (SQL Server can't resolve the new column name).
+--     Fix:   Separated by GO so the column exists before the UPDATE runs.
+--
+--   08 bug: Msg 208 Invalid object name 'dbo.gymmaster'
+--     Cause: The batch aborted at the userType error, so gymmaster was
+--            never created. The migration block then referenced it.
+--     Fix:   10 creates gymmaster in its own TRY/CATCH transaction, which
+--            either succeeds or logs FAILED and continues (other steps
+--            are independent).
+--
+--   09 bug: Msg 102 Incorrect syntax near 'QUOTENAME'
+--     Cause: EXEC(N'ALTER TABLE ... DROP CONSTRAINT ' + QUOTENAME(@v) + ...)
+--            — SQL Server's parser can't handle the function call inside
+--            the string concatenation inside EXEC().
+--     Fix:   10 builds the SQL into a NVARCHAR(MAX) variable first, then
+--            calls sp_executesql @sql. This is the recommended pattern.
+--
+-- ============================================================================
+-- FILES
+--
+--   Database/
+--   ├── 01_create_database.sql      Create the GymDB database
+--   ├── 02_schema_tables.sql        74 tables (final target schema)
+--   ├── 03_views_functions.sql      Views and functions
+--   ├── 04_stored_procedures.sql    Stored procedures
+--   ├── 05_triggers.sql             Triggers
+--   ├── 06_master_data.sql          Seed data
+--   ├── 07_sample_data.sql          Optional demo data
+--   ├── 08_upgrade_2026_09.sql      OLD — do NOT run (has bugs)
+--   ├── 09_upgrade_finance_hr.sql   OLD — do NOT run (has bugs)
+--   ├── 09_verify.sql               OLD — superseded by 10_verify.sql
+--   ├── 10_upgrade_repair.sql       ✅ REPAIR SCRIPT (run this)
+--   ├── 10_verify.sql               ✅ VERIFICATION SCRIPT (run after 10)
+--   ├── README.md                   This file
+--   ├── _archive/                   Old migration scripts (not part of install)
+--   ├── GymDB.bak                    Real SQL Server backup (23 MB)
+--   └── GymDB-2026-07-11.bak         Additional SQL Server backup (14 MB)
+--
+-- ============================================================================
+-- EXPECTED OUTPUT FROM 10_upgrade_repair.sql
+--
+--   On a database where 08/09 failed partway through:
+--     === PREFLIGHT STATE ===
+--     [User].userType: MISSING
+--     gymmaster: MISSING
+--     ...
+--     === END PREFLIGHT ===
+--     [1a-userType] OK: Added User.userType column
+--     [1b-roleId] OK: User.roleId set to nullable
+--     [1c-userType-data] OK: Populated userType
+--     [2-joiningFee] OK: Added Member.joiningFee
+--     [3a-gymmaster] OK: Created gymmaster
+--     ...
+--     [5-Staff-merge] OK: Staff.employeeId merged into id; FKs recreated
+--     [6-Shift-renumber] OK: Shift ids renumbered to 001/002/003
+--     [7-CalendarDay-renumber] OK: CalendarDay ids renumbered to 001/002/...
+--     ...
+--     === UPGRADE RESULT ===
+--     SUCCESS
+--     (OK: 28, Skipped: 5, Failed: 0)
+--
+--   On a fresh install (02-06 already ran):
+--     All steps print SKIPPED; final output is "SUCCESS".
+--
+--   On a database with an irrecoverable error:
+--     === UPGRADE RESULT ===
+--     FAILED: 5-Staff-merge 6-Shift-renumber
+--     (OK: 20, Skipped: 8, Failed: 2)
+--     → Check dbo._UpgradeLog for error messages, fix the root cause,
+--       and re-run 10_upgrade_repair.sql (it is idempotent).
+--
+-- ============================================================================
+-- EXPECTED OUTPUT FROM 10_verify.sql
+--
+--   item                          result  detail
+--   ----------------------------  ------  --------------------------------
+--   Branch.nodeType exists        PASS    Branch.nodeType present
+--   CalendarDay ids 3-digit       PASS    All CalendarDay ids are 3-digit
+--   ...
+--   === SUMMARY: ALL PASS ===
+--   summary    total_checks  passed  failed
+--   ALL PASS   22            22      0
+--
 -- ============================================================================
