@@ -107,7 +107,7 @@ type ModuleKey =
   | 'gym-equipment' | 'gym-inventory' | 'gym-master-files'
   // Payroll → Main
   | 'payroll-staff' | 'payroll-staff-attendance' | 'payroll-leaves'
-  | 'payroll-leave-approval' | 'payroll-overtime' | 'payroll-payroll'
+  | 'payroll-overtime' | 'payroll-payroll'
   // Payroll → Reports
   | 'payroll-reports'
   // Payroll → Master Files
@@ -208,7 +208,6 @@ const NAV: NavModule[] = [
         label: 'Transactions', perm: 'staff.view', screens: [
           { key: 'payroll-staff', label: 'Staff', perm: 'staff.view' },
           { key: 'payroll-leaves', label: 'Leave', perm: 'leaves.view' },
-          { key: 'payroll-leave-approval', label: 'Leave Approval', perm: 'leaves.approve' },
           { key: 'payroll-overtime', label: 'Overtime', perm: 'overtime.view' },
           { key: 'payroll-payroll', label: 'Payroll', perm: 'payroll.view' },
           { key: 'payroll-shifts', label: 'Shifts', perm: 'shifts.view' },
@@ -876,7 +875,6 @@ function ModuleRouter({ active, setActive }: { active: ModuleKey, setActive: (m:
     case 'payroll-staff': return <StaffModule />
     case 'payroll-staff-attendance': return <StaffAttendanceStub />
     case 'payroll-leaves': return <LeavesModule />
-    case 'payroll-leave-approval': return <LeaveApprovalModule />
     case 'payroll-overtime': return <OvertimeModule />
     case 'payroll-payroll': return <PayrollModule />
     // Payroll → Reports
@@ -1002,7 +1000,6 @@ function TrainerAvailabilityModule() { return <TrainerAvailabilityScreen /> }
 function TrainerScheduleModule() { return <TrainerScheduleScreen /> }
 function GymReportsModule() { return <ReportsListModule apiPath="/api/gym-reports" title="Gym Reports" /> }
 function StaffAttendanceStub() { return <NotImplemented name="Staff Attendance" /> }
-function LeaveApprovalModule() { return <LeavesModuleImpl presetStatus="Pending" /> }
 function PayrollReportsModule() { return <NotImplemented name="Payroll Reports" /> }
 function CoaConfigStub() { return <NotImplemented name="COA Configuration" /> }
 function AccountingDefaultsModule() { return <AdminDefaultsModuleImpl /> }

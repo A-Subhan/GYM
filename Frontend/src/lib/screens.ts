@@ -44,7 +44,6 @@ export const SCREENS: ScreenDef[] = [
   // HR and Payroll — Transactions (7)
   { key: 'payroll-staff', label: 'Staff', module: 'HR and Payroll' },
   { key: 'payroll-leaves', label: 'Leave', module: 'HR and Payroll' },
-  { key: 'payroll-leave-approval', label: 'Leave Approval', module: 'HR and Payroll' },
   { key: 'payroll-overtime', label: 'Overtime', module: 'HR and Payroll' },
   { key: 'payroll-payroll', label: 'Payroll', module: 'HR and Payroll' },
   { key: 'payroll-shifts', label: 'Shifts', module: 'HR and Payroll' },
