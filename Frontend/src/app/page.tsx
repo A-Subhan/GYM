@@ -60,12 +60,16 @@ import {
   LeavesModule as LeavesModuleImpl,
   OvertimeModule as OvertimeModuleImpl,
   PayrollModule as PayrollModuleImpl,
-  PayrollMasterFilesModule as PayrollMasterFilesModuleImpl,
   CompanyModule as CompanyModuleImpl,
   UsersModule as UsersModuleImpl,
   AdminDefaultsModule as AdminDefaultsModuleImpl,
   AuditModule as AuditModuleImpl,
   PTSessionsModule as PTSessionsModuleImpl,
+  MasterFilesScreen,
+  WorkoutAssignmentScreen,
+  FitnessGoalsScreen,
+  TrainerAvailabilityScreen,
+  TrainerScheduleScreen,
 } from './module-pages'
 import { BranchesModule as BranchesModuleImpl } from './modules'
 import { AppContext, type AppCtx, type SessionUser, type Branch, useApp, canScreen, type ScreenPermRow } from './app-context'
@@ -90,7 +94,7 @@ type ModuleKey =
   // Finance → Reports
   | 'finance-reports-aging' | 'finance-reports-main'
   // Finance → Master Files
-  | 'finance-coa' | 'finance-tax'
+  | 'finance-coa' | 'finance-tax' | 'finance-master-files'
   // Gym → Main
   | 'gym-members' | 'gym-memberships' | 'gym-attendance' | 'gym-fees'
   | 'gym-status' | 'gym-freezes' | 'gym-prospects'
@@ -165,7 +169,7 @@ const NAV: NavModule[] = [
           { key: 'gym-exercises', label: 'Exercises', perm: 'workouts.view' },
           { key: 'gym-workouts', label: 'Workout Plans', perm: 'workouts.view' },
           { key: 'gym-diet', label: 'Diet Plans', perm: 'diet.view' },
-          { key: 'gym-master-files', label: 'Master Files', perm: 'masters.view' },
+          { key: 'gym-master-files', label: 'Gym Master Files', perm: 'masters.view' },
         ],
       },
     ],
@@ -193,6 +197,7 @@ const NAV: NavModule[] = [
         label: 'Master', perm: 'finance.coa', screens: [
           { key: 'finance-coa', label: 'Chart of Accounts', perm: 'finance.coa' },
           { key: 'finance-tax', label: 'Tax Heads', perm: 'tax.view' },
+          { key: 'finance-master-files', label: 'Master Files', perm: 'masters.view' },
         ],
       },
     ],
@@ -240,7 +245,6 @@ const NAV: NavModule[] = [
         label: 'Master', perm: 'inventory.view', screens: [
           { key: 'inv-items', label: 'Items', perm: 'inventory.view' },
           { key: 'inv-suppliers', label: 'Suppliers', perm: 'inventory.view' },
-          { key: 'inv-master-files', label: 'Master Files', perm: 'masters.view' },
         ],
       },
     ],
@@ -394,6 +398,29 @@ export default function Home() {
 
   useEffect(() => { refreshSession() }, [refreshSession])
 
+  // Hash routing — every sidebar link is a real anchor (#/<screen-key>), so
+  // right-click shows "Open in new tab / window" and a URL can be opened directly.
+  useEffect(() => {
+    const valid = new Set<string>(['dashboard'])
+    for (const mod of NAV) {
+      if ('key' in mod) valid.add(mod.key)
+      else for (const s of mod.sections) for (const sc of s.screens) valid.add(sc.key)
+    }
+    const applyHash = () => {
+      const key = window.location.hash.replace(/^#\/?/, '')
+      if (key && valid.has(key)) setActiveModule(key as ModuleKey)
+    }
+    applyHash()
+    window.addEventListener('hashchange', applyHash)
+    return () => window.removeEventListener('hashchange', applyHash)
+  }, [])
+
+  // Central navigation: update the hash (real URL) + switch the screen
+  const navigateTo = useCallback((key: ModuleKey) => {
+    if (('#/' + key) !== window.location.hash) window.location.hash = '/' + key
+    setActiveModule(key)
+  }, [])
+
   useEffect(() => {
     if (session) {
       loadBranches()
@@ -498,7 +525,7 @@ export default function Home() {
               <SidebarContent
                 nav={visibleNav}
                 active={activeModule}
-                onNavigate={(k) => { setActiveModule(k); setSidebarOpen(false) }}
+                onNavigate={(k) => { navigateTo(k as ModuleKey); setSidebarOpen(false) }}
                 session={session}
                 brand={brand}
                 onLogout={logout}
@@ -528,7 +555,7 @@ export default function Home() {
             </div>
             <div className="text-xs leading-tight">
               <div className="font-medium">{session.fullName}</div>
-              <div className="text-muted-foreground">{session.roleName}</div>
+              <div className="text-muted-foreground">{session.userType === 'Admin' ? 'Admin' : 'User'}</div>
             </div>
           </div>
 
@@ -543,7 +570,7 @@ export default function Home() {
             <SidebarContent
               nav={visibleNav}
               active={activeModule}
-              onNavigate={setActiveModule}
+              onNavigate={navigateTo}
               session={session}
               brand={brand}
               onLogout={logout}
@@ -594,15 +621,18 @@ function SidebarContent({ nav, active, onNavigate, session, brand, onLogout }: a
         {nav.map((mod: NavModule) => {
           if ('key' in mod) {
             const Icon = mod.icon
+            // Real anchor link — the browser's right-click menu offers
+            // "Open in new tab / window", and the URL can be opened directly.
             return (
-              <button
+              <a
                 key={mod.key}
+                href={`#/${mod.key}`}
                 onClick={() => onNavigate(mod.key)}
                 className={`w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-muted ${active === mod.key ? 'bg-primary/10 text-primary font-medium' : 'text-foreground/80'}`}
               >
                 <Icon className="h-4 w-4" />
                 <span>{mod.label}</span>
-              </button>
+              </a>
             )
           }
           return <NavModuleAccordion key={mod.label} mod={mod} active={active} onNavigate={onNavigate} />
@@ -610,7 +640,7 @@ function SidebarContent({ nav, active, onNavigate, session, brand, onLogout }: a
       </nav>
       <div className="border-t p-3 text-xs text-muted-foreground">
         <div className="font-medium text-foreground">{session?.fullName}</div>
-        <div>{session?.roleName} · {session?.username}</div>
+        <div>{session?.userType === 'Admin' ? 'Admin' : 'User'} · {session?.username}</div>
         <button onClick={onLogout} className="mt-2 flex items-center gap-1 text-red-600 hover:underline">
           <LogOut className="h-3 w-3" /> Logout
         </button>
@@ -664,13 +694,14 @@ function NavSectionAccordion({ section, active, onNavigate }: { section: NavSect
       {open && (
         <div className="ml-3 mt-0.5 space-y-0.5">
           {section.screens.map((sc: NavScreen) => (
-            <button
+            <a
               key={sc.key}
+              href={`#/${sc.key}`}
               onClick={() => onNavigate(sc.key)}
-              className={`w-full text-left px-3 py-1.5 rounded hover:bg-muted text-xs ${active === sc.key ? 'bg-primary/10 text-primary font-medium' : 'text-foreground/70'}`}
+              className={`w-full text-left px-3 py-1.5 rounded hover:bg-muted text-xs block ${active === sc.key ? 'bg-primary/10 text-primary font-medium' : 'text-foreground/70'}`}
             >
               {sc.label}
-            </button>
+            </a>
           ))}
         </div>
       )}
@@ -819,6 +850,7 @@ function ModuleRouter({ active, setActive }: { active: ModuleKey, setActive: (m:
     // Finance → Master Files
     case 'finance-coa': return <CoaModule />
     case 'finance-tax': return <TaxHeadsModule />
+    case 'finance-master-files': return <FinanceMasterFilesModule />
     // Gym → Main
     case 'gym-members': return <MembersModule />
     case 'gym-memberships': return <MembershipsModule />
@@ -839,7 +871,7 @@ function ModuleRouter({ active, setActive }: { active: ModuleKey, setActive: (m:
     case 'gym-diet': return <DietModule />
     case 'gym-equipment': return <EquipmentModule />
     case 'gym-inventory': return <InventoryModule />
-    case 'gym-master-files': return <UniversalMasterFilesModule />
+    case 'gym-master-files': return <GymMasterFilesModule />
     // Payroll → Main
     case 'payroll-staff': return <StaffModule />
     case 'payroll-staff-attendance': return <StaffAttendanceStub />
@@ -881,7 +913,7 @@ function ModuleRouter({ active, setActive }: { active: ModuleKey, setActive: (m:
     // Inventory → Master
     case 'inv-items': return <InventoryModule />
     case 'inv-suppliers': return <SuppliersModule />
-    case 'inv-master-files': return <UniversalMasterFilesModule />
+    case 'inv-master-files': return <RedirectToModule target="gym-master-files" setActive={setActive} />
     // HR Reports
     case 'hr-reports': return <HRReportsModule />
     default: return <DashboardModule />
@@ -945,14 +977,13 @@ function CalendarModule() { return <CalendarModuleImpl /> }
 function LeavesModule() { return <LeavesModuleImpl /> }
 function OvertimeModule() { return <OvertimeModuleImpl /> }
 function PayrollModule() { return <PayrollModuleImpl /> }
-function PayrollMasterFilesModule() { return <PayrollMasterFilesModuleImpl /> }
 function CompanyModule() { return <CompanyModuleImpl /> }
 function BranchesModule() { return <BranchesModuleImpl /> }
 function UsersModule() { return <UsersModuleImpl /> }
 function AuditModule() { return <AuditModuleImpl /> }
-function FitnessGoalsModule() { return <NotImplemented name="Fitness Goals" /> }
-function TrainerAvailabilityModule() { return <NotImplemented name="Trainer Availability" /> }
-function TrainerScheduleModule() { return <NotImplemented name="Trainer Schedule" /> }
+function GymMasterFilesModule() { return <MasterFilesScreen type="gym" title="Gym Master Files" /> }
+function FinanceMasterFilesModule() { return <MasterFilesScreen type="finance" title="Finance Master Files" /> }
+function PayrollMasterFilesModule() { return <MasterFilesScreen type="payroll" title="Payroll Master File" /> }
 function PurchasesModule() { return <NotImplemented name="Purchases" /> }
 function StockMovementsModule() { return <NotImplemented name="Stock Movements" /> }
 function InventoryReportsModule() { return <ReportsListModule apiPath="/api/inventory-reports" title="Inventory Reports" /> }
@@ -964,91 +995,18 @@ function VoucherScreenModule({ voucherType, title }: { voucherType: string, titl
   return <BookVoucherScreenImpl voucherType={voucherType} title={title} />
 }
 function AgingReportsModule() { return <FinanceReportsModuleImpl presetReport="aging" /> }
-function WorkoutAssignmentModule() { return <NotImplemented name="Workout Assignment" /> }
 function DietAssignmentModule() { return <NotImplemented name="Diet Assignment" /> }
+function WorkoutAssignmentModule() { return <WorkoutAssignmentScreen /> }
+function FitnessGoalsModule() { return <FitnessGoalsScreen /> }
+function TrainerAvailabilityModule() { return <TrainerAvailabilityScreen /> }
+function TrainerScheduleModule() { return <TrainerScheduleScreen /> }
 function GymReportsModule() { return <ReportsListModule apiPath="/api/gym-reports" title="Gym Reports" /> }
-function UniversalMasterFilesModule() { return <UniversalMasterFilesScreen /> }
 function StaffAttendanceStub() { return <NotImplemented name="Staff Attendance" /> }
 function LeaveApprovalModule() { return <LeavesModuleImpl presetStatus="Pending" /> }
 function PayrollReportsModule() { return <NotImplemented name="Payroll Reports" /> }
 function CoaConfigStub() { return <NotImplemented name="COA Configuration" /> }
 function AccountingDefaultsModule() { return <AdminDefaultsModuleImpl /> }
 function PTSessionsModule() { return <PTSessionsModuleImpl /> }
-
-// Universal Master Files Screen — reusable dropdown + grid for Department/Designation/Education/Currency/etc.
-function UniversalMasterFilesScreen() {
-  const { has } = useApp()
-  const [masterType, setMasterType] = useState('Department')
-  const [open, setOpen] = useState(false)
-  const [form, setForm] = useState<any>({})
-  const { data, reload } = useFetch<any>(`/api/master-files?type=${masterType}`)
-  const records = data?.records || []
-  const types = data?.types || ['Department', 'Designation', 'Education', 'Currency', 'Allowance', 'Shift', 'LeaveType', 'MembershipSource', 'ProspectSource', 'EquipmentCategory']
-
-  return (
-    <div>
-      <PageHeader
-        title="Master Files"
-        action={has('masters.add') ? () => { setForm({}); setOpen(true) } : undefined}
-        actionLabel="Add Record"
-      />
-      <Toolbar>
-        <div className="flex items-center gap-2">
-          <Label className="text-xs">Select Master:</Label>
-          <Select value={masterType} onValueChange={setMasterType}>
-            <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {types.map((t: string) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-        <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
-      </Toolbar>
-      <DataTable
-        columns={[
-          { key: 'actions', label: 'Actions', align: 'left', render: (r: any) => (
-            <div className="flex gap-1">
-              {has('masters.edit') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setForm(r); setOpen(true) }}><Edit className="h-3.5 w-3.5" /></Button>}
-              {has('masters.delete') && <Button size="sm" variant="ghost" onClick={async (e) => {
-                e.stopPropagation()
-                if (!confirm(`Delete ${r.name}?`)) return
-                try { await apiDelete(`/api/master-files?id=${r.id}`); toast.success('Deleted'); reload() }
-                catch (e: any) { toast.error(e.message) }
-              }}><Trash2 className="h-3.5 w-3.5" /></Button>}
-            </div>
-          ) },
-          { key: 'code', label: 'Code', mono: true },
-          { key: 'name', label: 'Name' },
-          { key: 'description', label: 'Description' },
-          { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
-        ]}
-        rows={records}
-        empty={`No ${masterType} records yet`}
-      />
-      <Modal open={open} onClose={() => setOpen(false)} title={`${form.id ? 'Edit' : 'Add'} ${masterType}`}
-        footer={<>
-          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={async () => {
-            try {
-              if (form.id) {
-                await apiPatch('/api/master-files', { id: form.id, name: form.name, description: form.description, isActive: form.isActive !== false })
-              } else {
-                await apiPost('/api/master-files', { masterType, name: form.name, description: form.description, isActive: form.isActive !== false })
-              }
-              toast.success(form.id ? 'Updated' : 'Created'); setOpen(false); reload()
-            } catch (e: any) { toast.error(e.message) }
-          }}><Save className="h-4 w-4 mr-1" />Save</Button>
-        </>}>
-        <div className="grid grid-cols-2 gap-3">
-          <FormRow label="Code (auto-generated)"><Input disabled value={form.code || 'auto'} className="bg-muted/40" /></FormRow>
-          <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
-          <FormRow label="Active"><Switch checked={form.isActive !== false} onCheckedChange={v => setForm({ ...form, isActive: v })} /></FormRow>
-          <div className="col-span-2"><FormRow label="Description"><Textarea rows={2} value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow></div>
-        </div>
-      </Modal>
-    </div>
-  )
-}
 
 // =================================================================
 // Generic Reports List Module — shows report names directly on screen

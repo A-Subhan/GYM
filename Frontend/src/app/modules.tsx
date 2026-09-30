@@ -17,7 +17,7 @@ import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { Plus, Search, Edit, Trash2, Eye, X, Save, ChevronDown, ChevronRight, Download, Printer, Send } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Eye, X, Save, ChevronDown, ChevronRight, Download, Printer, Send, Snowflake } from 'lucide-react'
 import { useApp } from './app-context'
 
 // Re-export useApp for convenience
@@ -166,6 +166,59 @@ export function Toolbar({ children }: { children: ReactNode }) {
   return <div className="flex items-center gap-2 flex-wrap mb-3">{children}</div>
 }
 
+// =================================================================
+// ActionPanel — the shared LEFT-side action panel (Add / Edit / Delete /
+// Print) used by every screen that requests "action panel on the left".
+// Buttons are context-aware: Edit/Delete/Print enable when a row is selected.
+// =================================================================
+export type PanelAction = {
+  label: string
+  icon?: any
+  onClick?: () => void
+  disabled?: boolean
+  variant?: 'default' | 'outline' | 'destructive' | 'ghost' | 'secondary'
+  hidden?: boolean
+  title?: string
+}
+
+export function ActionPanel({ actions, title = 'Actions' }: { actions: PanelAction[], title?: string }) {
+  const visible = actions.filter(a => !a.hidden)
+  return (
+    <Card className="w-36 sm:w-40 shrink-0 self-start lg:sticky lg:top-20">
+      <CardContent className="p-2.5 space-y-1.5">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground px-1 pb-1">{title}</div>
+        {visible.map(a => {
+          const Icon = a.icon
+          return (
+            <Button
+              key={a.label}
+              variant={a.variant || 'outline'}
+              size="sm"
+              className="w-full justify-start gap-1.5"
+              onClick={a.onClick}
+              disabled={a.disabled}
+              title={a.title || a.label}
+            >
+              {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
+              {a.label}
+            </Button>
+          )
+        })}
+      </CardContent>
+    </Card>
+  )
+}
+
+/** Screen layout with the action panel docked on the LEFT of the content. */
+export function ScreenShell({ actions, children, panelTitle }: { actions: PanelAction[], children: ReactNode, panelTitle?: string }) {
+  return (
+    <div className="flex flex-col lg:flex-row gap-4 items-start">
+      <ActionPanel actions={actions} title={panelTitle} />
+      <div className="flex-1 min-w-0 w-full">{children}</div>
+    </div>
+  )
+}
+
 export function DataTable({ columns, rows, onRowClick, empty = 'No records' }: any) {
   if (!rows || rows.length === 0) {
     return <div className="text-center py-8 text-muted-foreground text-sm">{empty}</div>
@@ -220,10 +273,12 @@ export function BranchesModule() {
   const [form, setForm] = useState<any>({})
   const [editing, setEditing] = useState<any>(null)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   const flat: any[] = data?.branches || []
   const tree: any[] = data?.tree || []
+  const selected = flat.find(b => b.id === selectedId) || null
 
   // expand everything by default
   useEffect(() => {
@@ -267,12 +322,20 @@ export function BranchesModule() {
 
   const save = async () => {
     if (!form.name || !String(form.name).trim()) { toast.error('Branch name is required'); return }
+    const isControl = form.nodeType === 'Control'
     const payload: any = {
       name: form.name,
       parentId: form.parentId || null,
-      nodeType: form.nodeType === 'Control' ? 'Control' : 'Detail',
-      address: form.address, city: form.city, phone: form.phone,
-      email: form.email, strn: form.strn, ntn: form.ntn,
+      nodeType: isControl ? 'Control' : 'Detail',
+      // Control-level records cannot hold branch detail data
+      address: isControl ? null : form.address,
+      city: isControl ? null : form.city,
+      phone: isControl ? null : form.phone,
+      email: isControl ? null : form.email,
+      strn: isControl ? null : form.strn,
+      ntn: isControl ? null : form.ntn,
+      trn: isControl ? null : form.trn,
+      fbr: isControl ? null : form.fbr,
     }
     try {
       if (editing) {
@@ -297,7 +360,10 @@ export function BranchesModule() {
     const isOpen = expanded.has(node.id)
     return (
       <Fragment key={node.id}>
-        <tr className="border-b last:border-0 hover:bg-muted/30">
+        <tr
+          className={`border-b last:border-0 hover:bg-muted/30 cursor-pointer ${selectedId === node.id ? 'bg-primary/5' : ''}`}
+          onClick={() => setSelectedId(prev => prev === node.id ? null : node.id)}
+        >
           <td className="px-3 py-2">
             <div className="flex items-center gap-1" style={{ paddingLeft: depth * 20 }}>
               {hasChildren ? (
@@ -338,16 +404,23 @@ export function BranchesModule() {
   }
 
   const parentOptions = flat.filter(b => !editing || (b.id !== editing.id && !descendantIds(editing.id).includes(b.id)))
+  const isControlForm = form.nodeType === 'Control'
+
+  const panelActions: PanelAction[] = [
+    { label: 'Add', icon: Plus, onClick: () => openAdd(), disabled: !has('branches.add') },
+    { label: 'Add Sub-branch', icon: Plus, onClick: () => openAdd(selected?.id), disabled: !selected || !has('branches.add'), title: 'Add a branch under the selected node' },
+    { label: 'Edit', icon: Edit, onClick: () => selected && openEdit(selected), disabled: !selected || !has('branches.edit') },
+    { label: 'Delete', icon: Trash2, variant: 'destructive', onClick: () => setDeleteTarget(selected), disabled: !selected || !has('branches.delete') },
+  ]
 
   return (
     <div>
-      <PageHeader title="Branches"
-        action={has('branches.add') ? () => openAdd() : undefined}
-        actionLabel="New Branch" />
-      <Toolbar>
-        <SearchInput value={search} onChange={setSearch} placeholder="Search branches…" />
-        <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
-      </Toolbar>
+      <PageHeader title="Branches" />
+      <ScreenShell actions={panelActions}>
+        <Toolbar>
+          <SearchInput value={search} onChange={setSearch} placeholder="Search branches…" />
+          <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
+        </Toolbar>
       <div className="overflow-x-auto border rounded">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 border-b">
@@ -365,7 +438,10 @@ export function BranchesModule() {
           <tbody>
             {q ? (
               matchesFlat.length ? matchesFlat.map(b => (
-                <tr key={b.id} className="border-b last:border-0 hover:bg-muted/30">
+                <tr key={b.id}
+                  className={`border-b last:border-0 hover:bg-muted/30 cursor-pointer ${selectedId === b.id ? 'bg-primary/5' : ''}`}
+                  onClick={() => setSelectedId(prev => prev === b.id ? null : b.id)}
+                >
                   <td className="px-3 py-2 font-medium">{b.name}</td>
                   <td className="px-3 py-2 font-mono text-xs">{b.code}</td>
                   <td className="px-3 py-2"><Badge variant={b.nodeType === 'Control' ? 'default' : 'secondary'}>{b.nodeType}</Badge></td>
@@ -391,6 +467,7 @@ export function BranchesModule() {
           </tbody>
         </table>
       </div>
+      </ScreenShell>
 
       <Modal open={open} onClose={() => setOpen(false)} size="lg" title={editing ? `Edit Branch — ${editing.code}` : 'New Branch'}
         footer={<>
@@ -398,8 +475,8 @@ export function BranchesModule() {
           <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <FormRow label="Code">
-            <Input value={editing ? editing.code : 'Auto (BR-001, BR-002, …)'} disabled className="bg-muted/40" />
+          <FormRow label="Code (Branch ID = Branch Code)">
+            <Input value={editing ? editing.code : 'Auto (01, 01001, 01002, …)'} disabled className="bg-muted/40" />
           </FormRow>
           <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
           <FormRow label="Parent Branch">
@@ -422,20 +499,27 @@ export function BranchesModule() {
               </SelectContent>
             </Select>
           </FormRow>
-          <FormRow label="City"><Input value={form.city || ''} onChange={e => setForm({ ...form, city: e.target.value })} /></FormRow>
-          <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
-          <FormRow label="Email"><Input value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
-          <FormRow label="STRN"><Input value={form.strn || ''} onChange={e => setForm({ ...form, strn: e.target.value })} /></FormRow>
-          <FormRow label="NTN"><Input value={form.ntn || ''} onChange={e => setForm({ ...form, ntn: e.target.value })} /></FormRow>
+          {isControlForm && (
+            <div className="sm:col-span-2 text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded p-2">
+              Control-level records are hierarchy containers only — they cannot hold branch detail data (address, tax numbers, logo). Only detail-level branch records can.
+            </div>
+          )}
+          <FormRow label="City"><Input disabled={isControlForm} value={form.city || ''} onChange={e => setForm({ ...form, city: e.target.value })} /></FormRow>
+          <FormRow label="Phone"><Input disabled={isControlForm} value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
+          <FormRow label="Email"><Input disabled={isControlForm} value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
+          <FormRow label="STRN"><Input disabled={isControlForm} value={form.strn || ''} onChange={e => setForm({ ...form, strn: e.target.value })} /></FormRow>
+          <FormRow label="NTN"><Input disabled={isControlForm} value={form.ntn || ''} onChange={e => setForm({ ...form, ntn: e.target.value })} /></FormRow>
+          <FormRow label="TRN"><Input disabled={isControlForm} value={form.trn || ''} onChange={e => setForm({ ...form, trn: e.target.value })} /></FormRow>
+          <FormRow label="FBR Info"><Input disabled={isControlForm} value={form.fbr || ''} onChange={e => setForm({ ...form, fbr: e.target.value })} /></FormRow>
           {editing && (
             <FormRow label="Active"><Switch checked={form.isActive !== false} onCheckedChange={v => setForm({ ...form, isActive: v })} /></FormRow>
           )}
-          <div className="sm:col-span-2"><FormRow label="Address"><Input value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></FormRow></div>
+          <div className="sm:col-span-2"><FormRow label="Address"><Input disabled={isControlForm} value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></FormRow></div>
         </div>
         <div className="text-xs text-muted-foreground mt-3">
           {editing
             ? 'Branch code is immutable. A branch cannot be moved under itself or one of its sub-branches.'
-            : 'Branch code is generated automatically (BR-001, BR-002, …). Sub-branches of any depth are allowed.'}
+            : 'Codes are auto-generated hierarchically (parent code + sequence): Company/Head Office = 01, its branches = 01001, 01002, … Only detail-level branches hold address, logo, NTN/TRN/FBR details.'}
         </div>
       </Modal>
 
