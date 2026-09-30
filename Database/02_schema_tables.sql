@@ -14,8 +14,13 @@
 --   * [KnockOff] bill-wise settlement, [IdSequence] atomic business-ID
 --     counters, [Defaults] company settings, [ScreenPermission]/
 --     [UserPermission] per-screen security, hierarchical [Branch].
---   * [gymmasterfile] (3-digit categories, 7-digit items) and
---     [payrollmasterfile] (HR masters).
+--   * THREE IDENTICAL master/detail pairs: [gymmaster]/[gymmasterdetail],
+--     [financemaster]/[financemasterdetail], [payrollmaster]/[payrollmasterdetail]
+--     (master.id = 3-digit category code, detail.id = master code + sequence).
+--     Exercises live in gymmaster category '001' (the standalone [Exercise]
+--     table was merged away). [User].[userType]: Admin | User.
+--     Legacy [gymmasterfile]/[payrollmasterfile]/[MasterFile] are kept for
+--     pre-upgrade data compatibility.
 --
 -- Layout (safe to re-run on a partially-built database):
 --   SECTION 1  Tables - created WITHOUT foreign keys, in one pass, so no
@@ -143,7 +148,8 @@ CREATE TABLE [dbo].[User] (
     [email] NVARCHAR(191),
     [fullName] NVARCHAR(255) NOT NULL,
     [passwordHash] NVARCHAR(255) NOT NULL,
-    [roleId] NVARCHAR(50) NOT NULL,
+    [userType] NVARCHAR(255) NOT NULL CONSTRAINT [User_userType_df] DEFAULT 'User',
+    [roleId] NVARCHAR(50),
     [branchId] NVARCHAR(50),
     [accessibleBranchIds] NVARCHAR(255) NOT NULL CONSTRAINT [User_accessibleBranchIds_df] DEFAULT '*',
     [phone] NVARCHAR(255),
@@ -565,6 +571,7 @@ GO
 IF OBJECT_ID(N'dbo.Member', N'U') IS NULL
 CREATE TABLE [dbo].[Member] (
     [id] NVARCHAR(50) NOT NULL,
+    [joiningFee] FLOAT NOT NULL CONSTRAINT [Member_joiningFee_df] DEFAULT 0,
     [firstName] NVARCHAR(255) NOT NULL,
     [lastName] NVARCHAR(255),
     [gender] NVARCHAR(255),
@@ -766,26 +773,88 @@ CREATE TABLE [dbo].[gymmasterfile] (
 );
 GO
 
--- ---- table 38/69: Exercise --------------------------------
-IF OBJECT_ID(N'dbo.Exercise', N'U') IS NULL
-CREATE TABLE [dbo].[Exercise] (
+-- ---- tables 38-43/74: gymmaster / gymmasterdetail / financemaster /
+-- ---- financemasterdetail / payrollmaster / payrollmasterdetail
+-- ---- (three IDENTICAL master/detail pairs; master.id = 3-digit category
+-- ---- code, detail.id = master code + 3-digit sequence) ---------------
+IF OBJECT_ID(N'dbo.gymmaster', N'U') IS NULL
+CREATE TABLE [dbo].[gymmaster] (
     [id] NVARCHAR(50) NOT NULL,
-    [code] NVARCHAR(255) NOT NULL,
     [name] NVARCHAR(255) NOT NULL,
-    [category] NVARCHAR(255),
-    [muscleGroup] NVARCHAR(255),
-    [instructions] NVARCHAR(MAX),
-    [sets] INT,
-    [reps] NVARCHAR(255),
-    [duration] NVARCHAR(255),
-    [rest] NVARCHAR(255),
-    [equipment] NVARCHAR(255),
-    [image] NVARCHAR(255),
+    [description] NVARCHAR(MAX),
     [branchId] NVARCHAR(50),
-    [status] NVARCHAR(255) NOT NULL CONSTRAINT [Exercise_status_df] DEFAULT 'Active',
-    [createdAt] DATETIME2 NOT NULL CONSTRAINT [Exercise_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+    [isActive] BIT NOT NULL CONSTRAINT [gymmaster_isActive_df] DEFAULT 1,
+    [createdAt] DATETIME2 NOT NULL CONSTRAINT [gymmaster_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
     [updatedAt] DATETIME2 NOT NULL,
-    CONSTRAINT [Exercise_pkey] PRIMARY KEY CLUSTERED ([id])
+    CONSTRAINT [gymmaster_pkey] PRIMARY KEY CLUSTERED ([id])
+);
+GO
+
+IF OBJECT_ID(N'dbo.gymmasterdetail', N'U') IS NULL
+CREATE TABLE [dbo].[gymmasterdetail] (
+    [id] NVARCHAR(50) NOT NULL,
+    [masterId] NVARCHAR(50) NOT NULL,
+    [name] NVARCHAR(255) NOT NULL,
+    [description] NVARCHAR(MAX),
+    [branchId] NVARCHAR(50),
+    [isActive] BIT NOT NULL CONSTRAINT [gymmasterdetail_isActive_df] DEFAULT 1,
+    [createdAt] DATETIME2 NOT NULL CONSTRAINT [gymmasterdetail_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+    [updatedAt] DATETIME2 NOT NULL,
+    CONSTRAINT [gymmasterdetail_pkey] PRIMARY KEY CLUSTERED ([id])
+);
+GO
+
+IF OBJECT_ID(N'dbo.financemaster', N'U') IS NULL
+CREATE TABLE [dbo].[financemaster] (
+    [id] NVARCHAR(50) NOT NULL,
+    [name] NVARCHAR(255) NOT NULL,
+    [description] NVARCHAR(MAX),
+    [branchId] NVARCHAR(50),
+    [isActive] BIT NOT NULL CONSTRAINT [financemaster_isActive_df] DEFAULT 1,
+    [createdAt] DATETIME2 NOT NULL CONSTRAINT [financemaster_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+    [updatedAt] DATETIME2 NOT NULL,
+    CONSTRAINT [financemaster_pkey] PRIMARY KEY CLUSTERED ([id])
+);
+GO
+
+IF OBJECT_ID(N'dbo.financemasterdetail', N'U') IS NULL
+CREATE TABLE [dbo].[financemasterdetail] (
+    [id] NVARCHAR(50) NOT NULL,
+    [masterId] NVARCHAR(50) NOT NULL,
+    [name] NVARCHAR(255) NOT NULL,
+    [description] NVARCHAR(MAX),
+    [branchId] NVARCHAR(50),
+    [isActive] BIT NOT NULL CONSTRAINT [financemasterdetail_isActive_df] DEFAULT 1,
+    [createdAt] DATETIME2 NOT NULL CONSTRAINT [financemasterdetail_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+    [updatedAt] DATETIME2 NOT NULL,
+    CONSTRAINT [financemasterdetail_pkey] PRIMARY KEY CLUSTERED ([id])
+);
+GO
+
+IF OBJECT_ID(N'dbo.payrollmaster', N'U') IS NULL
+CREATE TABLE [dbo].[payrollmaster] (
+    [id] NVARCHAR(50) NOT NULL,
+    [name] NVARCHAR(255) NOT NULL,
+    [description] NVARCHAR(MAX),
+    [branchId] NVARCHAR(50),
+    [isActive] BIT NOT NULL CONSTRAINT [payrollmaster_isActive_df] DEFAULT 1,
+    [createdAt] DATETIME2 NOT NULL CONSTRAINT [payrollmaster_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+    [updatedAt] DATETIME2 NOT NULL,
+    CONSTRAINT [payrollmaster_pkey] PRIMARY KEY CLUSTERED ([id])
+);
+GO
+
+IF OBJECT_ID(N'dbo.payrollmasterdetail', N'U') IS NULL
+CREATE TABLE [dbo].[payrollmasterdetail] (
+    [id] NVARCHAR(50) NOT NULL,
+    [masterId] NVARCHAR(50) NOT NULL,
+    [name] NVARCHAR(255) NOT NULL,
+    [description] NVARCHAR(MAX),
+    [branchId] NVARCHAR(50),
+    [isActive] BIT NOT NULL CONSTRAINT [payrollmasterdetail_isActive_df] DEFAULT 1,
+    [createdAt] DATETIME2 NOT NULL CONSTRAINT [payrollmasterdetail_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+    [updatedAt] DATETIME2 NOT NULL,
+    CONSTRAINT [payrollmasterdetail_pkey] PRIMARY KEY CLUSTERED ([id])
 );
 GO
 
@@ -1368,6 +1437,12 @@ GO
 -- indexes on [UserPermission]
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'UserPermission_screenKey_idx' AND object_id = OBJECT_ID(N'dbo.UserPermission'))
     CREATE NONCLUSTERED INDEX [UserPermission_screenKey_idx] ON [dbo].[UserPermission]([screenKey]);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'gymmasterdetail_masterId_idx' AND object_id = OBJECT_ID(N'dbo.gymmasterdetail'))
+    CREATE NONCLUSTERED INDEX [gymmasterdetail_masterId_idx] ON [dbo].[gymmasterdetail]([masterId]);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'financemasterdetail_masterId_idx' AND object_id = OBJECT_ID(N'dbo.financemasterdetail'))
+    CREATE NONCLUSTERED INDEX [financemasterdetail_masterId_idx] ON [dbo].[financemasterdetail]([masterId]);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'payrollmasterdetail_masterId_idx' AND object_id = OBJECT_ID(N'dbo.payrollmasterdetail'))
+    CREATE NONCLUSTERED INDEX [payrollmasterdetail_masterId_idx] ON [dbo].[payrollmasterdetail]([masterId]);
 GO
 
 -- indexes on [Session]
@@ -1863,9 +1938,25 @@ IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'gymmasterfile_branc
     ALTER TABLE [dbo].[gymmasterfile] ADD CONSTRAINT [gymmasterfile_branchId_fkey] FOREIGN KEY ([branchId]) REFERENCES [dbo].[Branch]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
 GO
 
--- foreign keys on [dbo].[Exercise]
-IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'Exercise_branchId_fkey' AND parent_object_id = OBJECT_ID(N'dbo.Exercise'))
-    ALTER TABLE [dbo].[Exercise] ADD CONSTRAINT [Exercise_branchId_fkey] FOREIGN KEY ([branchId]) REFERENCES [dbo].[Branch]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
+-- foreign keys on the three master/detail pairs
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'gymmaster_branchId_fkey' AND parent_object_id = OBJECT_ID(N'dbo.gymmaster'))
+    ALTER TABLE [dbo].[gymmaster] ADD CONSTRAINT [gymmaster_branchId_fkey] FOREIGN KEY ([branchId]) REFERENCES [dbo].[Branch]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'gymmasterdetail_masterId_fkey' AND parent_object_id = OBJECT_ID(N'dbo.gymmasterdetail'))
+    ALTER TABLE [dbo].[gymmasterdetail] ADD CONSTRAINT [gymmasterdetail_masterId_fkey] FOREIGN KEY ([masterId]) REFERENCES [dbo].[gymmaster]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'gymmasterdetail_branchId_fkey' AND parent_object_id = OBJECT_ID(N'dbo.gymmasterdetail'))
+    ALTER TABLE [dbo].[gymmasterdetail] ADD CONSTRAINT [gymmasterdetail_branchId_fkey] FOREIGN KEY ([branchId]) REFERENCES [dbo].[Branch]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'financemaster_branchId_fkey' AND parent_object_id = OBJECT_ID(N'dbo.financemaster'))
+    ALTER TABLE [dbo].[financemaster] ADD CONSTRAINT [financemaster_branchId_fkey] FOREIGN KEY ([branchId]) REFERENCES [dbo].[Branch]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'financemasterdetail_masterId_fkey' AND parent_object_id = OBJECT_ID(N'dbo.financemasterdetail'))
+    ALTER TABLE [dbo].[financemasterdetail] ADD CONSTRAINT [financemasterdetail_masterId_fkey] FOREIGN KEY ([masterId]) REFERENCES [dbo].[financemaster]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'financemasterdetail_branchId_fkey' AND parent_object_id = OBJECT_ID(N'dbo.financemasterdetail'))
+    ALTER TABLE [dbo].[financemasterdetail] ADD CONSTRAINT [financemasterdetail_branchId_fkey] FOREIGN KEY ([branchId]) REFERENCES [dbo].[Branch]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'payrollmaster_branchId_fkey' AND parent_object_id = OBJECT_ID(N'dbo.payrollmaster'))
+    ALTER TABLE [dbo].[payrollmaster] ADD CONSTRAINT [payrollmaster_branchId_fkey] FOREIGN KEY ([branchId]) REFERENCES [dbo].[Branch]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'payrollmasterdetail_masterId_fkey' AND parent_object_id = OBJECT_ID(N'dbo.payrollmasterdetail'))
+    ALTER TABLE [dbo].[payrollmasterdetail] ADD CONSTRAINT [payrollmasterdetail_masterId_fkey] FOREIGN KEY ([masterId]) REFERENCES [dbo].[payrollmaster]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'payrollmasterdetail_branchId_fkey' AND parent_object_id = OBJECT_ID(N'dbo.payrollmasterdetail'))
+    ALTER TABLE [dbo].[payrollmasterdetail] ADD CONSTRAINT [payrollmasterdetail_branchId_fkey] FOREIGN KEY ([branchId]) REFERENCES [dbo].[Branch]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
 GO
 
 -- foreign keys on [dbo].[WorkoutPlan]
@@ -1883,7 +1974,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'WorkoutDayExercise_
     ALTER TABLE [dbo].[WorkoutDayExercise] ADD CONSTRAINT [WorkoutDayExercise_dayId_fkey] FOREIGN KEY ([dayId]) REFERENCES [dbo].[WorkoutDay]([id]) ON DELETE CASCADE ON UPDATE NO ACTION;
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'WorkoutDayExercise_exerciseId_fkey' AND parent_object_id = OBJECT_ID(N'dbo.WorkoutDayExercise'))
-    ALTER TABLE [dbo].[WorkoutDayExercise] ADD CONSTRAINT [WorkoutDayExercise_exerciseId_fkey] FOREIGN KEY ([exerciseId]) REFERENCES [dbo].[Exercise]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
+    ALTER TABLE [dbo].[WorkoutDayExercise] ADD CONSTRAINT [WorkoutDayExercise_exerciseId_fkey] FOREIGN KEY ([exerciseId]) REFERENCES [dbo].[gymmasterdetail]([id]) ON DELETE NO ACTION ON UPDATE NO ACTION;
 GO
 
 -- foreign keys on [dbo].[WorkoutAssignment]
