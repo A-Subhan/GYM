@@ -4,7 +4,7 @@ import { getSession } from '@/lib/auth'
 import { makeLeaveId } from '@/lib/ids'
 
 // Staff fields included on every leave row
-const STAFF_SELECT = { select: { id: true, firstName: true, lastName: true, employeeId: true } }
+const STAFF_SELECT = { select: { id: true, firstName: true, lastName: true } }
 
 export async function GET(req: NextRequest) {
   const session = await getSession()

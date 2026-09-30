@@ -45,19 +45,19 @@ async function postedLinesForAccount(accountId: string): Promise<PostedLine[]> {
   // Four separate line tables (final schema) — union them per account
   const [cashLines, bankLines, jvLines, otbLines] = await Promise.all([
     db.cashBookLine.findMany({
-      where: { accountId, status: 'Active', voucher: { status: 'Posted' } },
+      where: { accountId, status: 'Active', voucher: { status: 'Posted', isDeleted: false } },
       include: { voucher: { select: voucherSelect } },
     }),
     db.bankBookLine.findMany({
-      where: { accountId, status: 'Active', voucher: { status: 'Posted' } },
+      where: { accountId, status: 'Active', voucher: { status: 'Posted', isDeleted: false } },
       include: { voucher: { select: voucherSelect } },
     }),
     db.journalVoucherLine.findMany({
-      where: { accountId, status: 'Active', voucher: { status: 'Posted' } },
+      where: { accountId, status: 'Active', voucher: { status: 'Posted', isDeleted: false } },
       include: { voucher: { select: voucherSelect } },
     }),
     db.openingTbLine.findMany({
-      where: { accountId, status: 'Active', voucher: { status: 'Posted' } },
+      where: { accountId, status: 'Active', voucher: { status: 'Posted', isDeleted: false } },
       include: { voucher: { select: voucherSelect } },
     }),
   ])
@@ -97,10 +97,10 @@ async function postedVouchers(opts: { from?: Date; to?: Date; allowed?: string[]
   }
   const select = { id: true, voucherType: true, voucherDate: true, branchId: true, description: true, reference: true, status: true, branch: true }
   const [cash, bank, jv, otb] = await Promise.all([
-    db.cashBook.findMany({ where: { status: 'Posted', ...dateFilter, ...branchFilter, ...(opts.voucherType ? { voucherType: opts.voucherType } : {}) }, select: { ...select, totalAmount: true } }),
-    db.bankBook.findMany({ where: { status: 'Posted', ...dateFilter, ...branchFilter, ...(opts.voucherType ? { voucherType: opts.voucherType } : {}) }, select: { ...select, totalAmount: true } }),
-    db.journalVoucher.findMany({ where: { status: 'Posted', ...dateFilter, ...branchFilter, ...(opts.voucherType ? { voucherType: opts.voucherType } : {}) }, select: { ...select, totalDebit: true, totalCredit: true } }),
-    db.openingTbVoucher.findMany({ where: { status: 'Posted', ...dateFilter, ...branchFilter, ...(opts.voucherType ? { voucherType: opts.voucherType } : {}) }, select: { ...select, totalDebit: true, totalCredit: true, difference: true, isBalanced: true } }),
+    db.cashBook.findMany({ where: { status: 'Posted', isDeleted: false, ...dateFilter, ...branchFilter, ...(opts.voucherType ? { voucherType: opts.voucherType } : {}) }, select: { ...select, totalAmount: true } }),
+    db.bankBook.findMany({ where: { status: 'Posted', isDeleted: false, ...dateFilter, ...branchFilter, ...(opts.voucherType ? { voucherType: opts.voucherType } : {}) }, select: { ...select, totalAmount: true } }),
+    db.journalVoucher.findMany({ where: { status: 'Posted', isDeleted: false, ...dateFilter, ...branchFilter, ...(opts.voucherType ? { voucherType: opts.voucherType } : {}) }, select: { ...select, totalDebit: true, totalCredit: true } }),
+    db.openingTbVoucher.findMany({ where: { status: 'Posted', isDeleted: false, ...dateFilter, ...branchFilter, ...(opts.voucherType ? { voucherType: opts.voucherType } : {}) }, select: { ...select, totalDebit: true, totalCredit: true, difference: true, isBalanced: true } }),
   ])
   const rows: any[] = []
   for (const v of cash) {

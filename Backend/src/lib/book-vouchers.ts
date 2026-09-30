@@ -1,5 +1,5 @@
 import { db } from './db'
-import { makeBookVoucherId, type BookVoucherPrefix } from './ids'
+import { makeBookVoucherId, makeBookLineId, type BookVoucherPrefix, type BookLineKind } from './ids'
 
 // =================================================================
 // Dedicated book voucher posting (four books, each with its own line
@@ -62,12 +62,12 @@ export function bookTypeFor(voucherType: BookVoucherType): BookType {
 }
 
 /** Prisma delegate names for the voucher + line tables of a book. */
-export function bookDelegates(bookType: BookType): { voucher: string; line: string } {
+export function bookDelegates(bookType: BookType): { voucher: string; line: string; lineKind: BookLineKind } {
   switch (bookType) {
-    case 'CASHBOOK': return { voucher: 'cashBook', line: 'cashBookLine' }
-    case 'BANKBOOK': return { voucher: 'bankBook', line: 'bankBookLine' }
-    case 'JV': return { voucher: 'journalVoucher', line: 'journalVoucherLine' }
-    default: return { voucher: 'openingTbVoucher', line: 'openingTbLine' }
+    case 'CASHBOOK': return { voucher: 'cashBook', line: 'cashBookLine', lineKind: 'C' }
+    case 'BANKBOOK': return { voucher: 'bankBook', line: 'bankBookLine', lineKind: 'B' }
+    case 'JV': return { voucher: 'journalVoucher', line: 'journalVoucherLine', lineKind: 'J' }
+    default: return { voucher: 'openingTbVoucher', line: 'openingTbLine', lineKind: 'O' }
   }
 }
 
@@ -112,8 +112,9 @@ function r2(n: number): number {
 }
 
 /** Build the create payload for the appropriate line table. */
-function lineData(bookType: BookType, voucherId: string, voucherType: BookVoucherType, l: FinalLine): Record<string, unknown> {
+function lineData(bookType: BookType, voucherId: string, voucherType: BookVoucherType, l: FinalLine, lineId: string): Record<string, unknown> {
   const data: Record<string, unknown> = {
+    id: lineId,
     voucherId,
     accountId: l.accountId,
     debit: r2(l.debit),
@@ -139,10 +140,11 @@ function lineData(bookType: BookType, voucherId: string, voucherType: BookVouche
   return data
 }
 
-async function persistLines(tx: any, bookType: BookType, voucherId: string, voucherType: BookVoucherType, lines: FinalLine[]) {
-  const { line } = bookDelegates(bookType)
+async function persistLines(tx: any, bookType: BookType, voucherId: string, voucherType: BookVoucherType, voucherDate: Date, lines: FinalLine[]) {
+  const { line, lineKind } = bookDelegates(bookType)
   for (const l of lines) {
-    await tx[line].create({ data: lineData(bookType, voucherId, voucherType, l) })
+    const lineId = await makeBookLineId(lineKind, voucherDate)
+    await tx[line].create({ data: lineData(bookType, voucherId, voucherType, l, lineId) })
   }
 }
 
@@ -175,8 +177,10 @@ export async function postBookVoucher(input: PostBookVoucherInput) {
         status: l.status || 'Active',
       }
     })
-    // auto book-account line on the opposite side (no tax on book line)
-    const totalDetail = r2(finalLines.reduce((s, l) => s + l.debit + l.credit, 0))
+    // auto book-account line on the opposite side (no tax on book line).
+    // The book account moves by the GROSS total (amount + tax) so the
+    // voucher balances: each detail line's `total` column = amount + tax.
+    const totalDetail = r2(finalLines.reduce((s, l) => s + l.amount + l.taxAmount, 0))
     finalLines.unshift({
       accountId: input.bookChartId,
       debit: detailIsCredit ? totalDetail : 0,
@@ -226,6 +230,7 @@ export async function postBookVoucher(input: PostBookVoucherInput) {
 
   const totalDebit = r2(finalLines.reduce((s, l) => s + l.debit, 0))
   const totalCredit = r2(finalLines.reduce((s, l) => s + l.credit, 0))
+  const totalTax = r2(finalLines.reduce((s, l) => s + l.taxAmount, 0))
   const isOTV = input.voucherType === 'OTV'
   const balanced = Math.abs(totalDebit - totalCredit) < 0.01
 
@@ -261,7 +266,7 @@ export async function postBookVoucher(input: PostBookVoucherInput) {
           description: input.description,
           reference: input.reference,
           paymentMode: input.paymentMode,
-          totalAmount: usesBookAccount(input.voucherType) ? totalDebit : undefined,
+          totalAmount: usesBookAccount(input.voucherType) ? r2(totalDebit + totalTax) : undefined,
           totalDebit: usesBookAccount(input.voucherType) ? undefined : totalDebit,
           totalCredit: usesBookAccount(input.voucherType) ? undefined : totalCredit,
           difference: isOTV ? r2(totalDebit - totalCredit) : undefined,
@@ -270,7 +275,7 @@ export async function postBookVoucher(input: PostBookVoucherInput) {
           updatedAt: new Date(),
         },
       })
-      await persistLines(tx, bookType, voucherId, input.voucherType, finalLines)
+      await persistLines(tx, bookType, voucherId, input.voucherType, new Date(input.voucherDate), finalLines)
       const updated = await (tx as any)[voucherDelegate].findUnique({
         where: { id: voucherId },
         include: { lines: { include: { account: true } } },
@@ -294,7 +299,8 @@ export async function postBookVoucher(input: PostBookVoucherInput) {
     if (usesBookAccount(input.voucherType)) {
       data.bookChartId = input.bookChartId
       data.paymentMode = input.paymentMode
-      data.totalAmount = totalDebit
+      // gross: detail amounts + tax — keeps every voucher balanced
+      data.totalAmount = r2(totalDebit + totalTax)
     } else {
       data.totalDebit = totalDebit
       data.totalCredit = totalCredit
@@ -305,7 +311,7 @@ export async function postBookVoucher(input: PostBookVoucherInput) {
     }
 
     await (tx as any)[voucherDelegate].create({ data })
-    await persistLines(tx, bookType, voucherId, input.voucherType, finalLines)
+    await persistLines(tx, bookType, voucherId, input.voucherType, input.voucherDate, finalLines)
     await tx.auditLog.create({
       data: { userId: input.postedById, action: 'POST', module: 'book-vouchers', details: JSON.stringify({ voucherId, voucherType: input.voucherType, totalDebit, totalCredit }) },
     })
@@ -414,6 +420,7 @@ export async function reverseBookVoucher(voucherId: string, voucherType: BookVou
         status: 'Active',
       }
       if (lineHasTax(bookType)) {
+        linePayload.id = await makeBookLineId(bookDelegates(bookType).lineKind, new Date())
         linePayload.taxPercent = l.taxPercent
         linePayload.taxAmount = l.taxAmount
         linePayload.total = l.total
@@ -440,9 +447,9 @@ export async function reverseBookVoucher(voucherId: string, voucherType: BookVou
 // Ledger/balance helpers over the four line tables
 // =================================================================
 
-/** Debit/credit sums for one account across Posted vouchers (optionally up to a date). */
+/** Debit/credit sums for one account across Posted, NOT-deleted vouchers (optionally up to a date). */
 export async function getChartBalance(chartId: string, asOf?: Date): Promise<{ debit: number; credit: number; balance: number }> {
-  const voucherFilter = { status: 'Posted', ...(asOf ? { voucherDate: { lte: asOf } } : {}) }
+  const voucherFilter: any = { status: 'Posted', isDeleted: false, ...(asOf ? { voucherDate: { lte: asOf } } : {}) }
   const [c, b, j, o] = await Promise.all([
     db.cashBookLine.aggregate({
       where: { accountId: chartId, status: 'Active', voucher: voucherFilter },
@@ -476,8 +483,8 @@ export async function getChartBalanceBetween(
   from: Date,
   to: Date,
 ): Promise<{ opening: number; debit: number; credit: number; balance: number }> {
-  const beforeFilter = { status: 'Posted', voucherDate: { lt: from } }
-  const inFilter = { status: 'Posted', voucherDate: { gte: from, lte: to } }
+  const beforeFilter = { status: 'Posted', isDeleted: false, voucherDate: { lt: from } }
+  const inFilter = { status: 'Posted', isDeleted: false, voucherDate: { gte: from, lte: to } }
   const sums = await Promise.all([
     db.cashBookLine.aggregate({ where: { accountId: chartId, status: 'Active', voucher: beforeFilter }, _sum: { debit: true, credit: true } }),
     db.bankBookLine.aggregate({ where: { accountId: chartId, status: 'Active', voucher: beforeFilter }, _sum: { debit: true, credit: true } }),

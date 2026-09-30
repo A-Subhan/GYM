@@ -91,6 +91,8 @@ function buildWhere(bookType: BookApiBookType, url: URL, allowed: string[] | nul
   }
   return {
     where: {
+      // soft-deleted vouchers never appear in any list
+      isDeleted: false,
       voucherType: voucherType ? { in: voucherType } : undefined,
       ...(branchFilter ? { branchId: { in: branchFilter } } : {}),
       ...(status ? { status } : {}),
@@ -215,7 +217,7 @@ export function bookVoucherApi(bookType: BookApiBookType) {
     }
   }
 
-  // POST action ({ action: 'reverse', reason }) -------------------------
+  // POST action ({ action: 'reverse', reason } | { action: 'delete', reason })
   async function action(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -233,14 +235,57 @@ export function bookVoucherApi(bookType: BookApiBookType) {
         return NextResponse.json({ error: e.message }, { status: 400 })
       }
     }
+
+    // SOFT delete next to the Reverse option — never a physical delete.
+    if (data.action === 'delete') {
+      return softDelete(id, session, data.reason)
+    }
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
   }
 
-  // DELETE — always rejected -------------------------------------------
+  /**
+   * SOFT delete: flags the voucher (isDeleted/deletedById/deletedAt) so it
+   * disappears from lists, reports and ledgers; its reversal row (if any)
+   * is flagged too so the pair never skews balances. Nothing is removed
+   * from the database — lines stay for the audit trail.
+   */
+  async function softDelete(id: string, session: { id: string; permissions: string[] }, reason?: string) {
+    if (!session.permissions.includes('vouchers.delete')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const existing = await (db as any)[delegate].findUnique({ where: { id } })
+    if (!existing) return NextResponse.json({ error: 'Voucher not found' }, { status: 404 })
+    if (existing.isDeleted) return NextResponse.json({ error: 'Voucher is already deleted' }, { status: 400 })
+    try {
+      await db.$transaction(async (tx) => {
+        await (tx as any)[delegate].update({
+          where: { id },
+          data: { isDeleted: true, deletedById: session.id, deletedAt: new Date() },
+        })
+        // flag the reversal row of this voucher (id ends with -R, reference = original id)
+        const reversal = await (tx as any)[delegate].findFirst({ where: { OR: [{ id: `${id}-R` }, { reference: id, id: { endsWith: '-R' } }] } })
+        if (reversal && !reversal.isDeleted) {
+          await (tx as any)[delegate].update({
+            where: { id: reversal.id },
+            data: { isDeleted: true, deletedById: session.id, deletedAt: new Date() },
+          })
+        }
+        await (tx as any).auditLog.create({
+          data: { userId: session.id, action: 'SOFT_DELETE', module: 'book-vouchers', details: JSON.stringify({ voucherId: id, reason: reason || '' }) },
+        })
+      })
+      return NextResponse.json({ success: true, message: `Voucher ${id} deleted (soft)` })
+    } catch (e: any) {
+      return NextResponse.json({ error: e.message || 'Failed to delete voucher' }, { status: 400 })
+    }
+  }
+
+  // DELETE — soft delete (never permanent); reason may come in the body
   async function remove(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    return NextResponse.json({ error: 'Posted vouchers cannot be deleted; use reversal' }, { status: 400 })
+    const { id } = await params
+    let reason = ''
+    try { reason = (await req.json())?.reason || '' } catch { /* body optional */ }
+    return softDelete(id, session, reason)
   }
 
   return { list, getOne, create, update, action, remove }

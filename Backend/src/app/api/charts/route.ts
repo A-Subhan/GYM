@@ -35,7 +35,18 @@ export async function GET(req: NextRequest) {
     include: { parent: { select: { id: true, name: true, accountType: true, isControl: true } } },
     orderBy: { id: 'asc' },
   })
-  return NextResponse.json({ charts })
+  // Tree contract: the 'ROOT' sentinel means no parent. Expose parentId
+  // (null for roots) and null the parent include for roots so the UI can
+  // rebuild the head / sub-head hierarchy (control vs detail levels).
+  const mapped = charts.map((c) => {
+    const isRoot = c.parentCode === 'ROOT' || !c.parentCode
+    return {
+      ...c,
+      parentId: isRoot ? null : c.parentCode,
+      parent: isRoot ? null : c.parent,
+    }
+  })
+  return NextResponse.json({ charts: mapped })
 }
 
 // POST /api/charts — create a chart account

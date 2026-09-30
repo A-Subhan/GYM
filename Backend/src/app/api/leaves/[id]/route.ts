@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 
-const STAFF_SELECT = { select: { id: true, firstName: true, lastName: true, employeeId: true } }
+const STAFF_SELECT = { select: { id: true, firstName: true, lastName: true } }
 const BRANCH_SELECT = { select: { id: true, name: true, code: true } }
 
 async function loadLeave(id: string) {
@@ -114,4 +114,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data: { userId: session.id, action: 'UPDATE', module: 'leaves', details: JSON.stringify({ id, leaveNo: leave.id }) },
   })
   return NextResponse.json({ leave: updated })
+}
+
+// DELETE /api/leaves/[id] — pending leaves only (approved history is kept
+// for payroll); anything else must stay on record.
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!session.permissions.includes('leaves.delete')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const { id } = await params
+  const leave = await loadLeave(id)
+  if (!leave) return NextResponse.json({ error: 'Leave not found' }, { status: 404 })
+  if (leave.status !== 'Pending') {
+    return NextResponse.json({ error: `Only pending leaves can be deleted (this one is ${leave.status})` }, { status: 400 })
+  }
+  await db.leave.delete({ where: { id } })
+  await db.auditLog.create({
+    data: { userId: session.id, action: 'DELETE', module: 'leaves', details: JSON.stringify({ id, leaveNo: id }) },
+  })
+  return NextResponse.json({ success: true, message: `Leave ${id} deleted` })
 }

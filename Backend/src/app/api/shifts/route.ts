@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
+import { makeShiftId } from '@/lib/ids'
 
 export async function GET() {
   const session = await getSession()
@@ -17,6 +18,8 @@ export async function POST(req: NextRequest) {
   if (!data.name || !data.timeIn || !data.timeOut) return NextResponse.json({ error: 'Name, timeIn, timeOut required' }, { status: 400 })
   const shift = await db.shift.create({
     data: {
+      // Shift id is a 3-digit sequence (001, 002, 003 …) per the HR DB upgrade
+      id: await makeShiftId(),
       name: data.name,
       timeIn: data.timeIn,
       timeOut: data.timeOut,

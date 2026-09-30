@@ -84,6 +84,23 @@ export async function makeBookVoucherId(prefix: BookVoucherPrefix, branchCode: s
   return `${key}/${pad(seq, 6)}`
 }
 
+// --- Book line ids --------------------------------------------------------
+// Per FINANCE DB upgrade (09_upgrade_finance_hr.sql) line ids are business ids:
+//   CashBookLine  C/{year}/{000001}   (C = cash payment/receipt voucher)
+//   BankBookLine  B/{year}/{000001}   (B = bank payment/receipt voucher)
+//   JVLine        J/{year}/{000001}
+//   OpenTBLine    O/{year}/{000001}
+// The sequence RESETS per year (sequence key includes the year).
+export type BookLineKind = 'C' | 'B' | 'J' | 'O'
+
+/** e.g. makeBookLineId('B', new Date()) -> B/2026/000001 */
+export async function makeBookLineId(kind: BookLineKind, date: Date): Promise<string> {
+  const year = date.getFullYear()
+  const key = `LINE/${kind}/${year}`
+  const seq = await reserve(key)
+  return `${kind}/${year}/${pad(seq, 6)}`
+}
+
 /** Knock-off bill id: OTB-{branch}/{0000001}, key KOFF/{branch} */
 export async function makeKnockOffBillId(branchCode: string): Promise<string> {
   const seq = await reserve(`KOFF/${branchCode}`)
@@ -169,10 +186,47 @@ export async function makeLeaveId(): Promise<string> {
   return `LV-${pad(seq, 4)}`
 }
 
-/** EMP-00001 (staff), key EMPLOYEE */
+/**
+ * EMP-00001 (staff). Since the HR DB upgrade the staff id IS the employee id,
+ * so callers use this value as the Prisma `id` of the Staff row.
+ * Reconciles with existing Staff rows so legacy EMP ids without a sequence
+ * row never collide (same pattern as makeFeeId).
+ */
 export async function makeEmployeeId(): Promise<string> {
-  const seq = await reserve('EMPLOYEE')
+  const rows = await db.staff.findMany({ where: { id: { startsWith: 'EMP-' } }, select: { id: true } })
+  const maxSeq = rows.reduce((m, r) => {
+    const n = Number(r.id.slice('EMP-'.length))
+    return Number.isFinite(n) && n > m ? n : m
+  }, 0)
+  const seq = await reserve('EMPLOYEE', maxSeq + 1)
   return `EMP-${pad(seq, 5)}`
+}
+
+/**
+ * 001, 002, 003 … (shifts). Reconciles with existing Shift rows so migrated
+ * numeric ids are honoured even without a seeded sequence row.
+ */
+export async function makeShiftId(): Promise<string> {
+  const shifts = await db.shift.findMany({ select: { id: true } })
+  const maxSeq = shifts.reduce((m, s) => {
+    const n = Number(s.id)
+    return Number.isFinite(n) && /^\d+$/.test(s.id) && n > m ? n : m
+  }, 0)
+  const seq = await reserve('SHIFT', maxSeq + 1)
+  return pad(seq, 3)
+}
+
+/**
+ * 001, 002, 003 … (calendar days). Same reconciliation pattern as shifts.
+ */
+export async function makeCalendarDayId(): Promise<string> {
+  const days = await db.calendarDay.findMany({ select: { id: true } })
+  const maxSeq = days.reduce((m, d) => {
+    const n = Number(d.id)
+    return Number.isFinite(n) && /^\d+$/.test(d.id) && n > m ? n : m
+  }, 0)
+  const seq = await reserve('CALENDARDAY', maxSeq + 1)
+  return pad(seq, 3)
 }
 
 /** EQ-00001 (equipment), key EQUIPMENT */

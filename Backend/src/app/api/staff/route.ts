@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, getSelectedBranchIds } from '@/lib/auth'
+import { makeEmployeeId } from '@/lib/ids'
 
 // Payload → Prisma data mapper shared by create/update
 function staffFields(data: any) {
@@ -64,7 +65,7 @@ export async function GET(req: NextRequest) {
       isDeleted: false,
       ...(allowed ? { branchId: { in: allowed } } : {}),
       ...(isTrainer === 'true' ? { isTrainer: true } : {}),
-      ...(search ? { OR: [{ employeeId: { contains: search } }, { firstName: { contains: search } }] } : {}),
+      ...(search ? { OR: [{ id: { contains: search } }, { firstName: { contains: search } }] } : {}),
     },
     include: { branch: true, shift: true },
     orderBy: { createdAt: 'desc' },
@@ -83,21 +84,20 @@ export async function POST(req: NextRequest) {
   if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
 
   try {
-    // Employee ID: client-supplied wins, otherwise atomic sequence EMP-00001, EMP-00002, …
+    // Employee id IS the primary key since the HR DB upgrade (id + employeeId
+    // merged into ONE column). Client-supplied id wins, otherwise the atomic
+    // EMP-00001 sequence (reconciled against existing rows).
     if (data.shiftId === undefined) data.shiftId = null
     const staff = await db.$transaction(async (tx) => {
-      let employeeId = typeof data.employeeId === 'string' ? data.employeeId.trim() : ''
-      if (!employeeId) {
-        const seqRow = await tx.idSequence.upsert({
-          where: { key: 'EMPLOYEE' },
-          update: { next: { increment: 1 } },
-          create: { key: 'EMPLOYEE', next: 2 },
-        })
-        employeeId = `EMP-${String(seqRow.next - 1).padStart(5, '0')}`
-      }
-      return tx.staff.create({ data: { employeeId, ...staffFields(data) }, include: { branch: true, shift: true } })
+      let employeeId = typeof data.employeeId === 'string' && data.employeeId.trim()
+        ? data.employeeId.trim()
+        : typeof data.id === 'string' && data.id.trim()
+          ? data.id.trim()
+          : ''
+      if (!employeeId) employeeId = await makeEmployeeId()
+      return tx.staff.create({ data: { id: employeeId, ...staffFields(data) }, include: { branch: true, shift: true } })
     })
-    await db.auditLog.create({ data: { userId: session.id, action: 'CREATE', module: 'staff', details: JSON.stringify({ id: staff.id, employeeId: staff.employeeId }) } })
+    await db.auditLog.create({ data: { userId: session.id, action: 'CREATE', module: 'staff', details: JSON.stringify({ id: staff.id }) } })
     return NextResponse.json({ staff })
   } catch (e: any) {
     if (e?.code === 'P2002') return NextResponse.json({ error: 'An employee with this Employee ID already exists' }, { status: 400 })
@@ -120,13 +120,13 @@ export async function PATCH(req: NextRequest) {
   if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
 
   try {
-    // employeeId is the immutable business id — never changed on update
+    // The employee id (== primary key) is immutable — never changed on update
     const staff = await db.staff.update({
       where: { id: data.id },
       data: staffFields(data),
       include: { branch: true, shift: true },
     })
-    await db.auditLog.create({ data: { userId: session.id, action: 'UPDATE', module: 'staff', details: JSON.stringify({ id: staff.id, employeeId: staff.employeeId }) } })
+    await db.auditLog.create({ data: { userId: session.id, action: 'UPDATE', module: 'staff', details: JSON.stringify({ id: staff.id }) } })
     return NextResponse.json({ staff })
   } catch (e: any) {
     if (e?.code === 'P2002') return NextResponse.json({ error: 'Update violates a unique constraint' }, { status: 400 })
@@ -148,6 +148,6 @@ export async function DELETE(req: NextRequest) {
 
   // Soft delete — keep payroll/leave/attendance history intact
   await db.staff.update({ where: { id }, data: { isDeleted: true, isActive: false } })
-  await db.auditLog.create({ data: { userId: session.id, action: 'DELETE', module: 'staff', details: JSON.stringify({ id, employeeId: existing.employeeId, softDelete: true }) } })
-  return NextResponse.json({ success: true, message: `Employee ${existing.employeeId} deleted` })
+  await db.auditLog.create({ data: { userId: session.id, action: 'DELETE', module: 'staff', details: JSON.stringify({ id, softDelete: true }) } })
+  return NextResponse.json({ success: true, message: `Employee ${existing.id} deleted` })
 }

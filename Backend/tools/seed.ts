@@ -215,11 +215,11 @@ async function main() {
   }
   console.log('  ✓ default membership plans')
 
-  // 11. Default shifts
+  // 11. Default shifts (ids are 3-digit sequences per the HR DB upgrade)
   for (const [id, name, ti, to, days] of [
-    ['shift-morning-default', 'Morning', '06:00', '14:00', 'Mon,Tue,Wed,Thu,Fri,Sat'],
-    ['shift-evening-default', 'Evening', '14:00', '22:00', 'Mon,Tue,Wed,Thu,Fri,Sat'],
-    ['shift-general-default', 'General', '09:00', '17:00', 'Mon,Tue,Wed,Thu,Fri'],
+    ['001', 'Morning', '06:00', '14:00', 'Mon,Tue,Wed,Thu,Fri,Sat'],
+    ['002', 'Evening', '14:00', '22:00', 'Mon,Tue,Wed,Thu,Fri,Sat'],
+    ['003', 'General', '09:00', '17:00', 'Mon,Tue,Wed,Thu,Fri'],
   ] as const) {
     await db.shift.upsert({
       where: { id },
@@ -258,11 +258,11 @@ async function main() {
   console.log('  ✓ allowances')
 
   // 14. Default trainer staff
-  const existingTrainer = await db.staff.findFirst({ where: { employeeId: 'EMP-00001' } })
+  const existingTrainer = await db.staff.findFirst({ where: { id: 'EMP-00001' } })
   if (!existingTrainer) {
     await db.staff.create({
       data: {
-        employeeId: 'EMP-00001',
+        id: 'EMP-00001',
         firstName: 'Imran',
         lastName: 'Khan',
         phone: '03001234567',
@@ -272,7 +272,7 @@ async function main() {
         designation: 'Senior Trainer',
         isTrainer: true,
         branchId: branch.id,
-        shiftId: 'shift-morning-default',
+        shiftId: '001',
         basicSalary: 40000,
       },
     })

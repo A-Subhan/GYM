@@ -254,7 +254,7 @@ export async function GET(req: NextRequest) {
     const members = await db.member.findMany({ where: { isDeleted: false, assignedTrainerId: { not: null } } })
     const rows = trainers.map(t => ({
       trainerName: `${t.firstName} ${t.lastName || ''}`,
-      employeeId: t.employeeId,
+      employeeId: t.id,
       assignedCount: members.filter(m => m.assignedTrainerId === t.id).length,
     }))
     return NextResponse.json({ report: { title: 'Trainer Workload', rows } })
