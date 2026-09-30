@@ -1,3 +1,6 @@
+USE GymDB;
+GO
+
 -- ============================================================================
 -- 10_zz_summary.sql
 -- ============================================================================
@@ -30,7 +33,7 @@ INSERT INTO @expected (step) VALUES
     (N'3h-fk-gmd-master'),
     (N'3h-fk-fmd-master'),
     (N'3h-fk-pmd-master'),
-    (N'4a-Exercise-migrate'),
+    (N'4a2-Exercise-migrate'),
     (N'4b-MasterFile-finance'),
     (N'4c-payrollmasterfile'),
     (N'4d-gymmasterfile'),
