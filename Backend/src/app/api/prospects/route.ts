@@ -39,6 +39,10 @@ export async function POST(req: NextRequest) {
 
   const data = await req.json()
   if (!data.name) return NextResponse.json({ error: 'Name required' }, { status: 400 })
+  // Phone number is MANDATORY for prospects
+  if (!data.phone || !String(data.phone).trim()) {
+    return NextResponse.json({ error: 'Phone number is required' }, { status: 400 })
+  }
 
   // Business id: {branchCode}/p-00001 (the prospect id IS the business id —
   // there is no separate prospectId column). A branch is required to build it.

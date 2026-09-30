@@ -29,7 +29,8 @@ async function getKey(): Promise<CryptoKey> {
 export interface TokenPayload {
   userId: string
   username: string
-  roleId: string
+  roleId?: string | null
+  userType?: string
   branchId?: string | null
   accessibleBranchIds: string
   exp: number

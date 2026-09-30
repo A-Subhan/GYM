@@ -72,9 +72,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   if (data.leaveType && data.leaveType !== leave.leaveType) {
-    const leaveType = await db.payrollMasterFile.findFirst({
-      where: { masterType: 'Leave Type', name: data.leaveType, isActive: true },
-    })
+    // Payroll Master File first (payrollmaster category 'Leave Type'), then legacy table
+    let leaveType: { name: string } | null = null
+    const pmCategory = await db.payrollMaster.findFirst({ where: { name: 'Leave Type' } })
+    if (pmCategory) {
+      leaveType = await db.payrollMasterDetail.findFirst({
+        where: { masterId: pmCategory.id, name: data.leaveType, isActive: true },
+      })
+    }
+    if (!leaveType) {
+      leaveType = await db.payrollMasterFile.findFirst({
+        where: { masterType: 'Leave Type', name: data.leaveType, isActive: true },
+      })
+    }
     if (!leaveType) {
       return NextResponse.json({ error: `Invalid leave type "${data.leaveType}" — pick one from the HR Leave Type master` }, { status: 400 })
     }

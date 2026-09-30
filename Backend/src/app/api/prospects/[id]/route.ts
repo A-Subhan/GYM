@@ -17,6 +17,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   if (!session.permissions.includes('prospects.edit')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  // Phone number is mandatory — it cannot be cleared on edit either
+  if (data.phone !== undefined && !String(data.phone || '').trim()) {
+    return NextResponse.json({ error: 'Phone number is required' }, { status: 400 })
+  }
   const prospect = await db.prospect.update({
     where: { id },
     data: {

@@ -50,3 +50,41 @@ export async function POST(req: NextRequest) {
   })
   return NextResponse.json({ record })
 }
+
+export async function PATCH(req: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!session.permissions.includes('progress.edit')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const data = await req.json()
+  if (!data.id) return NextResponse.json({ error: 'Progress entry id required' }, { status: 400 })
+  const existing = await db.progressEntry.findUnique({ where: { id: data.id } })
+  if (!existing) return NextResponse.json({ error: 'Progress entry not found' }, { status: 404 })
+  const num = (v: any) => (v === undefined ? undefined : v === null || v === '' ? null : Number(v))
+  const record = await db.progressEntry.update({
+    where: { id: data.id },
+    data: {
+      ...(data.date !== undefined ? { date: data.date ? new Date(data.date) : new Date() } : {}),
+      ...(data.weight !== undefined ? { weight: num(data.weight) } : {}),
+      ...(data.chest !== undefined ? { chest: num(data.chest) } : {}),
+      ...(data.waist !== undefined ? { waist: num(data.waist) } : {}),
+      ...(data.hips !== undefined ? { hips: num(data.hips) } : {}),
+      ...(data.biceps !== undefined ? { biceps: num(data.biceps) } : {}),
+      ...(data.thighs !== undefined ? { thighs: num(data.thighs) } : {}),
+      ...(data.notes !== undefined ? { notes: data.notes } : {}),
+    },
+  })
+  await db.auditLog.create({ data: { userId: session.id, action: 'UPDATE', module: 'progress', details: JSON.stringify({ id: data.id }) } })
+  return NextResponse.json({ record })
+}
+
+export async function DELETE(req: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!session.permissions.includes('progress.delete')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const url = new URL(req.url)
+  const id = url.searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'Progress entry id required' }, { status: 400 })
+  await db.progressEntry.delete({ where: { id } })
+  await db.auditLog.create({ data: { userId: session.id, action: 'DELETE', module: 'progress', details: JSON.stringify({ id }) } })
+  return NextResponse.json({ success: true })
+}

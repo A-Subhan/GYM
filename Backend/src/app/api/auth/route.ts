@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
 
     const token = await signToken({
       userId: user.id, username: user.username, roleId: user.roleId,
+      userType: user.userType || 'User',
       branchId: user.branchId, accessibleBranchIds: user.accessibleBranchIds,
     })
     await setSessionCookie(token)
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
       message: 'Login successful',
       user: {
         id: user.id, username: user.username, fullName: user.fullName,
+        userType: user.userType || 'User',
         roleId: user.roleId, roleName: user.role?.name, branchId: user.branchId,
       },
     })

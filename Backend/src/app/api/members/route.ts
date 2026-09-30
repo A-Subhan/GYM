@@ -33,7 +33,9 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: 'desc' },
     take: 200,
   })
-  return NextResponse.json({ members })
+  // memberId is exposed explicitly (it IS the business id) so grids can bind
+  // the Member ID column without guessing the field name.
+  return NextResponse.json({ members: members.map(m => ({ ...m, memberId: m.id })) })
 }
 
 export async function POST(req: NextRequest) {
@@ -65,6 +67,8 @@ export async function POST(req: NextRequest) {
 
   // Fee Relaxation Days: 0..27
   const feeRelaxationDays = Math.max(0, Math.min(27, Number(data.feeRelaxationDays) || 0))
+  // One-time joining fee — charged ON TOP of the membership fee on the first invoice
+  const joiningFee = Math.max(0, Number(data.joiningFee) || 0)
 
   const joiningDate = data.joiningDate ? new Date(data.joiningDate) : new Date()
   const billingStartDate = data.billingStartDate ? new Date(data.billingStartDate) : joiningDate
@@ -100,6 +104,7 @@ export async function POST(req: NextRequest) {
         joiningDate,
         billingStartDate,
         feeRelaxationDays,
+        joiningFee,
         status: data.status || 'Active',
         membershipPlanId: data.membershipPlanId || null,
         branchId: data.branchId,
@@ -111,6 +116,8 @@ export async function POST(req: NextRequest) {
 
     let createdFee: FeeRow | null = null
     if (feeNo && plan) {
+      // Fee charged = membership fee + joining fee (one-time), visible on the Fees & Invoices screen
+      const totalFee = Math.max(0, plan.amount + joiningFee)
       // Billing period: [start, start + durationDays - 1]
       const periodEnd = new Date(billingStartDate)
       periodEnd.setDate(periodEnd.getDate() + plan.durationDays - 1)
@@ -125,12 +132,13 @@ export async function POST(req: NextRequest) {
           branchId: created.branchId,
           billingPeriodStart: billingStartDate,
           billingPeriodEnd: periodEnd,
-          amount: plan.amount,
+          amount: totalFee,
           discount: 0,
           paidAmount: 0,
-          balance: plan.amount,
+          balance: totalFee,
           dueDate,
           status: 'Unpaid',
+          reference: joiningFee > 0 ? `Membership fee ${plan.amount} + Joining fee ${joiningFee}` : undefined,
         },
       })
     }

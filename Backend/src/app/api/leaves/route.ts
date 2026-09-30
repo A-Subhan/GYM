@@ -50,11 +50,22 @@ export async function POST(req: NextRequest) {
   if (to < from) return NextResponse.json({ error: 'toDate must be on or after fromDate' }, { status: 400 })
   const days = Math.ceil((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)) + 1
 
-  // Leave types live in payrollmasterfile (masterType = 'Leave Type');
+  // Leave types live in the Payroll Master File (payrollmaster category
+  // 'Leave Type' + payrollmasterdetail items); legacy dbo.payrollmasterfile
+  // (masterType = 'Leave Type') is still accepted for pre-upgrade data.
   // Leave.leaveType keeps storing the type NAME.
-  const leaveType = await db.payrollMasterFile.findFirst({
-    where: { masterType: 'Leave Type', name: data.leaveType, isActive: true },
-  })
+  let leaveType: { name: string } | null = null
+  const pmCategory = await db.payrollMaster.findFirst({ where: { name: 'Leave Type' } })
+  if (pmCategory) {
+    leaveType = await db.payrollMasterDetail.findFirst({
+      where: { masterId: pmCategory.id, name: data.leaveType, isActive: true },
+    })
+  }
+  if (!leaveType) {
+    leaveType = await db.payrollMasterFile.findFirst({
+      where: { masterType: 'Leave Type', name: data.leaveType, isActive: true },
+    })
+  }
   if (!leaveType) {
     return NextResponse.json({ error: `Invalid leave type "${data.leaveType}" — pick one from the HR Leave Type master` }, { status: 400 })
   }
