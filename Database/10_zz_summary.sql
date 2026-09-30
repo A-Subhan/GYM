@@ -37,7 +37,7 @@ INSERT INTO @expected (step) VALUES
     (N'4b-MasterFile-finance'),
     (N'4c-payrollmasterfile'),
     (N'4d-gymmasterfile'),
-    (N'5-Staff-merge'),
+    (N'5b-staff-merge'),
     (N'6-Shift-renumber'),
     (N'7-CalendarDay-renumber'),
     (N'9a-ScreenPermission'),

@@ -26,7 +26,8 @@ PRINT N'  preflight: payrollmasterdetail=' + CASE WHEN OBJECT_ID('dbo.payrollmas
 -- 3a. gymmaster
 IF OBJECT_ID(N'dbo.gymmaster', N'U') IS NULL
 BEGIN
-    BEGIN TRY
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
+BEGIN TRY
         BEGIN TRAN;
         CREATE TABLE [dbo].[gymmaster] (
             [id]          NVARCHAR(50)  NOT NULL,
@@ -43,9 +44,10 @@ BEGIN
         PRINT N'  3a-gymmaster: OK - Created gymmaster';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'3a-gymmaster', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  3a-gymmaster: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'3a-gymmaster', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  3a-gymmaster: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE
@@ -60,6 +62,7 @@ SET NOCOUNT ON; SET XACT_ABORT ON;
 
 IF OBJECT_ID(N'dbo.gymmasterdetail', N'U') IS NULL
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
         CREATE TABLE [dbo].[gymmasterdetail] (
@@ -78,9 +81,10 @@ BEGIN
         PRINT N'  3b-gymmasterdetail: OK - Created gymmasterdetail';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'3b-gymmasterdetail', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  3b-gymmasterdetail: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'3b-gymmasterdetail', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  3b-gymmasterdetail: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE
@@ -95,6 +99,7 @@ SET NOCOUNT ON; SET XACT_ABORT ON;
 
 IF OBJECT_ID(N'dbo.financemaster', N'U') IS NULL
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
         CREATE TABLE [dbo].[financemaster] (
@@ -112,9 +117,10 @@ BEGIN
         PRINT N'  3c-financemaster: OK - Created financemaster';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'3c-financemaster', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  3c-financemaster: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'3c-financemaster', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  3c-financemaster: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE
@@ -129,6 +135,7 @@ SET NOCOUNT ON; SET XACT_ABORT ON;
 
 IF OBJECT_ID(N'dbo.financemasterdetail', N'U') IS NULL
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
         CREATE TABLE [dbo].[financemasterdetail] (
@@ -147,9 +154,10 @@ BEGIN
         PRINT N'  3d-financemasterdetail: OK - Created financemasterdetail';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'3d-financemasterdetail', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  3d-financemasterdetail: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'3d-financemasterdetail', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  3d-financemasterdetail: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE
@@ -164,6 +172,7 @@ SET NOCOUNT ON; SET XACT_ABORT ON;
 
 IF OBJECT_ID(N'dbo.payrollmaster', N'U') IS NULL
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
         CREATE TABLE [dbo].[payrollmaster] (
@@ -181,9 +190,10 @@ BEGIN
         PRINT N'  3e-payrollmaster: OK - Created payrollmaster';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'3e-payrollmaster', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  3e-payrollmaster: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'3e-payrollmaster', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  3e-payrollmaster: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE
@@ -198,6 +208,7 @@ SET NOCOUNT ON; SET XACT_ABORT ON;
 
 IF OBJECT_ID(N'dbo.payrollmasterdetail', N'U') IS NULL
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
         CREATE TABLE [dbo].[payrollmasterdetail] (
@@ -216,9 +227,10 @@ BEGIN
         PRINT N'  3f-payrollmasterdetail: OK - Created payrollmasterdetail';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'3f-payrollmasterdetail', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  3f-payrollmasterdetail: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'3f-payrollmasterdetail', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  3f-payrollmasterdetail: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE

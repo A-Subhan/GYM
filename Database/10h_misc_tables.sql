@@ -19,7 +19,8 @@ PRINT N'=== STEP 9: gym operation + permission tables ===';
 -- 9a. ScreenPermission
 IF OBJECT_ID(N'dbo.ScreenPermission', N'U') IS NULL
 BEGIN
-    BEGIN TRY
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
+BEGIN TRY
         BEGIN TRAN;
         CREATE TABLE [dbo].[ScreenPermission] (
             [id]        NVARCHAR(50)  NOT NULL,
@@ -38,9 +39,10 @@ BEGIN
         PRINT N'  9a-ScreenPermission: OK';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9a-ScreenPermission', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  9a-ScreenPermission: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9a-ScreenPermission', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  9a-ScreenPermission: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE
@@ -55,6 +57,7 @@ SET NOCOUNT ON; SET XACT_ABORT ON;
 
 IF OBJECT_ID(N'dbo.UserPermission', N'U') IS NULL
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
         CREATE TABLE [dbo].[UserPermission] (
@@ -74,9 +77,10 @@ BEGIN
         PRINT N'  9b-UserPermission: OK';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9b-UserPermission', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  9b-UserPermission: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9b-UserPermission', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  9b-UserPermission: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE
@@ -91,6 +95,7 @@ SET NOCOUNT ON; SET XACT_ABORT ON;
 
 IF OBJECT_ID(N'dbo.TrainerAvailability', N'U') IS NULL
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
         CREATE TABLE [dbo].[TrainerAvailability] (
@@ -109,9 +114,10 @@ BEGIN
         PRINT N'  9c-TrainerAvailability: OK';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9c-TrainerAvailability', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  9c-TrainerAvailability: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9c-TrainerAvailability', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  9c-TrainerAvailability: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE
@@ -126,6 +132,7 @@ SET NOCOUNT ON; SET XACT_ABORT ON;
 
 IF OBJECT_ID(N'dbo.TrainerSchedule', N'U') IS NULL
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
         CREATE TABLE [dbo].[TrainerSchedule] (
@@ -149,9 +156,10 @@ BEGIN
         PRINT N'  9d-TrainerSchedule: OK';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9d-TrainerSchedule', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  9d-TrainerSchedule: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9d-TrainerSchedule', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  9d-TrainerSchedule: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE
@@ -166,6 +174,7 @@ SET NOCOUNT ON; SET XACT_ABORT ON;
 
 IF OBJECT_ID(N'dbo.FitnessGoal', N'U') IS NULL
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
         CREATE TABLE [dbo].[FitnessGoal] (
@@ -187,9 +196,10 @@ BEGIN
         PRINT N'  9e-FitnessGoal: OK';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9e-FitnessGoal', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  9e-FitnessGoal: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9e-FitnessGoal', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  9e-FitnessGoal: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE
@@ -204,6 +214,7 @@ SET NOCOUNT ON; SET XACT_ABORT ON;
 
 IF OBJECT_ID(N'dbo.PersonalTrainingSession', N'U') IS NULL
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
         CREATE TABLE [dbo].[PersonalTrainingSession] (
@@ -229,9 +240,10 @@ BEGIN
         PRINT N'  9f-PersonalTrainingSession: OK';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9f-PersonalTrainingSession', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  9f-PersonalTrainingSession: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9f-PersonalTrainingSession', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  9f-PersonalTrainingSession: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE
@@ -246,6 +258,7 @@ SET NOCOUNT ON; SET XACT_ABORT ON;
 
 IF OBJECT_ID(N'dbo.StaffDocument', N'U') IS NULL
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
         CREATE TABLE [dbo].[StaffDocument] (
@@ -268,9 +281,10 @@ BEGIN
         PRINT N'  9g-StaffDocument: OK';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9g-StaffDocument', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  9g-StaffDocument: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9g-StaffDocument', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  9g-StaffDocument: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE
@@ -285,6 +299,7 @@ SET NOCOUNT ON; SET XACT_ABORT ON;
 
 IF OBJECT_ID(N'dbo.KnockOff', N'U') IS NULL
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
         CREATE TABLE [dbo].[KnockOff] (
@@ -311,9 +326,10 @@ BEGIN
         PRINT N'  9h-KnockOff: OK';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9h-KnockOff', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  9h-KnockOff: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9h-KnockOff', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  9h-KnockOff: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE
@@ -328,6 +344,7 @@ SET NOCOUNT ON; SET XACT_ABORT ON;
 
 IF COL_LENGTH('dbo.Staff', 'isDeleted') IS NULL
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
         ALTER TABLE dbo.Staff ADD [isDeleted] BIT NOT NULL CONSTRAINT [Staff_isDeleted_df] DEFAULT 0;
@@ -336,9 +353,10 @@ BEGIN
         PRINT N'  9i-Staff-isDeleted: OK';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9i-Staff-isDeleted', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  9i-Staff-isDeleted: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9i-Staff-isDeleted', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  9i-Staff-isDeleted: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE
@@ -354,6 +372,7 @@ SET NOCOUNT ON; SET XACT_ABORT ON;
 IF COL_LENGTH('dbo.Member', 'isDeleted') IS NULL
    AND COL_LENGTH('dbo.Member', 'deletedAt') IS NULL
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
         ALTER TABLE dbo.Member ADD [isDeleted] BIT NOT NULL CONSTRAINT [Member_isDeleted_df] DEFAULT 0;
@@ -363,14 +382,16 @@ BEGIN
         PRINT N'  9j-Member-softdelete: OK';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9j-Member-softdelete', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  9j-Member-softdelete: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9j-Member-softdelete', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  9j-Member-softdelete: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE IF COL_LENGTH('dbo.Member', 'isDeleted') IS NOT NULL
         AND COL_LENGTH('dbo.Member', 'deletedAt') IS NULL
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
         ALTER TABLE dbo.Member ADD [deletedAt] DATETIME2;
@@ -379,9 +400,10 @@ BEGIN
         PRINT N'  9j-Member-softdelete: OK - added deletedAt';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9j-Member-softdelete', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  9j-Member-softdelete: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'9j-Member-softdelete', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  9j-Member-softdelete: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE

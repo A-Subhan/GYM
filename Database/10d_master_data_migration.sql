@@ -33,7 +33,8 @@ IF OBJECT_ID(N'dbo.Exercise', N'U') IS NOT NULL
    AND OBJECT_ID(N'dbo.gymmaster', N'U') IS NOT NULL
    AND OBJECT_ID(N'dbo.gymmasterdetail', N'U') IS NOT NULL
 BEGIN
-    BEGIN TRY
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
+BEGIN TRY
         SET XACT_ABORT ON;
         BEGIN TRAN;
 
@@ -136,9 +137,10 @@ BEGIN
     END TRY
     BEGIN CATCH
         IF OBJECT_ID('tempdb..#ex_map', 'U') IS NOT NULL DROP TABLE #ex_map;
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'4a2-Exercise-migrate', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  4a2-Exercise-migrate: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'4a2-Exercise-migrate', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  4a2-Exercise-migrate: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE
@@ -157,6 +159,7 @@ IF OBJECT_ID(N'dbo.MasterFile', N'U') IS NOT NULL
    AND OBJECT_ID(N'dbo.financemaster', N'U') IS NOT NULL
    AND OBJECT_ID(N'dbo.financemasterdetail', N'U') IS NOT NULL
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
 
@@ -190,9 +193,10 @@ BEGIN
         PRINT N'  4b-MasterFile-finance: OK - Banks/CardTypes copied into financemaster';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'4b-MasterFile-finance', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  4b-MasterFile-finance: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'4b-MasterFile-finance', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  4b-MasterFile-finance: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE
@@ -211,6 +215,7 @@ IF OBJECT_ID(N'dbo.payrollmasterfile', N'U') IS NOT NULL
    AND OBJECT_ID(N'dbo.payrollmaster', N'U') IS NOT NULL
    AND OBJECT_ID(N'dbo.payrollmasterdetail', N'U') IS NOT NULL
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
 
@@ -251,9 +256,10 @@ BEGIN
         PRINT N'  4c-payrollmasterfile: OK - payrollmasterfile copied into payrollmaster';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'4c-payrollmasterfile', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  4c-payrollmasterfile: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'4c-payrollmasterfile', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  4c-payrollmasterfile: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE
@@ -274,6 +280,7 @@ IF OBJECT_ID(N'dbo.gymmasterfile', N'U') IS NOT NULL
    AND COL_LENGTH('dbo.gymmasterfile','level') IS NOT NULL
    AND COL_LENGTH('dbo.gymmasterfile','parentCode') IS NOT NULL
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
 
@@ -317,9 +324,10 @@ BEGIN
         PRINT N'  4d-gymmasterfile: OK - gymmasterfile copied into gymmaster';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'4d-gymmasterfile', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  4d-gymmasterfile: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'4d-gymmasterfile', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  4d-gymmasterfile: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE

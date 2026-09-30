@@ -29,7 +29,8 @@ IF OBJECT_ID('dbo.CalendarDay','U') IS NOT NULL
 BEGIN
     IF EXISTS (SELECT 1 FROM dbo.CalendarDay WHERE [id] NOT LIKE N'[0-9][0-9][0-9]')
     BEGIN
-        BEGIN TRY
+        DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
+BEGIN TRY
             SET XACT_ABORT ON;
             BEGIN TRAN;
 
@@ -85,9 +86,10 @@ BEGIN
             PRINT N'  7-CalendarDay-renumber: OK - CalendarDay ids renumbered to 001/002/...';
         END TRY
         BEGIN CATCH
-            IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-            INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'7-CalendarDay-renumber', N'FAILED', ERROR_MESSAGE());
-            PRINT N'  7-CalendarDay-renumber: FAILED - ' + ERROR_MESSAGE();
+            SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+            IF XACT_STATE() <> 0 ROLLBACK TRAN;
+            INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'7-CalendarDay-renumber', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+            PRINT N'  7-CalendarDay-renumber: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
         END CATCH
     END
     ELSE

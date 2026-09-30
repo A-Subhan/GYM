@@ -22,7 +22,8 @@ ELSE
 
 IF COL_LENGTH('dbo.Branch', 'nodeType') IS NULL
 BEGIN
-    BEGIN TRY
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
+BEGIN TRY
         BEGIN TRAN;
         ALTER TABLE dbo.Branch ADD [nodeType] NVARCHAR(1000) NOT NULL CONSTRAINT [Branch_nodeType_df] DEFAULT N'Detail';
         -- Existing top-level branches (parentId IS NULL) default to Control
@@ -32,9 +33,10 @@ BEGIN
         PRINT N'  10-Branch-nodeType: OK - Added Branch.nodeType; top-level set to Control';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'10-Branch-nodeType', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  10-Branch-nodeType: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'10-Branch-nodeType', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  10-Branch-nodeType: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE

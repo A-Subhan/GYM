@@ -24,7 +24,8 @@ ELSE
 -- 1a. Add userType if missing
 IF COL_LENGTH('dbo.[User]', 'userType') IS NULL
 BEGIN
-    BEGIN TRY
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
+BEGIN TRY
         BEGIN TRAN;
         ALTER TABLE dbo.[User] ADD [userType] NVARCHAR(255) NOT NULL CONSTRAINT [User_userType_df] DEFAULT N'User';
         COMMIT TRAN;
@@ -32,9 +33,10 @@ BEGIN
         PRINT N'  1a-userType: OK - Added User.userType column';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'1a-userType', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  1a-userType: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'1a-userType', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  1a-userType: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE
@@ -53,6 +55,7 @@ IF EXISTS (
     WHERE object_id = OBJECT_ID('dbo.[User]') AND name = N'roleId' AND is_nullable = 0
 )
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
         ALTER TABLE dbo.[User] ALTER COLUMN [roleId] NVARCHAR(50) NULL;
@@ -61,9 +64,10 @@ BEGIN
         PRINT N'  1b-roleId: OK - User.roleId set to nullable';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'1b-roleId', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  1b-roleId: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'1b-roleId', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  1b-roleId: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE
@@ -80,6 +84,7 @@ SET XACT_ABORT ON;
 
 IF COL_LENGTH('dbo.[User]', 'userType') IS NOT NULL
 BEGIN
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
         UPDATE dbo.[User] SET [userType] = N'User'
@@ -93,9 +98,10 @@ BEGIN
         PRINT N'  1c-userType-data: OK - Populated userType (admin=Admin, rest=User)';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'1c-userType-data', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  1c-userType-data: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'1c-userType-data', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  1c-userType-data: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE

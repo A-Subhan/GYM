@@ -37,7 +37,8 @@ ELSE
 -- 11a. Ensure IdSequence table exists (used by the app for atomic id generation)
 IF OBJECT_ID(N'dbo.IdSequence', N'U') IS NULL
 BEGIN
-    BEGIN TRY
+    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
+BEGIN TRY
         BEGIN TRAN;
         CREATE TABLE [dbo].[IdSequence] (
             [key]  NVARCHAR(191) NOT NULL,
@@ -49,9 +50,10 @@ BEGIN
         PRINT N'  11a-IdSequence: OK';
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'11a-IdSequence', N'FAILED', ERROR_MESSAGE());
-        PRINT N'  11a-IdSequence: FAILED - ' + ERROR_MESSAGE();
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'11a-IdSequence', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  11a-IdSequence: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
 ELSE

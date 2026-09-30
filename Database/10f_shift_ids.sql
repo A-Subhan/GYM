@@ -30,7 +30,8 @@ IF OBJECT_ID('dbo.Shift','U') IS NOT NULL
 BEGIN
     IF EXISTS (SELECT 1 FROM dbo.Shift WHERE [id] NOT LIKE N'[0-9][0-9][0-9]')
     BEGIN
-        BEGIN TRY
+        DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
+BEGIN TRY
             SET XACT_ABORT ON;
             BEGIN TRAN;
 
@@ -113,9 +114,10 @@ BEGIN
         BEGIN CATCH
             IF OBJECT_ID('tempdb..#shift_map', 'U') IS NOT NULL DROP TABLE #shift_map;
             IF OBJECT_ID('tempdb..#shift_new', 'U') IS NOT NULL DROP TABLE #shift_new;
-            IF @@TRANCOUNT > 0 ROLLBACK TRAN;
-            INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'6-Shift-renumber', N'FAILED', ERROR_MESSAGE());
-            PRINT N'  6-Shift-renumber: FAILED - ' + ERROR_MESSAGE();
+            SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+            IF XACT_STATE() <> 0 ROLLBACK TRAN;
+            INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'6-Shift-renumber', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+            PRINT N'  6-Shift-renumber: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
         END CATCH
     END
     ELSE
