@@ -1,40 +1,63 @@
 -- ============================================================================
 -- Contoura Gym Management System - DATABASE README
 -- ============================================================================
--- RUN ORDER for an EXISTING database that is in a PARTIAL upgrade state
--- (e.g. 08_upgrade_2026_09.sql and/or 09_upgrade_finance_hr.sql failed
--- partway through):
+-- RUN ORDER for an EXISTING database in a PARTIAL upgrade state
+-- (08_upgrade_2026_09.sql and/or 09_upgrade_finance_hr.sql failed):
 --
---   1. BACKUP YOUR DATABASE FIRST:
---        BACKUP DATABASE GymDB TO DISK = 'C:\path\GymDB_before_10.bak'
+--   1. BACKUP YOUR DATABASE:
+--        BACKUP DATABASE GymDB TO DISK = 'C:\...\GymDB_before_10.bak'
 --        WITH FORMAT, NAME = 'GymDB before step 10 repair';
 --
---   2. Run the repair script (idempotent, safe to re-run):
---        Database/10_upgrade_repair.sql
---      This will:
---        - Print a PREFLIGHT report of the detected state of every object.
---        - Create dbo._UpgradeLog (permanent log table).
---        - Fix User.userType (was Msg 207 in 08).
---        - Create the 6 master/detail tables (was Msg 208 in 08).
---        - Migrate legacy Exercise/MasterFile/payrollmasterfile/gymmasterfile
---          data into the new master/detail tables.
---        - Merge Staff.employeeId into Staff.id (EMP-xxxxx format).
---        - Renumber Shift ids to 001/002/003 and CalendarDay ids to 001/002.
---        - Create ScreenPermission + UserPermission tables.
---        - Create gym operation tables (TrainerAvailability,
---          TrainerSchedule, FitnessGoal, PersonalTrainingSession,
---          StaffDocument, KnockOff).
---        - Add Member.joiningFee, Staff.isDeleted, Member soft-delete.
---        - Print "SUCCESS" or "FAILED: <step names>".
---      All steps use sp_executesql (not inline EXEC(...+QUOTENAME+...) which
---      caused Msg 102 in the old 09 script). Legacy tables are RENAMED to
---      *_legacy_bak, never DROPPED.
+--   2. Run the split 10xx scripts IN THIS EXACT ORDER (each in its own SSMS
+--      query window or sqlcmd invocation):
+--
+--        Database/10_00_log_table.sql             (creates dbo._UpgradeLog)
+--        Database/10a_userType.sql                 (User.userType + nullable roleId)
+--        Database/10b_joiningFee.sql               (Member.joiningFee)
+--        Database/10c_master_tables.sql            (6 master/detail tables + FKs)
+--        Database/10d_master_data_migration.sql    (Exercise/MasterFile/payrollmasterfile/gymmasterfile migration)
+--        Database/10e_staff_merge.sql             (Staff.employeeId -> id merge)
+--        Database/10f_shift_ids.sql                (Shift id renumbering -> 001/002/003)
+--        Database/10g_calendar_ids.sql             (CalendarDay id renumbering -> 001/002/...)
+--        Database/10h_misc_tables.sql              (ScreenPermission, UserPermission,
+--                                                   TrainerAvailability, TrainerSchedule,
+--                                                   FitnessGoal, PersonalTrainingSession,
+--                                                   StaffDocument, KnockOff, Staff.isDeleted,
+--                                                   Member soft-delete)
+--        Database/10i_branch.sql                   (Branch.nodeType Control/Detail)
+--        Database/10j_feepayment_id.sql            (IdSequence table for FeePayment ids)
+--        Database/10_zz_summary.sql                (FINAL: prints SUCCESS or FAILED)
 --
 --   3. Run the verification script:
 --        Database/10_verify.sql
---      This prints PASS/FAIL for each check and a final summary:
+--      Prints PASS/FAIL per item and a final summary:
 --        "ALL PASS"  -> database is in the target state.
 --        "FAILED: <items>" -> check the detail column for reasons.
+--
+-- ============================================================================
+-- WHY THE OLD 10_upgrade_repair.sql FAILED:
+--
+--   The old single-file 10_upgrade_repair.sql used a stored procedure
+--   dbo._LogStep that built a PRINT statement with nested string
+--   concatenation:
+--     PRINT N'[' + @step + N'] ' + @status + N': ' + ...
+--   This caused Msg 102 "Incorrect syntax near '' + @step + N''" because
+--   the CREATE PROCEDURE body had an unparseable string pattern.
+--
+--   The new split files do NOT use a stored procedure for logging. Each
+--   step does a plain INSERT INTO dbo._UpgradeLog directly, using local
+--   variables. Dynamic SQL (sp_executesql with a prebuilt @sql) is used
+--   ONLY where DDL depends on an object created in the same batch, and
+--   those strings are short and straightforward.
+--
+-- ============================================================================
+-- WHY THE OLD 10_verify.sql FAILED:
+--
+--   The old 10_verify.sql used CTEs (WITH ... AS (...)) that were not
+--   immediately followed by the statement using them (Msg 422 "Common
+--   table expression defined but not used"). The new 10_verify.sql uses
+--   inline subqueries instead of CTEs, so every subquery is consumed by
+--   the INSERT/SELECT that defines it.
 --
 -- ============================================================================
 -- RUN ORDER for a FRESH INSTALL (empty database):
@@ -45,47 +68,12 @@
 --   04_stored_procedures.sql    (6 stored procedures)
 --   05_triggers.sql             (7 triggers)
 --   06_master_data.sql          (company, branches, admin user, COA, mappings,
---                               master files, plans, shifts, staff)
+--                                master files, plans, shifts, staff)
 --   07_sample_data.sql          (OPTIONAL; October 2026 demo month)
 --
 --   After 02-06, the database is already in the final state.
---   10_upgrade_repair.sql is NOT needed on a fresh install (it will detect
+--   The 10xx scripts are NOT needed on a fresh install (they will detect
 --   everything is in place and skip every step, printing "SUCCESS").
---
--- ============================================================================
--- RUN ORDER for an UNTOUCHED database built from OLDER 02-06 scripts
--- (before the 2026-09 feature set):
---
---   1. BACKUP YOUR DATABASE.
---   2. Run 10_upgrade_repair.sql (handles ALL upgrade work that 08 and 09
---      attempted to do, but with correct T-SQL syntax and idempotent logic).
---   3. Run 10_verify.sql.
---
---   Do NOT run 08_upgrade_2026_09.sql or 09_upgrade_finance_hr.sql — they
---   contain the bugs that caused the partial state. 10_upgrade_repair.sql
---   supersedes both.
---
--- ============================================================================
--- WHAT 10_upgrade_repair.sql FIXES (vs the old 08/09 scripts):
---
---   08 bug: Msg 207 Invalid column name 'userType'
---     Cause: ALTER TABLE ADD [userType] and UPDATE ... SET [userType] in the
---            same batch (SQL Server can't resolve the new column name).
---     Fix:   Separated by GO so the column exists before the UPDATE runs.
---
---   08 bug: Msg 208 Invalid object name 'dbo.gymmaster'
---     Cause: The batch aborted at the userType error, so gymmaster was
---            never created. The migration block then referenced it.
---     Fix:   10 creates gymmaster in its own TRY/CATCH transaction, which
---            either succeeds or logs FAILED and continues (other steps
---            are independent).
---
---   09 bug: Msg 102 Incorrect syntax near 'QUOTENAME'
---     Cause: EXEC(N'ALTER TABLE ... DROP CONSTRAINT ' + QUOTENAME(@v) + ...)
---            — SQL Server's parser can't handle the function call inside
---            the string concatenation inside EXEC().
---     Fix:   10 builds the SQL into a NVARCHAR(MAX) variable first, then
---            calls sp_executesql @sql. This is the recommended pattern.
 --
 -- ============================================================================
 -- FILES
@@ -98,59 +86,48 @@
 --   ├── 05_triggers.sql             Triggers
 --   ├── 06_master_data.sql          Seed data
 --   ├── 07_sample_data.sql          Optional demo data
---   ├── 08_upgrade_2026_09.sql      OLD — do NOT run (has bugs)
---   ├── 09_upgrade_finance_hr.sql   OLD — do NOT run (has bugs)
---   ├── 09_verify.sql               OLD — superseded by 10_verify.sql
---   ├── 10_upgrade_repair.sql       ✅ REPAIR SCRIPT (run this)
---   ├── 10_verify.sql               ✅ VERIFICATION SCRIPT (run after 10)
+--   ├── 08_upgrade_2026_09.sql      OLD - do NOT run (has bugs)
+--   ├── 09_upgrade_finance_hr.sql   OLD - do NOT run (has bugs)
+--   ├── 09_verify.sql               OLD - superseded by 10_verify.sql
+--   ├── 10_00_log_table.sql         ✅ Creates dbo._UpgradeLog (run first)
+--   ├── 10a_userType.sql            ✅ User.userType + nullable roleId
+--   ├── 10b_joiningFee.sql          ✅ Member.joiningFee
+--   ├── 10c_master_tables.sql       ✅ 6 master/detail tables + FKs
+--   ├── 10d_master_data_migration.sql ✅ Migrate legacy master data
+--   ├── 10e_staff_merge.sql         ✅ Staff.employeeId -> id merge
+--   ├── 10f_shift_ids.sql           ✅ Shift id renumbering -> 001/002/003
+--   ├── 10g_calendar_ids.sql        ✅ CalendarDay id renumbering -> 001/002/...
+--   ├── 10h_misc_tables.sql         ✅ Permission + gym operation tables
+--   ├── 10i_branch.sql             ✅ Branch.nodeType (Control/Detail)
+--   ├── 10j_feepayment_id.sql      ✅ IdSequence table for FeePayment ids
+--   ├── 10_zz_summary.sql           ✅ FINAL: reads _UpgradeLog, prints SUCCESS/FAILED
+--   ├── 10_verify.sql               ✅ Verification script (run after all 10xx)
 --   ├── README.md                   This file
 --   ├── _archive/                   Old migration scripts (not part of install)
 --   ├── GymDB.bak                    Real SQL Server backup (23 MB)
 --   └── GymDB-2026-07-11.bak         Additional SQL Server backup (14 MB)
 --
 -- ============================================================================
--- EXPECTED OUTPUT FROM 10_upgrade_repair.sql
+-- EXPECTED OUTPUT
 --
---   On a database where 08/09 failed partway through:
---     === PREFLIGHT STATE ===
---     [User].userType: MISSING
---     gymmaster: MISSING
---     ...
---     === END PREFLIGHT ===
---     [1a-userType] OK: Added User.userType column
---     [1b-roleId] OK: User.roleId set to nullable
---     [1c-userType-data] OK: Populated userType
---     [2-joiningFee] OK: Added Member.joiningFee
---     [3a-gymmaster] OK: Created gymmaster
---     ...
---     [5-Staff-merge] OK: Staff.employeeId merged into id; FKs recreated
---     [6-Shift-renumber] OK: Shift ids renumbered to 001/002/003
---     [7-CalendarDay-renumber] OK: CalendarDay ids renumbered to 001/002/...
---     ...
+--   Each 10xx script prints its own preflight + step status:
+--     === STEP 1a: User.userType ===
+--       preflight: userType MISSING - will add
+--       1a-userType: OK - Added User.userType column
+--
+--   The final 10_zz_summary.sql prints:
 --     === UPGRADE RESULT ===
 --     SUCCESS
---     (OK: 28, Skipped: 5, Failed: 0)
+--     (OK: 28, Skipped: 8, Failed: 0, Missing: 0)
 --
---   On a fresh install (02-06 already ran):
---     All steps print SKIPPED; final output is "SUCCESS".
---
---   On a database with an irrecoverable error:
+--   Or on failure:
 --     === UPGRADE RESULT ===
---     FAILED: 5-Staff-merge 6-Shift-renumber
---     (OK: 20, Skipped: 8, Failed: 2)
---     → Check dbo._UpgradeLog for error messages, fix the root cause,
---       and re-run 10_upgrade_repair.sql (it is idempotent).
+--     FAILED - MISSING: 5-Staff-merge; FAILED: 6-Shift-renumber (Incorrect syntax...);
+--     (OK: 20, Skipped: 5, Failed: 2, Missing: 1)
 --
--- ============================================================================
--- EXPECTED OUTPUT FROM 10_verify.sql
---
---   item                          result  detail
---   ----------------------------  ------  --------------------------------
---   Branch.nodeType exists        PASS    Branch.nodeType present
---   CalendarDay ids 3-digit       PASS    All CalendarDay ids are 3-digit
---   ...
---   === SUMMARY: ALL PASS ===
---   summary    total_checks  passed  failed
---   ALL PASS   22            22      0
+--   The 10_verify.sql prints:
+--     === SUMMARY: ALL PASS ===
+--     summary    total_checks  passed  failed
+--     ALL PASS   22            22      0
 --
 -- ============================================================================
