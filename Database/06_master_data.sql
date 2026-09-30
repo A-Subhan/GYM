@@ -676,7 +676,7 @@ INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('cmud5j43c0045tz
 INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('cmud5j43c0045tzncofcuuqu8', 'cmud5j3qw0001tznckswv33kj');
 
 -- User (1 rows)
-INSERT INTO [User] ([id], [username], [email], [fullName], [passwordHash], [roleId], [branchId], [accessibleBranchIds], [phone], [photo], [isActive], [failedLoginCount], [lastLoginAt], [mustChangePassword], [createdAt], [updatedAt], [isDeleted]) VALUES ('cmud5j47c0049tznc3bh3jh9h', 'admin', 'admin@contouragym.com', 'System Administrator', '$2b$10$4sWId8YdsNlr39HgQ51wE.5rFtEFE3l5APRnRO6rYlE15bOUryvpy', 'cmud5j3ud003ztznciorwbydo', 'cmud5j43h0047tznc4kq99n5k', '*', NULL, NULL, 1, 0, '2026-09-23T11:58:33.500Z', 0, '2026-09-22T20:53:50.473Z', '2026-09-23T15:35:44.137Z', 0);
+INSERT INTO [User] ([id], [username], [email], [fullName], [passwordHash], [userType], [roleId], [branchId], [accessibleBranchIds], [phone], [photo], [isActive], [failedLoginCount], [lastLoginAt], [mustChangePassword], [createdAt], [updatedAt], [isDeleted]) VALUES ('cmud5j47c0049tznc3bh3jh9h', 'admin', 'admin@contouragym.com', 'System Administrator', '$2b$10$4sWId8YdsNlr39HgQ51wE.5rFtEFE3l5APRnRO6rYlE15bOUryvpy', 'Admin', 'cmud5j3ud003ztznciorwbydo', 'cmud5j43h0047tznc4kq99n5k', '*', NULL, NULL, 1, 0, '2026-09-23T11:58:33.500Z', 0, '2026-09-22T20:53:50.473Z', '2026-09-23T15:35:44.137Z', 0);
 
 -- Account (13 rows: 1 ROOT anchor + 5 control roots + 7 detail accounts)
 -- The 'ROOT' anchor row is REQUIRED: parentCode is NOT NULL and carries a
@@ -792,7 +792,8 @@ INSERT INTO [MasterFile] ([id], [masterType], [code], [name], [description], [is
 INSERT INTO [MasterFile] ([id], [masterType], [code], [name], [description], [isActive], [extra], [createdAt], [updatedAt]) VALUES ('cmue9lvdf0017otttyjepq7qd', 'TrainerSpecializations', '007', 'Cross Training', NULL, 1, NULL, '2026-09-23T15:35:43.635Z', '2026-09-23T15:35:43.635Z');
 INSERT INTO [MasterFile] ([id], [masterType], [code], [name], [description], [isActive], [extra], [createdAt], [updatedAt]) VALUES ('cmue9lvdh001bottthwl2npiy', 'TrainerSpecializations', '008', 'Other', NULL, 1, NULL, '2026-09-23T15:35:43.637Z', '2026-09-23T15:35:43.637Z');
 
-GO
+-- NOTE: no GO here - the BEGIN TRAN/BEGIN TRY opened above must stay in the
+-- same batch as its END TRY/BEGIN CATCH below (TRY cannot span batches).
 
 -- ============================================================================
 -- Done. The database is ready.
@@ -869,14 +870,53 @@ BEGIN
 -- Owner Capital detail account (equity) for opening-balance entries
 INSERT INTO [charts] ([id], [name], [parentCode], [accountType], [bookType], [accountTag], [isControl], [isDetail], [isActive], [branchId], [contactName], [phone], [email], [address], [bankName], [bankAccountNo], [bankBranch], [cnic], [ntn], [strn], [fbr], [otherName], [referenceNumber], [faxNumber], [city], [country], [website], [paymentTerms], [registrationNumber], [description], [createdAt], [updatedAt]) VALUES ('03001', 'Owner Capital', '03', 'Equity', NULL, NULL, 0, 1, 1, 'cmud5j43h0047tznc4kq99n5k', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Owners'' equity contribution', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
 
--- Exercise catalog (gym module master)
-INSERT INTO [Exercise] ([id], [code], [name], [category], [muscleGroup], [instructions], [sets], [reps], [duration], [rest], [equipment], [image], [branchId], [status], [createdAt], [updatedAt]) VALUES ('ex-0001', 'EX-0001', 'Bench Press', 'Strength', 'Chest', 'Lie on bench, lower bar to mid-chest, press up explosively.', '4', '8-10', NULL, '90s', 'Barbell', NULL, 'cmud5j43h0047tznc4kq99n5k', 'Active', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
-INSERT INTO [Exercise] ([id], [code], [name], [category], [muscleGroup], [instructions], [sets], [reps], [duration], [rest], [equipment], [image], [branchId], [status], [createdAt], [updatedAt]) VALUES ('ex-0002', 'EX-0002', 'Back Squat', 'Strength', 'Legs', 'Bar on traps, squat until thighs parallel, drive through heels.', '4', '8-12', NULL, '120s', 'Barbell', NULL, 'cmud5j43h0047tznc4kq99n5k', 'Active', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
-INSERT INTO [Exercise] ([id], [code], [name], [category], [muscleGroup], [instructions], [sets], [reps], [duration], [rest], [equipment], [image], [branchId], [status], [createdAt], [updatedAt]) VALUES ('ex-0003', 'EX-0003', 'Deadlift', 'Strength', 'Back', 'Hinge at hips, keep back flat, lift bar standing tall.', '3', '6-8', NULL, '150s', 'Barbell', NULL, 'cmud5j43h0047tznc4kq99n5k', 'Active', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
-INSERT INTO [Exercise] ([id], [code], [name], [category], [muscleGroup], [instructions], [sets], [reps], [duration], [rest], [equipment], [image], [branchId], [status], [createdAt], [updatedAt]) VALUES ('ex-0004', 'EX-0004', 'Treadmill Run', 'Cardio', 'Full Body', 'Steady-state run at 10-12 km/h for the listed duration.', NULL, NULL, '20 min', NULL, 'Treadmill', NULL, 'cmud5j43h0047tznc4kq99n5k', 'Active', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
-INSERT INTO [Exercise] ([id], [code], [name], [category], [muscleGroup], [instructions], [sets], [reps], [duration], [rest], [equipment], [image], [branchId], [status], [createdAt], [updatedAt]) VALUES ('ex-0005', 'EX-0005', 'Plank', 'Core', 'Abs', 'Hold a straight forearm plank, bracing the core.', '3', NULL, '60s', '45s', 'Bodyweight', NULL, 'cmud5j43h0047tznc4kq99n5k', 'Active', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
-INSERT INTO [Exercise] ([id], [code], [name], [category], [muscleGroup], [instructions], [sets], [reps], [duration], [rest], [equipment], [image], [branchId], [status], [createdAt], [updatedAt]) VALUES ('ex-0006', 'EX-0006', 'Lat Pulldown', 'Strength', 'Back', 'Pull the bar to upper chest, squeeze lats, control the return.', '4', '10-12', NULL, '75s', 'Cable Machine', NULL, 'cmud5j43h0047tznc4kq99n5k', 'Active', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');
+-- Master file seeds: the THREE identical master/detail pairs
+-- (gymmaster, financemaster, payrollmaster). Exercises live in
+-- gymmaster category '001' (the standalone Exercise table is gone).
+INSERT INTO [gymmaster] ([id], [name], [description], [branchId], [isActive], [createdAt], [updatedAt]) VALUES
+('001', N'Exercises', N'Exercise catalog (items 001001, 001002, ...)', NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('002', N'Equipment', N'Equipment catalog', NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('003', N'Equipment Category', N'Equipment categories', NULL, 1, SYSDATETIME(), SYSDATETIME());
 
+INSERT INTO [gymmasterdetail] ([id], [masterId], [name], [description], [branchId], [isActive], [createdAt], [updatedAt]) VALUES
+('001001', '001', N'Bench Press', N'Lie on bench, lower bar to mid-chest, press up explosively.', NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('001002', '001', N'Back Squat', N'Bar on traps, squat until thighs parallel, drive through heels.', NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('001003', '001', N'Deadlift', N'Hinge at hips, keep back flat, lift bar standing tall.', NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('001004', '001', N'Treadmill Run', N'Steady-state run at 10-12 km/h for the listed duration.', NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('001005', '001', N'Plank', N'Hold a straight forearm plank, bracing the core.', NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('001006', '001', N'Lat Pulldown', N'Pull the bar to upper chest, squeeze lats, control the return.', NULL, 1, SYSDATETIME(), SYSDATETIME());
+
+INSERT INTO [financemaster] ([id], [name], [description], [branchId], [isActive], [createdAt], [updatedAt]) VALUES
+('001', N'Banks', N'Bank master (bank transfer payments)', NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('002', N'Card Types', N'Card type master (card payments)', NULL, 1, SYSDATETIME(), SYSDATETIME());
+
+INSERT INTO [financemasterdetail] ([id], [masterId], [name], [description], [branchId], [isActive], [createdAt], [updatedAt]) VALUES
+('001001', '001', N'Meezan Bank', NULL, NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('001002', '001', N'HBL', NULL, NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('001003', '001', N'UBL', NULL, NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('0020001', '002', N'Visa', NULL, NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('0020002', '002', N'Mastercard', NULL, NULL, 1, SYSDATETIME(), SYSDATETIME());
+
+INSERT INTO [payrollmaster] ([id], [name], [description], [branchId], [isActive], [createdAt], [updatedAt]) VALUES
+('001', N'Education', N'Education levels', NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('002', N'Designation', N'Job designations', NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('003', N'Department', N'Departments', NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('004', N'Shift', N'Shift definitions', NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('005', N'Leave Type', N'Leave types (used by the Leave screen)', NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('006', N'Country', N'Countries', NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('007', N'Allowance', N'Allowance heads', NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('008', N'Deduction', N'Deduction heads', NULL, 1, SYSDATETIME(), SYSDATETIME());
+
+INSERT INTO [payrollmasterdetail] ([id], [masterId], [name], [description], [branchId], [isActive], [createdAt], [updatedAt]) VALUES
+('001001', '001', N'Matric', NULL, NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('001002', '001', N'Intermediate', NULL, NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('001003', '001', N'Bachelor', NULL, NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('001004', '001', N'Master', NULL, NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('001005', '001', N'Certification', NULL, NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('005001', '005', N'Casual', N'10 paid days per year', NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('005002', '005', N'Sick', N'10 paid days per year', NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('005003', '005', N'Paid', N'5 paid days per year', NULL, 1, SYSDATETIME(), SYSDATETIME()),
+('005004', '005', N'Unpaid', N'Unpaid leave', NULL, 1, SYSDATETIME(), SYSDATETIME());
 
 -- ---------------------------------------------------------------------
 -- Final-schema master seeds (gymmasterfile + payrollmasterfile defaults)

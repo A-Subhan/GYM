@@ -29,8 +29,13 @@ export async function POST(req: NextRequest) {
   const existing = await db.user.findUnique({ where: { username: data.username } })
   if (existing) return NextResponse.json({ error: 'Username already exists' }, { status: 400 })
 
-  const role = await db.role.findUnique({ where: { id: data.roleId } })
-  if (!role) return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
+  // User Type security model: Admin = full rights, User = per-screen permissions.
+  const userType = data.userType === 'Admin' ? 'Admin' : 'User'
+  // Legacy role is optional and only kept for pre-existing data compatibility.
+  if (data.roleId) {
+    const role = await db.role.findUnique({ where: { id: data.roleId } })
+    if (!role) return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
+  }
 
   const user = await db.user.create({
     data: {
@@ -38,7 +43,8 @@ export async function POST(req: NextRequest) {
       email: data.email || null,
       fullName: data.fullName,
       passwordHash: hashPassword(String(data.password)),
-      roleId: data.roleId,
+      userType,
+      roleId: data.roleId || null,
       branchId: data.branchId || null,
       accessibleBranchIds: data.accessibleBranchIds || (data.branchId || '*'),
       phone: data.phone,
@@ -80,7 +86,8 @@ export async function PATCH(req: NextRequest) {
       ...(data.phone !== undefined ? { phone: data.phone } : {}),
       // password optional on edit — leave blank to keep the current one
       ...(data.password ? { passwordHash: hashPassword(String(data.password)) } : {}),
-      ...(data.roleId !== undefined ? { roleId: data.roleId } : {}),
+      ...(data.userType !== undefined ? { userType: data.userType === 'Admin' ? 'Admin' : 'User' } : {}),
+      ...(data.roleId !== undefined ? { roleId: data.roleId || null } : {}),
       ...(data.branchId !== undefined ? { branchId: data.branchId || null } : {}),
       ...(data.accessibleBranchIds !== undefined ? { accessibleBranchIds: data.accessibleBranchIds || '*' } : {}),
       ...(data.isActive !== undefined ? { isActive: !!data.isActive } : {}),

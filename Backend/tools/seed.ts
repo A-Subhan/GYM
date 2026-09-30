@@ -54,9 +54,8 @@ async function main() {
   })
   console.log(`  ✓ Branch ${branch.code}`)
 
-  // 5. Admin User
+  // 5. Admin User — User Type = Admin (full rights automatically)
   const adminRole = await db.role.findUnique({ where: { name: 'Super Admin' } })
-  if (!adminRole) throw new Error('Super Admin role missing')
   const existing = await db.user.findUnique({ where: { username: 'admin' } })
   if (!existing) {
     await db.user.create({
@@ -65,7 +64,8 @@ async function main() {
         fullName: 'System Administrator',
         email: 'admin@contouragym.com',
         passwordHash: hashPassword('admin123'),
-        roleId: adminRole.id,
+        userType: 'Admin',
+        roleId: adminRole?.id || null,
         branchId: branch.id,
         accessibleBranchIds: '*',
         isActive: true,
@@ -75,7 +75,7 @@ async function main() {
   } else {
     await db.user.update({
       where: { id: existing.id },
-      data: { passwordHash: hashPassword('admin123'), isActive: true, roleId: adminRole.id, accessibleBranchIds: '*' },
+      data: { passwordHash: hashPassword('admin123'), isActive: true, userType: 'Admin', accessibleBranchIds: '*' },
     })
     console.log('  ✓ admin user updated with verified hash')
   }

@@ -17,12 +17,13 @@ import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { Plus, Search, Edit, Trash2, Eye, X, Save, ChevronDown, ChevronRight, Download, Printer, Banknote, AlertCircle, CheckCircle2, CalendarCheck, Snowflake, HandHeart, Copy, ImagePlus, Lock } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Eye, X, Save, ChevronDown, ChevronRight, Download, Printer, Banknote, AlertCircle, CheckCircle2, CalendarCheck, Snowflake, HandHeart, Copy, ImagePlus, Lock, ShieldCheck, Target, ClipboardList, Calendar, UserCheck, Dumbbell } from 'lucide-react'
 import { SCREENS } from '@/lib/screens'
 import {
   useApp, useFetch, apiPost, apiPatch, apiDelete,
   fmtMoney, fmtDateStr, fmtDateTime, PageHeader, SearchInput, EmptyState,
   StatusBadge, Modal, FormRow, Toolbar, DataTable, ConfirmModal,
+  ScreenShell, ActionPanel, type PanelAction,
 } from './modules'
 
 // =================================================================
@@ -1710,9 +1711,14 @@ export function MembersModule() {
 
   return (
     <div>
-      <PageHeader title="Members"
-        action={has('members.add') ? () => { setEditing(null); setOpen(true) } : undefined}
-        actionLabel="Add Member" />
+      <PageHeader title="Members" />
+      <ScreenShell actions={[
+        { label: 'Add', icon: Plus, onClick: () => { setEditing(null); setOpen(true) }, disabled: !has('members.add') },
+        { label: 'View', icon: Eye, onClick: () => selected && openView(selected), disabled: !selected },
+        { label: 'Edit', icon: Edit, onClick: () => selected && openEdit(selected), disabled: !selected || !has('members.edit') },
+        { label: 'Delete', icon: Trash2, variant: 'destructive', onClick: () => setDeleteTarget(selected), disabled: !selected || !has('members.delete') },
+        { label: 'Print', icon: Printer, onClick: () => setPrintTarget(selected), disabled: !selected },
+      ]}>
       <Toolbar>
         <SearchInput value={search} onChange={setSearch} placeholder="Search by ID, name, phone…" />
         <Select value={status} onValueChange={setStatus}>
@@ -1779,6 +1785,7 @@ export function MembersModule() {
         rows={members}
         onRowClick={(r: any) => setSelectedId(prev => prev === r.id ? null : r.id)}
       />
+      </ScreenShell>
       <MemberFormModal open={open} onClose={() => setOpen(false)} editing={editing} plans={plans} trainers={trainers} onSaved={() => { setOpen(false); reload() }} />
       <MemberViewModal open={viewOpen} member={viewing} onClose={() => setViewOpen(false)} onEdit={() => { setEditing(viewing); setViewOpen(false); setOpen(true) }} />
       <MemberPrintModal open={!!printTarget} member={printTarget} onClose={() => setPrintTarget(null)} />
@@ -1994,6 +2001,9 @@ function MemberFormModal({ open, onClose, editing, plans, trainers, onSaved }: a
                 </SelectContent>
               </Select>
             </FormRow>
+            <FormRow label="Joining Fee">
+              <Input type="number" min={0} value={form.joiningFee || 0} onChange={e => setForm({ ...form, joiningFee: Math.max(0, Number(e.target.value) || 0) })} />
+            </FormRow>
             <FormRow label="Status">
               <Select value={form.status || 'Active'} onValueChange={v => setForm({ ...form, status: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -2005,6 +2015,14 @@ function MemberFormModal({ open, onClose, editing, plans, trainers, onSaved }: a
                 </SelectContent>
               </Select>
             </FormRow>
+          </div>
+          <div className="text-xs text-muted-foreground mt-2">
+            Fee charged = membership fee + joining fee. The first invoice on the Fees &amp; Invoices screen will show the total
+            {form.membershipPlanId && plans.find((p: any) => p.id === form.membershipPlanId) ? (
+              <>
+                {' '}(<b>{fmtMoney((plans.find((p: any) => p.id === form.membershipPlanId)?.amount) || 0)} + {fmtMoney(Number(form.joiningFee) || 0)} = {fmtMoney(((plans.find((p: any) => p.id === form.membershipPlanId)?.amount) || 0) + (Number(form.joiningFee) || 0))}</b>)
+              </>
+            ) : null}.
           </div>
         </div>
 
@@ -2153,18 +2171,53 @@ function MemberViewModal({ open, member, onClose, onEdit }: any) {
 export function MembershipsModule() {
   const { has } = useApp()
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
   const [form, setForm] = useState<any>({})
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const { data, reload } = useFetch<any>('/api/memberships')
   const plans = data?.plans || []
+  const selected = plans.find((p: any) => p.id === selectedId) || null
+
+  const openAdd = () => { setEditing(null); setForm({}); setOpen(true) }
+  const openEdit = (p: any) => { setEditing(p); setForm({ ...p }); setOpen(true) }
+
+  const save = async () => {
+    if (!form.name?.trim()) { toast.error('Plan name is required'); return }
+    if (!editing && !form.branchId) { toast.error('Branch is required'); return }
+    if (!form.durationDays || Number(form.durationDays) < 1) { toast.error('Duration must be at least 1 day'); return }
+    if (form.amount === undefined || form.amount === null || isNaN(Number(form.amount)) || Number(form.amount) < 0) { toast.error('Amount must be a non-negative number'); return }
+    try {
+      if (editing) {
+        await apiPatch('/api/memberships', { id: editing.id, name: form.name, durationDays: Number(form.durationDays), amount: Number(form.amount), description: form.description, isActive: form.isActive !== false })
+        toast.success('Plan updated')
+      } else {
+        await apiPost('/api/memberships', form)
+        toast.success('Plan created')
+      }
+      setOpen(false); reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
+  const doDelete = async () => {
+    if (!deleteTarget) return
+    try { await apiDelete(`/api/memberships?id=${deleteTarget.id}`); toast.success('Plan deleted'); setDeleteTarget(null); reload() }
+    catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  }
+
   return (
     <div>
-      <PageHeader title="Membership Plans"
-        action={has('memberships.add') ? () => { setForm({}); setOpen(true) } : undefined}
-        actionLabel="Add Plan" />
+      <PageHeader title="Membership Plans" />
+      <ScreenShell actions={[
+        { label: 'Add', icon: Plus, onClick: openAdd, disabled: !has('memberships.add') },
+        { label: 'Edit', icon: Edit, onClick: () => selected && openEdit(selected), disabled: !selected || !has('memberships.edit') },
+        { label: 'Delete', icon: Trash2, variant: 'destructive', onClick: () => setDeleteTarget(selected), disabled: !selected || !has('memberships.delete') },
+        { label: 'Print', icon: Printer, onClick: () => window.print(), disabled: plans.length === 0 },
+      ]}>
       <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
       <DataTable
         columns={[
-          { key: 'code', label: 'Code', mono: true },
+          { key: 'id', label: 'Code', mono: true },
           { key: 'name', label: 'Name' },
           { key: 'durationDays', label: 'Duration', align: 'right', render: (r: any) => `${r.durationDays} days` },
           { key: 'amount', label: 'Amount', align: 'right', mono: true, render: (r: any) => fmtMoney(r.amount) },
@@ -2172,28 +2225,47 @@ export function MembershipsModule() {
           { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
         ]}
         rows={plans}
+        onRowClick={(r: any) => setSelectedId(prev => prev === r.id ? null : r.id)}
       />
-      <Modal open={open} onClose={() => setOpen(false)} title="Add Plan"
+      </ScreenShell>
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? `Edit Plan — ${editing.id}` : 'Add Plan'}
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={async () => {
-            if (!form.name?.trim()) { toast.error('Plan name is required'); return }
-            if (!form.durationDays || Number(form.durationDays) < 1) { toast.error('Duration must be at least 1 day'); return }
-            if (form.amount === undefined || form.amount === null || isNaN(Number(form.amount)) || Number(form.amount) < 0) { toast.error('Amount must be a non-negative number'); return }
-            try { await apiPost('/api/memberships', form); toast.success('Plan created'); setOpen(false); reload() }
-            catch (e: any) { toast.error(e.message) }
-          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+          <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
         <div className="grid grid-cols-2 gap-3">
+          <FormRow label="Branch" required={!editing}>
+            <BranchSelect value={form.branchId || ''} onChange={v => setForm({ ...form, branchId: v })} disabled={!!editing} />
+          </FormRow>
           <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
           <FormRow label="Duration (days)" required><Input type="number" min={1} value={form.durationDays || 30} onChange={e => setForm({ ...form, durationDays: Number(e.target.value) })} /></FormRow>
           <FormRow label="Amount" required><Input type="number" min={0} value={form.amount || 0} onChange={e => setForm({ ...form, amount: Number(e.target.value) })} /></FormRow>
           <FormRow label="Active"><Switch checked={form.isActive !== false} onCheckedChange={v => setForm({ ...form, isActive: v })} /></FormRow>
           <div className="col-span-2"><FormRow label="Description"><Textarea rows={2} value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow></div>
         </div>
-        <div className="text-xs text-muted-foreground mt-3">Plan code (MP-0001, MP-0002, …) is generated automatically on save.</div>
+        <div className="text-xs text-muted-foreground mt-3">Plan code (branch/period/00001) is generated automatically on save.</div>
       </Modal>
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={doDelete}
+        title="Delete Plan"
+        message={deleteTarget ? `Delete plan "${deleteTarget.name}"? Deletion is blocked if members are attached to it.` : ''}
+      />
     </div>
+  )
+}
+
+function BranchSelect({ value, onChange, disabled }: { value: string, onChange: (v: string) => void, disabled?: boolean }) {
+  const { branches } = useApp()
+  return (
+    <Select value={value || '__none__'} onValueChange={v => onChange(v === '__none__' ? '' : v)} disabled={disabled}>
+      <SelectTrigger><SelectValue placeholder="Select branch" /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="__none__">—</SelectItem>
+        {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.code} — {b.name}</SelectItem>)}
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -2269,7 +2341,8 @@ export function AttendanceModule() {
         columns={[
           { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
             <div className="flex gap-1">
-              {has('attendance.edit') && !r.checkOut && (
+              {/* Check Out is enabled ONLY when a check-in time is already punched and no check-out exists yet */}
+              {has('attendance.edit') && r.checkIn && !r.checkOut && (
                 <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); doCheckOut(r) }}>Check Out</Button>
               )}
               {has('attendance.edit') && (
@@ -2398,8 +2471,19 @@ export function FeesModule() {
   const { data: membersData } = useFetch<any>('/api/members' + (branchesParam ? `?${branchesParam.slice(1)}` : ''))
   const { data: accountsData } = useFetch<any>('/api/charts?bookType=Cash&isActive=true')
   const { data: bankAccountsData } = useFetch<any>('/api/charts?bookType=Bank&isActive=true')
-  const { data: banksData } = useFetch<any>('/api/master-files?type=Banks')
-  const { data: cardTypesData } = useFetch<any>('/api/master-files?type=CardTypes')
+  // Banks & Card Types come from the Finance Master File (financemasterdetail);
+  // legacy dbo.MasterFile rows are still served by /api/master-files if present.
+  const { data: financeMasterData } = useFetch<any>('/api/master-file-hierarchy?type=finance')
+  const { data: legacyBanksData } = useFetch<any>('/api/master-files?type=Banks')
+  const { data: legacyCardTypesData } = useFetch<any>('/api/master-files?type=CardTypes')
+  const banks = [
+    ...(financeMasterData?.details || []).filter((d: any) => d.master?.name === 'Banks' && d.isActive),
+    ...(legacyBanksData?.records || []).filter((b: any) => b.isActive),
+  ]
+  const cardTypes = [
+    ...(financeMasterData?.details || []).filter((d: any) => d.master?.name === 'Card Types' && d.isActive),
+    ...(legacyCardTypesData?.records || []).filter((c: any) => c.isActive),
+  ]
   const fees = (data?.fees || []).filter((f: any) =>
     !search || f.feeNo.toLowerCase().includes(search.toLowerCase()) || f.member?.firstName?.toLowerCase().includes(search.toLowerCase()))
 
@@ -2446,8 +2530,8 @@ export function FeesModule() {
         open={payOpen} fee={payTarget}
         cashAccounts={accountsData?.charts || []}
         bankAccounts={bankAccountsData?.charts || []}
-        banks={(banksData?.records || []).filter((b: any) => b.isActive)}
-        cardTypes={(cardTypesData?.records || []).filter((c: any) => c.isActive)}
+        banks={banks}
+        cardTypes={cardTypes}
         onClose={() => setPayOpen(false)} onPaid={() => { setPayOpen(false); reload() }}
       />
     </div>
@@ -2469,7 +2553,8 @@ function FeeCreateModal({ open, onClose, members, onSaved }: any) {
       <FormRow label="Member" required>
         <Select value={form.memberId || ''} onValueChange={v => {
           const m = members.find((x: any) => x.id === v)
-          setForm({ ...form, memberId: v, amount: m?.membershipPlan?.amount || 0 })
+          // Fee charged = membership fee + joining fee (one-time)
+          setForm({ ...form, memberId: v, amount: (m?.membershipPlan?.amount || 0) + (m?.joiningFee || 0) })
         }}>
           <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
           <SelectContent>{members.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.memberId} — {m.firstName} {m.lastName || ''}</SelectItem>)}</SelectContent>
@@ -2478,7 +2563,7 @@ function FeeCreateModal({ open, onClose, members, onSaved }: any) {
       <div className="grid grid-cols-2 gap-3 mt-3">
         <FormRow label="Billing Start"><Input type="date" value={form.billingPeriodStart || ''} onChange={e => setForm({ ...form, billingPeriodStart: e.target.value })} /></FormRow>
         <FormRow label="Billing End"><Input type="date" value={form.billingPeriodEnd || ''} onChange={e => setForm({ ...form, billingPeriodEnd: e.target.value })} /></FormRow>
-        <FormRow label="Amount"><Input type="number" value={form.amount || 0} onChange={e => setForm({ ...form, amount: Number(e.target.value) })} /></FormRow>
+        <FormRow label="Amount (membership + joining fee)"><Input type="number" value={form.amount || 0} onChange={e => setForm({ ...form, amount: Number(e.target.value) })} /></FormRow>
         <FormRow label="Discount"><Input type="number" value={form.discount || 0} onChange={e => setForm({ ...form, discount: Number(e.target.value) })} /></FormRow>
         <FormRow label="Due Date"><Input type="date" value={form.dueDate || ''} onChange={e => setForm({ ...form, dueDate: e.target.value })} /></FormRow>
       </div>
@@ -2588,17 +2673,70 @@ export function ProspectsModule() {
   const [status, setStatus] = useState('all')
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
   const [form, setForm] = useState<any>({})
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // "Same as phone" checkbox — whatsapp mirrors phone while checked (same UX as Add Member)
+  const [sameAsPhone, setSameAsPhone] = useState(false)
   const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
   const { data, reload } = useFetch<any>(`/api/prospects?status=${status !== 'all' ? status : ''}${branchesParam}`)
   const prospects = (data?.prospects || []).filter((p: any) =>
     !search || p.name?.toLowerCase().includes(search.toLowerCase()) || p.phone?.includes(search))
+  const selected = prospects.find((p: any) => p.id === selectedId) || null
+
+  const setPhone = (phone: string) => {
+    setForm((f: any) => (sameAsPhone ? { ...f, phone, whatsapp: phone } : { ...f, phone }))
+  }
+  const toggleSameAsPhone = (checked: boolean) => {
+    setSameAsPhone(checked)
+    if (checked) setForm((f: any) => ({ ...f, whatsapp: f.phone || '' }))
+  }
+
+  const openAdd = () => {
+    setEditing(null)
+    setForm({ source: 'WalkIn', status: 'New' })
+    setSameAsPhone(false)
+    setOpen(true)
+  }
+  const openEdit = (p: any) => {
+    setEditing(p)
+    setForm({ ...p, inquiryDate: p.inquiryDate?.slice(0, 10), followUpDate: p.followUpDate?.slice(0, 10) })
+    setSameAsPhone(!!p.phone && p.whatsapp === p.phone)
+    setOpen(true)
+  }
+
+  const save = async () => {
+    if (!form.name?.trim()) { toast.error('Name is required'); return }
+    if (!form.phone?.trim()) { toast.error('Phone number is required'); return }
+    const payload = sameAsPhone ? { ...form, whatsapp: form.phone } : form
+    try {
+      if (editing) {
+        await apiPatch(`/api/prospects/${editing.id}`, payload)
+        toast.success('Prospect updated')
+      } else {
+        await apiPost('/api/prospects', payload)
+        toast.success('Prospect added')
+      }
+      setOpen(false); reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
+  const doDelete = async () => {
+    if (!deleteTarget) return
+    try { await apiDelete(`/api/prospects/${deleteTarget.id}`); toast.success('Prospect deleted'); setDeleteTarget(null); reload() }
+    catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  }
 
   return (
     <div>
-      <PageHeader title="Prospects / Inquiries"
-        action={has('prospects.add') ? () => { setForm({ source: 'WalkIn', status: 'New' }); setOpen(true) } : undefined}
-        actionLabel="Add Prospect" />
+      <PageHeader title="Prospects / Inquiries" />
+      <ScreenShell actions={[
+        { label: 'Add', icon: Plus, onClick: openAdd, disabled: !has('prospects.add') },
+        { label: 'Edit', icon: Edit, onClick: () => selected && openEdit(selected), disabled: !selected || !has('prospects.edit') },
+        { label: 'Delete', icon: Trash2, variant: 'destructive', onClick: () => setDeleteTarget(selected), disabled: !selected || !has('prospects.delete') },
+        { label: 'Print', icon: Printer, onClick: () => window.print(), disabled: prospects.length === 0 },
+      ]}>
       <Toolbar>
         <SearchInput value={search} onChange={setSearch} placeholder="Search name or phone…" />
         <Select value={status} onValueChange={setStatus}>
@@ -2621,6 +2759,7 @@ export function ProspectsModule() {
           { key: 'prospectId', label: 'ID', mono: true },
           { key: 'name', label: 'Name' },
           { key: 'phone', label: 'Phone' },
+          { key: 'whatsapp', label: 'WhatsApp' },
           { key: 'source', label: 'Source' },
           { key: 'interestedMembership', label: 'Interested In' },
           { key: 'inquiryDate', label: 'Inquiry', render: (r: any) => fmtDateStr(r.inquiryDate) },
@@ -2640,19 +2779,28 @@ export function ProspectsModule() {
           },
         ]}
         rows={prospects}
+        onRowClick={(r: any) => setSelectedId(prev => prev === r.id ? null : r.id)}
       />
-      <Modal open={open} onClose={() => setOpen(false)} title="Add Prospect"
+      </ScreenShell>
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? `Edit Prospect — ${editing.id}` : 'Add Prospect'}
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={async () => {
-            try { await apiPost('/api/prospects', form); toast.success('Prospect added'); setOpen(false); reload() }
-            catch (e: any) { toast.error(e.message) }
-          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+          <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
         <div className="grid grid-cols-2 gap-3">
           <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
-          <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
-          <FormRow label="WhatsApp"><Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} /></FormRow>
+          <FormRow label="Phone" required><Input value={form.phone || ''} onChange={e => setPhone(e.target.value)} placeholder="0300XXXXXXX" /></FormRow>
+          <div>
+            <FormRow label="WhatsApp">
+              <div className="space-y-1.5">
+                <Input value={form.whatsapp || ''} onChange={e => setForm({ ...form, whatsapp: e.target.value })} disabled={sameAsPhone} placeholder={sameAsPhone ? 'Same as phone' : ''} />
+                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+                  <Checkbox checked={sameAsPhone} onCheckedChange={(v) => toggleSameAsPhone(v === true)} />
+                  Same as phone number
+                </label>
+              </div>
+            </FormRow>
+          </div>
           <FormRow label="Gender">
             <Select value={form.gender || ''} onValueChange={v => setForm({ ...form, gender: v })}>
               <SelectTrigger><SelectValue /></SelectTrigger>
@@ -2691,6 +2839,13 @@ export function ProspectsModule() {
           <div className="col-span-2"><FormRow label="Notes"><Textarea rows={2} value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></FormRow></div>
         </div>
       </Modal>
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={doDelete}
+        title="Delete Prospect"
+        message={deleteTarget ? `Delete prospect "${deleteTarget.name}"? This cannot be undone.` : ''}
+      />
     </div>
   )
 }
@@ -2701,28 +2856,66 @@ export function ProspectsModule() {
 export function FreezesModule() {
   const { has, selectedBranchIds } = useApp()
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
   const [form, setForm] = useState<any>({})
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const { data, reload } = useFetch<any>('/api/freezes')
   const { data: membersData } = useFetch<any>('/api/members')
   const freezes = data?.freezes || []
+  const selected = freezes.find((f: any) => f.id === selectedId) || null
+
+  const openAdd = () => { setEditing(null); setForm({ freezeFrom: new Date().toISOString().slice(0, 10) }); setOpen(true) }
+  const openEdit = (f: any) => {
+    setEditing(f)
+    setForm({
+      memberId: f.memberId,
+      freezeFrom: f.freezeFrom?.slice(0, 10),
+      freezeTo: f.freezeTo?.slice(0, 10),
+      reason: f.reason,
+    })
+    setOpen(true)
+  }
+
+  const save = async () => {
+    if (!form.memberId) { toast.error('Member is required'); return }
+    if (!form.freezeFrom || !form.freezeTo) { toast.error('From and To dates are required'); return }
+    try {
+      if (editing) {
+        await apiPatch('/api/freezes', { id: editing.id, freezeFrom: form.freezeFrom, freezeTo: form.freezeTo, reason: form.reason })
+        toast.success('Freeze updated')
+      } else {
+        await apiPost('/api/freezes', form)
+        toast.success('Freeze applied')
+      }
+      setOpen(false); reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
+  const doDelete = async () => {
+    if (!deleteTarget) return
+    try { await apiDelete(`/api/freezes?id=${deleteTarget.id}`); toast.success('Freeze deleted'); setDeleteTarget(null); reload() }
+    catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  }
 
   return (
     <div>
-      <PageHeader title="Membership Freeze"
-        action={has('freeze.add') ? () => { setForm({ freezeFrom: new Date().toISOString().slice(0, 10) }); setOpen(true) } : undefined}
-        actionLabel="Freeze Membership" />
+      <PageHeader title="Membership Freeze" />
+      <ScreenShell actions={[
+        { label: 'Add', icon: Plus, onClick: openAdd, disabled: !has('freeze.add') },
+        { label: 'Edit', icon: Edit, onClick: () => selected && openEdit(selected), disabled: !selected || !has('freeze.edit') },
+        { label: 'Lift Freeze', icon: Snowflake, onClick: async () => {
+            if (!selected) return
+            try { await apiPatch('/api/freezes', { id: selected.id, action: 'lift' }); toast.success('Freeze lifted'); reload() }
+            catch (e: any) { toast.error(e.message) }
+          }, disabled: !selected || selected.status !== 'Active' || !has('freeze.edit') },
+        { label: 'Delete', icon: Trash2, variant: 'destructive', onClick: () => setDeleteTarget(selected), disabled: !selected || !has('freeze.delete') },
+        { label: 'Print', icon: Printer, onClick: () => window.print(), disabled: freezes.length === 0 },
+      ]}>
       <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
       <DataTable
         columns={[
-          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) =>
-            r.status === 'Active' && has('freeze.edit') ? (
-              <Button size="sm" variant="outline" onClick={async (e) => {
-                e.stopPropagation()
-                try { await apiPatch('/api/freezes', { id: r.id, action: 'lift' }); toast.success('Freeze lifted'); reload() }
-                catch (e: any) { toast.error(e.message) }
-              }}>Lift</Button>
-            ) : null
-          },
+          { key: 'id', label: 'Freeze #', mono: true },
           { key: 'member', label: 'Member', render: (r: any) => `${r.member?.firstName} ${r.member?.lastName || ''}` },
           { key: 'freezeFrom', label: 'From', render: (r: any) => fmtDateStr(r.freezeFrom) },
           { key: 'freezeTo', label: 'To', render: (r: any) => fmtDateStr(r.freezeTo) },
@@ -2731,17 +2924,16 @@ export function FreezesModule() {
           { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
         ]}
         rows={freezes}
+        onRowClick={(r: any) => setSelectedId(prev => prev === r.id ? null : r.id)}
       />
-      <Modal open={open} onClose={() => setOpen(false)} title="Freeze Membership"
+      </ScreenShell>
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? `Edit Freeze — ${editing.id}` : 'Freeze Membership'}
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={async () => {
-            try { await apiPost('/api/freezes', form); toast.success('Freeze applied'); setOpen(false); reload() }
-            catch (e: any) { toast.error(e.message) }
-          }}><Save className="h-4 w-4 mr-1" />Apply Freeze</Button>
+          <Button onClick={save}><Save className="h-4 w-4 mr-1" />{editing ? 'Update' : 'Apply Freeze'}</Button>
         </>}>
         <FormRow label="Member" required>
-          <Select value={form.memberId || ''} onValueChange={v => setForm({ ...form, memberId: v })}>
+          <Select value={form.memberId || ''} onValueChange={v => setForm({ ...form, memberId: v })} disabled={!!editing}>
             <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
             <SelectContent>{(membersData?.members || []).map((m: any) => <SelectItem key={m.id} value={m.id}>{m.memberId} — {m.firstName} {m.lastName || ''}</SelectItem>)}</SelectContent>
           </Select>
@@ -2752,6 +2944,13 @@ export function FreezesModule() {
           <div className="col-span-2"><FormRow label="Reason"><Textarea rows={2} value={form.reason || ''} onChange={e => setForm({ ...form, reason: e.target.value })} /></FormRow></div>
         </div>
       </Modal>
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={doDelete}
+        title="Delete Freeze"
+        message={deleteTarget ? `Delete freeze record ${deleteTarget.id}? This cannot be undone.` : ''}
+      />
     </div>
   )
 }
@@ -4307,6 +4506,9 @@ const PERM_ACTIONS: { key: keyof PermFlags; label: string }[] = [
   { key: 'print', label: 'Print' },
 ]
 
+// ============================================================================
+// NEW UsersModule + per-user ScreenPermissionMatrix (replacement block)
+// ============================================================================
 export function UsersModule() {
   const { has } = useApp()
   const [open, setOpen] = useState(false)
@@ -4315,18 +4517,14 @@ export function UsersModule() {
   const [selectedUser, setSelectedUser] = useState<any>(null)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const { data, reload } = useFetch<any>('/api/users')
-  const canLoadRoles = has('roles.view')
-  const { data: rolesData } = useFetch<any>(canLoadRoles ? '/api/roles' : null)
   const { data: branchesData } = useFetch<any>('/api/branches')
   const users = data?.users || []
-  const roles = rolesData?.roles || []
   const branches = branchesData?.branches || []
   const selected = selectedUser ? (users.find((u: any) => u.id === selectedUser.id) || selectedUser) : null
-  const [permRoleId, setPermRoleId] = useState<string>('')
 
   const openAdd = () => {
     setEditing(null)
-    setForm({ isActive: true, accessibleBranchIds: '*', allBranches: true, branchList: [] })
+    setForm({ userType: 'User', isActive: true, accessibleBranchIds: '*', allBranches: true, branchList: [] })
     setOpen(true)
   }
   const openEdit = (u: any) => {
@@ -4335,6 +4533,7 @@ export function UsersModule() {
     setForm({
       ...u,
       password: '',
+      userType: u.userType === 'Admin' ? 'Admin' : 'User',
       allBranches: accessible === '*',
       branchList: accessible === '*' ? [] : accessible.split(',').filter(Boolean),
     })
@@ -4346,29 +4545,24 @@ export function UsersModule() {
       toast.error('Username, full name' + (!editing ? ', and password are required' : ' are required'))
       return
     }
-    if (!editing && !form.roleId) { toast.error('Role is required'); return }
     const accessible = form.allBranches ? '*' : (form.branchList || []).join(',')
     const payload: any = {
       username: form.username, fullName: form.fullName, email: form.email, phone: form.phone,
-      roleId: form.roleId, branchId: form.branchId || null,
+      userType: form.userType === 'Admin' ? 'Admin' : 'User', branchId: form.branchId || null,
       accessibleBranchIds: accessible, isActive: form.isActive !== false,
     }
     if (form.password) payload.password = form.password
     try {
       if (editing) {
-        await apiPatch('/api/users', { id: editing.id, ...payload })
+        const updated = await apiPatch('/api/users', { id: editing.id, ...payload })
         toast.success('User updated')
+        setSelectedUser(updated.user || null)
       } else {
         await apiPost('/api/users', payload)
         toast.success('User created')
       }
       setOpen(false); reload()
     } catch (e: any) { toast.error(e.message) }
-  }
-
-  const selectUser = (u: any) => {
-    setSelectedUser(u)
-    if (u?.roleId) setPermRoleId(u.roleId)
   }
 
   return (
@@ -4380,16 +4574,17 @@ export function UsersModule() {
         {/* Users list */}
         <div className="xl:col-span-2">
           <Toolbar>
-            <span className="text-xs text-muted-foreground">Select a user to edit their role's screen permissions</span>
+            <span className="text-xs text-muted-foreground">Select a user to assign screen permissions</span>
             <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
           </Toolbar>
           <DataTable
-            onRowClick={(u: any) => selectUser(u)}
+            onRowClick={(u: any) => setSelectedUser(u)}
             columns={[
               { key: 'username', label: 'Username', mono: true },
               { key: 'fullName', label: 'Name' },
-              { key: 'email', label: 'Email' },
-              { key: 'role', label: 'Role', render: (r: any) => r.role?.name || '—' },
+              { key: 'userType', label: 'User Type', render: (r: any) => (
+                <Badge variant={r.userType === 'Admin' ? 'default' : 'secondary'}>{r.userType === 'Admin' ? 'Admin' : 'User'}</Badge>
+              ) },
               { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
               { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
               { key: 'actions', label: 'Actions', render: (r: any) => (
@@ -4408,17 +4603,12 @@ export function UsersModule() {
           />
         </div>
 
-        {/* Screen permission matrix for the selected user's role (remounts on role switch) */}
+        {/* Per-user screen permission matrix */}
         <div className="xl:col-span-3">
-          <ScreenPermissionMatrix
-            key={permRoleId || 'none'}
-            roleId={permRoleId}
-            roles={roles}
-            canPickRole={canLoadRoles}
-            selectedUserName={selected?.fullName}
-            selectedRoleName={selected?.role?.name}
-            canSave={has('roles.config')}
-            onRoleChange={setPermRoleId}
+          <UserPermissionMatrix
+            key={selected?.id || 'none'}
+            user={selected}
+            canSave={has('users.edit') || has('roles.config')}
           />
         </div>
       </div>
@@ -4437,13 +4627,13 @@ export function UsersModule() {
           <FormRow label={editing ? 'Password' : 'Password'} required={!editing}>
             <Input type="password" value={form.password || ''} onChange={e => setForm({ ...form, password: e.target.value })} placeholder={editing ? 'Leave blank to keep current password' : ''} />
           </FormRow>
-          <FormRow label="Role" required={!editing}>
-            <Select
-              disabled={!canLoadRoles}
-              value={form.roleId || ''}
-              onValueChange={v => setForm({ ...form, roleId: v })}>
-              <SelectTrigger><SelectValue placeholder={canLoadRoles ? 'Select role' : (editing?.role?.name || 'No role list access')} /></SelectTrigger>
-              <SelectContent>{roles.map((r: any) => <SelectItem key={r.id} value={r.id}>{r.name}{r.isSystem ? ' (system)' : ''}</SelectItem>)}</SelectContent>
+          <FormRow label="User Type" required>
+            <Select value={form.userType || 'User'} onValueChange={v => setForm({ ...form, userType: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Admin">Admin — full rights automatically</SelectItem>
+                <SelectItem value="User">User — assign permissions per screen</SelectItem>
+              </SelectContent>
             </Select>
           </FormRow>
           <FormRow label="Primary Branch">
@@ -4483,6 +4673,11 @@ export function UsersModule() {
             )}
           </div>
         </div>
+        <div className="text-xs text-muted-foreground mt-3">
+          {form.userType === 'Admin'
+            ? 'User Type = Admin gets FULL rights on the entire software automatically — no per-screen assignment needed.'
+            : 'User Type = User gets rights assigned per user, per screen (View / Add / Edit / Delete / Print) — save the user, then tick the matrix on the right.'}
+        </div>
       </Modal>
 
       <ConfirmModal
@@ -4504,21 +4699,15 @@ export function UsersModule() {
 }
 
 // =================================================================
-// SCREEN PERMISSION MATRIX — 52 screens x View/Add/Edit/Delete/Print,
-// loaded & saved per role. Saving applies to the current session
-// immediately (session refresh — no re-login required).
+// USER PERMISSION MATRIX — 52+ screens x View/Add/Edit/Delete/Print,
+// loaded & saved PER USER (User Type = User). Admin users always have
+// full rights; the matrix is shown read-only with a note.
+// Saving applies to the current session immediately (session refresh).
 // =================================================================
-function ScreenPermissionMatrix({ roleId, roles, canPickRole, selectedUserName, selectedRoleName, canSave, onRoleChange }: {
-  roleId: string
-  roles: any[]
-  canPickRole: boolean
-  selectedUserName?: string | null
-  selectedRoleName?: string | null
-  canSave: boolean
-  onRoleChange: (roleId: string) => void
-}) {
+function UserPermissionMatrix({ user, canSave }: { user: any | null, canSave: boolean }) {
   const { refreshSession } = useApp()
-  const { data, loading, reload } = useFetch<any>(roleId ? `/api/screen-permissions?roleId=${roleId}` : null)
+  const enabled = !!user && user.userType !== 'Admin'
+  const { data, loading, reload } = useFetch<any>(enabled ? `/api/screen-permissions?userId=${user.id}` : null)
   const [matrix, setMatrix] = useState<Record<string, PermFlags>>({})
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -4534,14 +4723,28 @@ function ScreenPermissionMatrix({ roleId, roles, canPickRole, selectedUserName, 
     }
     setMatrix(next)
     setDirty(false)
-  }, [data, roleId])
+  }, [data, user?.id])
 
-  if (!roleId) {
+  if (!user) {
     return (
       <Card>
         <CardContent className="p-6">
           <div className="font-medium mb-1">Screen Permissions</div>
-          <EmptyState message="Select a user (or a role below) to view and edit its screen permission matrix." />
+          <EmptyState message="Select a user to view and edit their per-screen permission matrix." />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (user.userType === 'Admin') {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <div className="font-medium mb-1">Screen Permissions</div>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
+            <ShieldCheck className="h-4 w-4 text-green-600" />
+            <span><b>{user.fullName}</b> is an <b>Admin</b> — Admins automatically get full rights on the entire software. Nothing to assign.</span>
+          </div>
         </CardContent>
       </Card>
     )
@@ -4578,11 +4781,11 @@ function ScreenPermissionMatrix({ roleId, roles, canPickRole, selectedUserName, 
   }
 
   const save = async () => {
-    if (!roleId) return
+    if (!user) return
     setSaving(true)
     try {
       await apiPost('/api/screen-permissions', {
-        roleId,
+        userId: user.id,
         permissions: SCREENS.map(s => ({
           screenKey: s.key,
           canView: matrix[s.key]?.view || false,
@@ -4592,7 +4795,7 @@ function ScreenPermissionMatrix({ roleId, roles, canPickRole, selectedUserName, 
           canPrint: matrix[s.key]?.print || false,
         })),
       })
-      toast.success('Screen permissions saved — applied to the current session immediately')
+      toast.success('Permissions saved — applied to the user\'s session immediately')
       await refreshSession()
       reload()
     } catch (e: any) {
@@ -4610,8 +4813,6 @@ function ScreenPermissionMatrix({ roleId, roles, canPickRole, selectedUserName, 
     else groups.push({ module: s.module, screens: [s] })
   }
 
-  const roleName = roles.find((r: any) => r.id === roleId)?.name || selectedRoleName || roleId
-
   return (
     <Card>
       <CardContent className="p-4">
@@ -4619,27 +4820,19 @@ function ScreenPermissionMatrix({ roleId, roles, canPickRole, selectedUserName, 
           <div className="flex items-center gap-2 flex-wrap">
             <div className="font-medium">Screen Permissions</div>
             <Badge variant="secondary">{SCREENS.length} screens</Badge>
-            {selectedUserName && <span className="text-xs text-muted-foreground">for {selectedUserName}</span>}
+            <span className="text-xs text-muted-foreground">for {user.fullName} (@{user.username})</span>
           </div>
           <div className="flex items-center gap-2">
-            {canPickRole && (
-              <Select value={roleId} onValueChange={onRoleChange}>
-                <SelectTrigger className="w-52"><SelectValue placeholder="Select role" /></SelectTrigger>
-                <SelectContent>
-                  {roles.map((r: any) => <SelectItem key={r.id} value={r.id}>{r.name}{r.isSystem ? ' (system)' : ''}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            )}
-            <Button variant="outline" size="sm" onClick={toggleAll}>{allChecked ? 'Uncheck all' : 'Check all'}</Button>
+            <Button variant="outline" size="sm" onClick={toggleAll} disabled={!canSave}>{allChecked ? 'Uncheck all' : 'Check all'}</Button>
             {canSave && (
-              <Button size="sm" onClick={save} disabled={saving}>
+              <Button size="sm" onClick={save} disabled={saving || !enabled}>
                 <Save className="h-4 w-4 mr-1" />{saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
               </Button>
             )}
           </div>
         </div>
         {!canSave && (
-          <div className="text-xs text-muted-foreground mb-2">Viewing permissions for role <b>{roleName}</b> — you need "Assign permissions to role" to edit.</div>
+          <div className="text-xs text-muted-foreground mb-2">You need Edit permission on Users to change permissions.</div>
         )}
         {loading ? (
           <div className="text-sm text-muted-foreground py-6 text-center">Loading permissions…</div>
@@ -4699,7 +4892,7 @@ function ScreenPermissionMatrix({ roleId, roles, canPickRole, selectedUserName, 
           </div>
         )}
         <div className="text-xs text-muted-foreground mt-2">
-          Changes take effect for the current session immediately after saving (no re-login required). NAV entries and screens without View permission are hidden / blocked.
+          Rights are assigned per user, per screen. Changes take effect for the current session immediately after saving (no re-login required).
         </div>
       </CardContent>
     </Card>
@@ -5085,85 +5278,85 @@ export function PeriodsModule() {
 // =================================================================
 // EXERCISES
 // =================================================================
+// EXERCISES — served from the Gym Master File (gymmaster category '001' +
+// gymmasterdetail items). The old separate Code field is MERGED away: the
+// item code IS the id (0010001, 0010002, ...) and there is a single Name field.
 export function ExercisesModule() {
   const { has } = useApp()
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
   const [form, setForm] = useState<any>({})
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const { data, reload } = useFetch<any>('/api/exercises')
-  const { data: categoriesData } = useFetch<any>('/api/master-files?type=ExerciseCategories')
-  const { data: equipmentData } = useFetch<any>('/api/master-files?type=Equipment')
   const exercises = data?.exercises || []
-  const categories = (categoriesData?.records || []).filter((c: any) => c.isActive)
-  const equipmentOptions = (equipmentData?.records || []).filter((e: any) => e.isActive)
-  // Look up category name from master file by id (if stored as id) — but Exercise.category stores the name text per existing schema
-  const categoryName = (cat: string) => {
-    if (!cat) return '—'
-    const found = categories.find((c: any) => c.id === cat || c.name === cat)
-    return found?.name || cat
+  const selected = exercises.find((e: any) => e.id === selectedId) || null
+
+  const openAdd = () => { setEditing(null); setForm({}); setOpen(true) }
+  const openEdit = (e: any) => { setEditing(e); setForm({ name: e.name, description: e.description }); setOpen(true) }
+
+  const save = async () => {
+    if (!form.name?.trim()) { toast.error('Exercise name is required'); return }
+    try {
+      if (editing) {
+        await apiPatch('/api/exercises', { id: editing.id, name: form.name, description: form.description })
+        toast.success('Exercise updated')
+      } else {
+        await apiPost('/api/exercises', form)
+        toast.success('Exercise added')
+      }
+      setOpen(false); reload()
+    } catch (e: any) { toast.error(e.message) }
   }
+
+  const doDelete = async () => {
+    if (!deleteTarget) return
+    try { await apiDelete(`/api/exercises?id=${deleteTarget.id}`); toast.success('Exercise deleted'); setDeleteTarget(null); reload() }
+    catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  }
+
   return (
     <div>
-      <PageHeader title="Exercises"
-        action={has('workouts.add') ? () => { setForm({}); setOpen(true) } : undefined}
-        actionLabel="Add Exercise" />
+      <PageHeader title="Exercises" />
+      <ScreenShell actions={[
+        { label: 'Add', icon: Plus, onClick: openAdd, disabled: !has('workouts.add') },
+        { label: 'Edit', icon: Edit, onClick: () => selected && openEdit(selected), disabled: !selected || !has('workouts.edit') },
+        { label: 'Delete', icon: Trash2, variant: 'destructive', onClick: () => setDeleteTarget(selected), disabled: !selected || !has('workouts.delete') },
+        { label: 'Print', icon: Printer, onClick: () => window.print(), disabled: exercises.length === 0 },
+      ]}>
       <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
       <DataTable
         columns={[
-          { key: 'code', label: 'Code', mono: true },
+          { key: 'id', label: 'ID', mono: true },
           { key: 'name', label: 'Name' },
-          { key: 'category', label: 'Category', render: (r: any) => categoryName(r.category) },
-          { key: 'muscleGroup', label: 'Muscle Group' },
-          { key: 'sets', label: 'Sets', align: 'right' },
-          { key: 'reps', label: 'Reps' },
+          { key: 'description', label: 'Description' },
+          { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
           { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
         ]}
         rows={exercises}
+        onRowClick={(r: any) => setSelectedId(prev => prev === r.id ? null : r.id)}
       />
-      <Modal open={open} onClose={() => setOpen(false)} title="Add Exercise"
+      </ScreenShell>
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? `Edit Exercise — ${editing.id}` : 'Add Exercise'}
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={async () => {
-            try { await apiPost('/api/exercises', form); toast.success('Exercise added'); setOpen(false); reload() }
-            catch (e: any) { toast.error(e.message) }
-          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+          <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3">
           <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
-          <FormRow label="Category" required>
-            <Select value={form.categoryId || '__none__'} onValueChange={v => {
-              const cat = categories.find((c: any) => c.id === v)
-              setForm({ ...form, categoryId: v === '__none__' ? '' : v, category: cat?.name || '' })
-            }}>
-              <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">—</SelectItem>
-                {categories.length === 0 && <SelectItem value="__none__" disabled>No categories — add in Master Files</SelectItem>}
-                {categories.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </FormRow>
-          <FormRow label="Muscle Group"><Input value={form.muscleGroup || ''} onChange={e => setForm({ ...form, muscleGroup: e.target.value })} /></FormRow>
-          <FormRow label="Equipment">
-            {equipmentOptions.length > 0 ? (
-              <Select value={form.equipment || '__none__'} onValueChange={v => setForm({ ...form, equipment: v === '__none__' ? '' : v })}>
-                <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">—</SelectItem>
-                  {equipmentOptions.map((e: any) => <SelectItem key={e.id} value={e.name}>{e.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Input value={form.equipment || ''} onChange={e => setForm({ ...form, equipment: e.target.value })} placeholder="e.g. Barbell — add equipment in Master Files" />
-            )}
-          </FormRow>
-          <FormRow label="Sets"><Input type="number" value={form.sets || ''} onChange={e => setForm({ ...form, sets: e.target.value })} /></FormRow>
-          <FormRow label="Reps"><Input value={form.reps || ''} onChange={e => setForm({ ...form, reps: e.target.value })} placeholder="8-12" /></FormRow>
-          <FormRow label="Duration"><Input value={form.duration || ''} onChange={e => setForm({ ...form, duration: e.target.value })} placeholder="30 sec" /></FormRow>
-          <FormRow label="Rest"><Input value={form.rest || ''} onChange={e => setForm({ ...form, rest: e.target.value })} placeholder="60 sec" /></FormRow>
-          <div className="col-span-2"><FormRow label="Instructions"><Textarea rows={2} value={form.instructions || ''} onChange={e => setForm({ ...form, instructions: e.target.value })} /></FormRow></div>
+          <FormRow label="Description"><Textarea rows={2} value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow>
         </div>
-        <div className="mt-3 text-xs text-muted-foreground">Categories are managed via Master Files → Exercise Categories.</div>
+        <div className="mt-3 text-xs text-muted-foreground">
+          Exercises are stored in the Gym Master File (category 001 — Exercises, items 0010001, 0010002, …). The old Code field is merged into the ID shown in the grid.
+        </div>
       </Modal>
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={doDelete}
+        title="Delete Exercise"
+        message={deleteTarget ? `Delete exercise "${deleteTarget.name}"? Deletion is blocked while workout plans reference it.` : ''}
+      />
     </div>
   )
 }
@@ -5329,7 +5522,7 @@ export function WorkoutsModule() {
                   <SelectTrigger className="w-60 h-8"><SelectValue placeholder="+ Add exercise to this day" /></SelectTrigger>
                   <SelectContent>
                     {exercises.length === 0 ? <SelectItem value="__none__" disabled>No exercises — add in Exercises master</SelectItem> :
-                      exercises.map((e: any) => <SelectItem key={e.id} value={e.id}>{e.code} — {e.name}</SelectItem>)}
+                      exercises.map((e: any) => <SelectItem key={e.id} value={e.id}>{e.name} ({e.id})</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -5535,15 +5728,57 @@ export function DietModule() {
 export function ProgressModule() {
   const { has } = useApp()
   const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
   const [form, setForm] = useState<any>({ date: new Date().toISOString().slice(0, 10) })
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const { data: membersData } = useFetch<any>('/api/members')
   const { data, reload } = useFetch<any>('/api/progress')
   const records = data?.records || []
+  const selected = records.find((r: any) => r.id === selectedId) || null
+
+  const openAdd = () => { setEditing(null); setForm({ date: new Date().toISOString().slice(0, 10) }); setOpen(true) }
+  const openEdit = (r: any) => {
+    setEditing(r)
+    setForm({
+      memberId: r.memberId,
+      date: r.date?.slice(0, 10),
+      weight: r.weight, chest: r.chest, waist: r.waist,
+      hips: r.hips, biceps: r.biceps, thighs: r.thighs,
+      notes: r.notes,
+    })
+    setOpen(true)
+  }
+
+  const save = async () => {
+    if (!form.memberId) { toast.error('Member is required'); return }
+    try {
+      if (editing) {
+        await apiPatch('/api/progress', { id: editing.id, ...form })
+        toast.success('Progress updated')
+      } else {
+        await apiPost('/api/progress', form)
+        toast.success('Progress logged')
+      }
+      setOpen(false); reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
+  const doDelete = async () => {
+    if (!deleteTarget) return
+    try { await apiDelete(`/api/progress?id=${deleteTarget.id}`); toast.success('Progress entry deleted'); setDeleteTarget(null); reload() }
+    catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  }
+
   return (
     <div>
-      <PageHeader title="Progress Tracking"
-        action={has('progress.add') ? () => setOpen(true) : undefined}
-        actionLabel="Log Progress" />
+      <PageHeader title="Progress Tracking" />
+      <ScreenShell actions={[
+        { label: 'Add', icon: Plus, onClick: openAdd, disabled: !has('progress.add') },
+        { label: 'Edit', icon: Edit, onClick: () => selected && openEdit(selected), disabled: !selected || !has('progress.edit') },
+        { label: 'Delete', icon: Trash2, variant: 'destructive', onClick: () => setDeleteTarget(selected), disabled: !selected || !has('progress.delete') },
+        { label: 'Print', icon: Printer, onClick: () => window.print(), disabled: records.length === 0 },
+      ]}>
       <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
       <DataTable
         columns={[
@@ -5557,18 +5792,17 @@ export function ProgressModule() {
           { key: 'notes', label: 'Notes' },
         ]}
         rows={records}
+        onRowClick={(r: any) => setSelectedId(prev => prev === r.id ? null : r.id)}
       />
-      <Modal open={open} onClose={() => setOpen(false)} title="Log Progress"
+      </ScreenShell>
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Edit Progress Entry' : 'Log Progress'}
         footer={<>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={async () => {
-            try { await apiPost('/api/progress', form); toast.success('Progress logged'); setOpen(false); reload() }
-            catch (e: any) { toast.error(e.message) }
-          }}><Save className="h-4 w-4 mr-1" />Save</Button>
+          <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
         <div className="grid grid-cols-2 gap-3">
           <FormRow label="Member" required>
-            <Select value={form.memberId || ''} onValueChange={v => setForm({ ...form, memberId: v })}>
+            <Select value={form.memberId || ''} onValueChange={v => setForm({ ...form, memberId: v })} disabled={!!editing}>
               <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
               <SelectContent>{(membersData?.members || []).map((m: any) => <SelectItem key={m.id} value={m.id}>{m.memberId} — {m.firstName} {m.lastName || ''}</SelectItem>)}</SelectContent>
             </Select>
@@ -5583,6 +5817,13 @@ export function ProgressModule() {
           <div className="col-span-2"><FormRow label="Notes"><Textarea rows={2} value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></FormRow></div>
         </div>
       </Modal>
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={doDelete}
+        title="Delete Progress Entry"
+        message={deleteTarget ? 'Delete this progress entry? This cannot be undone.' : ''}
+      />
     </div>
   )
 }
@@ -5682,6 +5923,757 @@ export function PTSessionsModule() {
           <div className="col-span-2"><FormRow label="Notes"><Textarea rows={2} value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></FormRow></div>
         </div>
       </Modal>
+    </div>
+  )
+}
+
+// =================================================================
+// MASTER FILES — generic master/detail screen for the three IDENTICAL
+// master/detail pairs (Gym / Finance / Payroll). Shows master (category)
+// and detail (items) together, with a LEFT-side action panel.
+//   gymmaster      / gymmasterdetail
+//   financemaster  / financemasterdetail
+//   payrollmaster  / payrollmasterdetail
+// =================================================================
+export function MasterFilesScreen({ type, title }: { type: 'gym' | 'finance' | 'payroll', title: string }) {
+  const { has } = useApp()
+  const [open, setOpen] = useState(false)
+  const [form, setForm] = useState<any>({})
+  const [editing, setEditing] = useState<any>(null)
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const [selectedMasterId, setSelectedMasterId] = useState<string | null>(null)
+  const { data, reload } = useFetch<any>(`/api/master-file-hierarchy?type=${type}`)
+  const { data: branchesData } = useFetch<any>('/api/branches')
+  const masters: any[] = data?.masters || []
+  const selectedMaster = masters.find(m => m.id === selectedMasterId) || null
+  const details: any[] = selectedMaster ? selectedMaster.details : (data?.details || [])
+
+  const openAddMaster = () => { setEditing(null); setForm({ level: 'master' }); setOpen(true) }
+  const openAddDetail = () => {
+    if (!selectedMaster) { toast.error('Select a category first'); return }
+    setEditing(null); setForm({ level: 'detail', masterId: selectedMaster.id }); setOpen(true)
+  }
+  const openEdit = (r: any, level: 'master' | 'detail') => {
+    setEditing(r)
+    setForm({ level, masterId: level === 'detail' ? r.masterId : undefined, name: r.name, description: r.description, branchId: r.branchId, isActive: r.isActive })
+    setOpen(true)
+  }
+
+  const save = async () => {
+    if (!form.name?.trim()) { toast.error('Name is required'); return }
+    try {
+      if (editing) {
+        await apiPatch('/api/master-file-hierarchy', {
+          type, id: editing.id,
+          ...(form.level === 'detail' ? { moveMasterId: form.masterId } : {}),
+          name: form.name, description: form.description, branchId: form.branchId || null, isActive: form.isActive !== false,
+        })
+        toast.success('Updated')
+      } else if (form.level === 'detail') {
+        await apiPost('/api/master-file-hierarchy', { type, masterId: form.masterId, name: form.name, description: form.description, branchId: form.branchId || null })
+        toast.success('Item added')
+      } else {
+        await apiPost('/api/master-file-hierarchy', { type, name: form.name, description: form.description, branchId: form.branchId || null })
+        toast.success('Category added')
+      }
+      setOpen(false); reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
+  const doDelete = async () => {
+    if (!deleteTarget) return
+    try {
+      await apiDelete(`/api/master-file-hierarchy?type=${type}&id=${deleteTarget.record.id}`)
+      toast.success('Deleted'); setDeleteTarget(null); reload()
+    } catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  }
+
+  const canAdd = has('masters.add')
+  const canEdit = has('masters.edit')
+  const canDelete = has('masters.delete')
+
+  return (
+    <div>
+      <PageHeader title={title} />
+      <ScreenShell actions={[
+        { label: 'Add Category', icon: Plus, onClick: openAddMaster, disabled: !canAdd },
+        { label: 'Add Item', icon: Plus, onClick: openAddDetail, disabled: !canAdd || !selectedMaster, title: 'Add an item under the selected category' },
+        { label: 'Edit', icon: Edit, onClick: () => {
+            if (!selectedMaster) { toast.error('Select a category first'); return }
+            openEdit(selectedMaster, 'master')
+          }, disabled: !canEdit || !selectedMaster },
+        { label: 'Delete Category', icon: Trash2, variant: 'destructive', onClick: () => selectedMaster && setDeleteTarget({ record: selectedMaster, level: 'master' }), disabled: !canDelete || !selectedMaster },
+        { label: 'Print', icon: Printer, onClick: () => window.print(), disabled: masters.length === 0 },
+      ]}>
+      <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
+
+      {/* Master (categories) — click a row to see its detail items below */}
+      <div className="text-xs font-semibold uppercase text-muted-foreground mb-1.5">Categories (master)</div>
+      <DataTable
+        columns={[
+          { key: 'id', label: 'Code', mono: true },
+          { key: 'name', label: 'Name' },
+          { key: 'description', label: 'Description' },
+          { key: 'items', label: 'Items', align: 'right', render: (r: any) => r.details?.length || 0 },
+          { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
+          { key: 'actions2', label: '', render: (r: any) => (
+            <div className="flex gap-1">
+              {canEdit && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(r, 'master') }}><Edit className="h-3.5 w-3.5" /></Button>}
+              {canDelete && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ record: r, level: 'master' }) }}><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+            </div>
+          ) },
+        ]}
+        rows={masters}
+        onRowClick={(r: any) => setSelectedMasterId(prev => prev === r.id ? null : r.id)}
+        empty="No categories yet"
+      />
+
+      {/* Detail (items) of the selected category */}
+      <div className="text-xs font-semibold uppercase text-muted-foreground mt-5 mb-1.5">
+        Items (detail){selectedMaster ? ` — ${selectedMaster.id} ${selectedMaster.name}` : ' — select a category above'}
+      </div>
+      {selectedMaster ? (
+        <DataTable
+          columns={[
+            { key: 'id', label: 'Code', mono: true },
+            { key: 'name', label: 'Name' },
+            { key: 'description', label: 'Description' },
+            { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
+            { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
+            { key: 'actions2', label: '', render: (r: any) => (
+              <div className="flex gap-1">
+                {canEdit && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(r, 'detail') }}><Edit className="h-3.5 w-3.5" /></Button>}
+                {canDelete && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ record: r, level: 'detail' }) }}><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+              </div>
+            ) },
+          ]}
+          rows={details}
+          empty={`No items under ${selectedMaster.name} yet`}
+        />
+      ) : (
+        <EmptyState message="Select a category row above to view and manage its items" />
+      )}
+      </ScreenShell>
+
+      <Modal open={open} onClose={() => setOpen(false)}
+        title={editing
+          ? (form.level === 'detail' ? `Edit Item — ${editing.id}` : `Edit Category — ${editing.id}`)
+          : (form.level === 'detail' ? 'Add Item' : 'Add Category')}
+        footer={<>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
+        </>}>
+        <div className="grid grid-cols-1 gap-3">
+          {form.level === 'detail' && !editing && (
+            <FormRow label="Category" required>
+              <Select value={form.masterId || ''} onValueChange={v => setForm({ ...form, masterId: v })}>
+                <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                <SelectContent>{masters.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.id} — {m.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </FormRow>
+          )}
+          {form.level === 'detail' && editing && (
+            <FormRow label="Category (move item — code will be regenerated)">
+              <Select value={form.masterId || ''} onValueChange={v => setForm({ ...form, masterId: v })}>
+                <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+                <SelectContent>{masters.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.id} — {m.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </FormRow>
+          )}
+          <FormRow label="Code" >
+            <Input disabled value={editing ? editing.id : 'auto (parent code + sequence)'} className="bg-muted/40" />
+          </FormRow>
+          <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
+          <FormRow label="Branch (optional)">
+            <Select value={form.branchId || '__none__'} onValueChange={v => setForm({ ...form, branchId: v === '__none__' ? '' : v })}>
+              <SelectTrigger><SelectValue placeholder="— All branches —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">— All branches —</SelectItem>
+                {(branchesData?.branches || []).map((b: any) => <SelectItem key={b.id} value={b.id}>{b.code} — {b.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Active"><Switch checked={form.isActive !== false} onCheckedChange={v => setForm({ ...form, isActive: v })} /></FormRow>
+          <FormRow label="Description"><Textarea rows={2} value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow>
+        </div>
+        <div className="mt-3 text-xs text-muted-foreground">
+          Structure is identical across Gym / Finance / Payroll master files: category codes are 3 digits (001, 002, …), item codes = category code + 3-digit sequence (0010001, …).
+        </div>
+      </Modal>
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={doDelete}
+        title={deleteTarget?.level === 'master' ? 'Delete Category' : 'Delete Item'}
+        message={deleteTarget ? `Delete "${deleteTarget.record.name}" (${deleteTarget.record.id})? Categories can only be deleted when empty.` : ''}
+      />
+    </div>
+  )
+}
+
+// =================================================================
+// WORKOUT ASSIGNMENT — assign workout plans to members (full CRUD)
+// =================================================================
+export function WorkoutAssignmentScreen() {
+  const { has } = useApp()
+  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
+  const [form, setForm] = useState<any>({})
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const { data, reload } = useFetch<any>('/api/workout-assignments')
+  const { data: membersData } = useFetch<any>('/api/members')
+  const { data: plansData } = useFetch<any>('/api/workouts')
+  const { data: trainersData } = useFetch<any>('/api/staff?isTrainer=true')
+  const assignments = data?.assignments || []
+  const members = membersData?.members || []
+  const plans = plansData?.plans || []
+  const trainers = trainersData?.staff || []
+
+  const openAdd = () => { setEditing(null); setForm({ startDate: new Date().toISOString().slice(0, 10) }); setOpen(true) }
+  const openEdit = (a: any) => {
+    setEditing(a)
+    setForm({
+      memberId: a.memberId, planId: a.planId, trainerId: a.trainerId,
+      startDate: a.startDate?.slice(0, 10), endDate: a.endDate?.slice(0, 10), notes: a.notes,
+    })
+    setOpen(true)
+  }
+
+  const save = async () => {
+    if (!form.memberId) { toast.error('Member is required'); return }
+    if (!form.planId) { toast.error('Workout plan is required'); return }
+    try {
+      if (editing) {
+        await apiPatch('/api/workout-assignments', { id: editing.id, ...form })
+        toast.success('Assignment updated')
+      } else {
+        await apiPost('/api/workout-assignments', form)
+        toast.success('Workout assigned')
+      }
+      setOpen(false); reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
+  const doDelete = async () => {
+    if (!deleteTarget) return
+    try { await apiDelete(`/api/workout-assignments?id=${deleteTarget.id}`); toast.success('Assignment removed'); setDeleteTarget(null); reload() }
+    catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  }
+
+  const canAssign = has('workouts.assign')
+
+  return (
+    <div>
+      <PageHeader title="Workout Assignment" />
+      <ScreenShell actions={[
+        { label: 'Add', icon: Plus, onClick: openAdd, disabled: !canAssign },
+        { label: 'Edit', icon: Edit, onClick: () => {
+            const sel = assignments[0]; if (sel) openEdit(sel)
+          }, disabled: !canAssign || assignments.length === 0, title: 'Use the row Edit button to pick a specific assignment' },
+        { label: 'Print', icon: Printer, onClick: () => window.print(), disabled: assignments.length === 0 },
+      ]}>
+      <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
+      <DataTable
+        columns={[
+          { key: 'memberIdNo', label: 'Member ID', mono: true, render: (r: any) => r.member?.id },
+          { key: 'member', label: 'Member', render: (r: any) => `${r.member?.firstName} ${r.member?.lastName || ''}` },
+          { key: 'plan', label: 'Workout Plan', render: (r: any) => r.plan?.name || '—' },
+          { key: 'trainer', label: 'Trainer', render: (r: any) => {
+              const t = trainers.find((x: any) => x.id === r.trainerId)
+              return t ? `${t.employeeId} — ${t.firstName} ${t.lastName || ''}` : '—'
+            } },
+          { key: 'startDate', label: 'Start', render: (r: any) => fmtDateStr(r.startDate) },
+          { key: 'endDate', label: 'End', render: (r: any) => fmtDateStr(r.endDate) },
+          { key: 'notes', label: 'Notes' },
+          { key: 'actions', label: 'Actions', render: (r: any) => (
+            <div className="flex gap-1">
+              {canAssign && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(r) }}><Edit className="h-3.5 w-3.5" /></Button>}
+              {canAssign && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r) }}><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+            </div>
+          ) },
+        ]}
+        rows={assignments}
+        empty="No workout assignments yet"
+      />
+      </ScreenShell>
+
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Edit Workout Assignment' : 'Assign Workout Plan'}
+        footer={<>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
+        </>}>
+        <div className="grid grid-cols-2 gap-3">
+          <FormRow label="Member" required>
+            <Select value={form.memberId || ''} onValueChange={v => setForm({ ...form, memberId: v })} disabled={!!editing}>
+              <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
+              <SelectContent>{members.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.memberId} — {m.firstName} {m.lastName || ''}</SelectItem>)}</SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Workout Plan" required>
+            <Select value={form.planId || ''} onValueChange={v => setForm({ ...form, planId: v })}>
+              <SelectTrigger><SelectValue placeholder="Select plan" /></SelectTrigger>
+              <SelectContent>{plans.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.id} — {p.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Trainer">
+            <Select value={form.trainerId || '__none__'} onValueChange={v => setForm({ ...form, trainerId: v === '__none__' ? '' : v })}>
+              <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">— Member's assigned trainer —</SelectItem>
+                {trainers.map((t: any) => <SelectItem key={t.id} value={t.id}>{t.employeeId} — {t.firstName} {t.lastName || ''}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Start Date"><Input type="date" value={form.startDate || ''} onChange={e => setForm({ ...form, startDate: e.target.value })} /></FormRow>
+          <FormRow label="End Date"><Input type="date" value={form.endDate || ''} onChange={e => setForm({ ...form, endDate: e.target.value })} /></FormRow>
+          <div className="col-span-2"><FormRow label="Notes"><Textarea rows={2} value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></FormRow></div>
+        </div>
+      </Modal>
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={doDelete}
+        title="Remove Assignment"
+        message={deleteTarget ? `Remove the workout assignment for "${deleteTarget.member?.firstName} ${deleteTarget.member?.lastName || ''}"?` : ''}
+      />
+    </div>
+  )
+}
+
+// =================================================================
+// FITNESS GOALS — full CRUD
+// =================================================================
+const GOAL_TYPES = ['WeightLoss', 'MuscleBuilding', 'Strength', 'Bodybuilding', 'General', 'Other']
+
+export function FitnessGoalsScreen() {
+  const { has } = useApp()
+  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
+  const [form, setForm] = useState<any>({})
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const { data, reload } = useFetch<any>('/api/fitness-goals')
+  const { data: membersData } = useFetch<any>('/api/members')
+  const records = data?.records || []
+  const members = membersData?.members || []
+
+  const openAdd = () => { setEditing(null); setForm({ goalType: 'WeightLoss', status: 'Active', startDate: new Date().toISOString().slice(0, 10) }); setOpen(true) }
+  const openEdit = (r: any) => {
+    setEditing(r)
+    setForm({
+      memberId: r.memberId, goalType: r.goalType, targetValue: r.targetValue, unit: r.unit,
+      startDate: r.startDate?.slice(0, 10), targetDate: r.targetDate?.slice(0, 10),
+      status: r.status, notes: r.notes,
+    })
+    setOpen(true)
+  }
+
+  const save = async () => {
+    if (!form.memberId) { toast.error('Member is required'); return }
+    if (!form.goalType) { toast.error('Goal type is required'); return }
+    try {
+      if (editing) {
+        await apiPatch('/api/fitness-goals', { id: editing.id, ...form })
+        toast.success('Goal updated')
+      } else {
+        await apiPost('/api/fitness-goals', form)
+        toast.success('Goal created')
+      }
+      setOpen(false); reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
+  const doDelete = async () => {
+    if (!deleteTarget) return
+    try { await apiDelete(`/api/fitness-goals?id=${deleteTarget.id}`); toast.success('Goal deleted'); setDeleteTarget(null); reload() }
+    catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  }
+
+  return (
+    <div>
+      <PageHeader title="Fitness Goals" />
+      <ScreenShell actions={[
+        { label: 'Add', icon: Plus, onClick: openAdd, disabled: !has('progress.add') },
+        { label: 'Edit', icon: Edit, onClick: () => {
+            const sel = records[0]; if (sel) openEdit(sel)
+          }, disabled: !records.length || !has('progress.edit'), title: 'Use the row Edit button to pick a specific goal' },
+        { label: 'Print', icon: Printer, onClick: () => window.print(), disabled: records.length === 0 },
+      ]}>
+      <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
+      <DataTable
+        columns={[
+          { key: 'member', label: 'Member', render: (r: any) => `${r.member?.firstName} ${r.member?.lastName || ''}` },
+          { key: 'memberIdNo', label: 'Member ID', mono: true, render: (r: any) => r.member?.id },
+          { key: 'goalType', label: 'Goal Type' },
+          { key: 'targetValue', label: 'Target', align: 'right', render: (r: any) => r.targetValue != null ? `${r.targetValue}${r.unit ? ' ' + r.unit : ''}` : '—' },
+          { key: 'startDate', label: 'Start', render: (r: any) => fmtDateStr(r.startDate) },
+          { key: 'targetDate', label: 'Target Date', render: (r: any) => fmtDateStr(r.targetDate) },
+          { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
+          { key: 'notes', label: 'Notes' },
+          { key: 'actions', label: 'Actions', render: (r: any) => (
+            <div className="flex gap-1">
+              {has('progress.edit') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(r) }}><Edit className="h-3.5 w-3.5" /></Button>}
+              {has('progress.delete') && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r) }}><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+            </div>
+          ) },
+        ]}
+        rows={records}
+        empty="No fitness goals yet"
+      />
+      </ScreenShell>
+
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Edit Fitness Goal' : 'Add Fitness Goal'}
+        footer={<>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
+        </>}>
+        <div className="grid grid-cols-2 gap-3">
+          <FormRow label="Member" required>
+            <Select value={form.memberId || ''} onValueChange={v => setForm({ ...form, memberId: v })} disabled={!!editing}>
+              <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
+              <SelectContent>{members.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.memberId} — {m.firstName} {m.lastName || ''}</SelectItem>)}</SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Goal Type" required>
+            <Select value={form.goalType || 'WeightLoss'} onValueChange={v => setForm({ ...form, goalType: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>{GOAL_TYPES.map(g => <SelectItem key={g} value={g}>{g}</SelectItem>)}</SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Target Value"><Input type="number" value={form.targetValue ?? ''} onChange={e => setForm({ ...form, targetValue: e.target.value })} /></FormRow>
+          <FormRow label="Unit"><Input value={form.unit || ''} onChange={e => setForm({ ...form, unit: e.target.value })} placeholder="kg, km, reps…" /></FormRow>
+          <FormRow label="Start Date"><Input type="date" value={form.startDate || ''} onChange={e => setForm({ ...form, startDate: e.target.value })} /></FormRow>
+          <FormRow label="Target Date"><Input type="date" value={form.targetDate || ''} onChange={e => setForm({ ...form, targetDate: e.target.value })} /></FormRow>
+          <FormRow label="Status">
+            <Select value={form.status || 'Active'} onValueChange={v => setForm({ ...form, status: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Active">Active</SelectItem>
+                <SelectItem value="Achieved">Achieved</SelectItem>
+                <SelectItem value="Abandoned">Abandoned</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <div className="col-span-2"><FormRow label="Notes"><Textarea rows={2} value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></FormRow></div>
+        </div>
+      </Modal>
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={doDelete}
+        title="Delete Fitness Goal"
+        message={deleteTarget ? 'Delete this fitness goal? This cannot be undone.' : ''}
+      />
+    </div>
+  )
+}
+
+// =================================================================
+// TRAINER AVAILABILITY — weekly availability slots per trainer (full CRUD)
+// =================================================================
+const DOW_FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+export function TrainerAvailabilityScreen() {
+  const { has } = useApp()
+  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
+  const [form, setForm] = useState<any>({})
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const { data, reload } = useFetch<any>('/api/trainer-availability')
+  const { data: trainersData } = useFetch<any>('/api/staff?isTrainer=true')
+  const { data: branchesData } = useFetch<any>('/api/branches')
+  const records = data?.records || []
+  const trainers = trainersData?.staff || []
+  const branches = branchesData?.branches || []
+
+  const trainerName = (id: string) => {
+    const t = trainers.find((x: any) => x.id === id)
+    return t ? `${t.employeeId} — ${t.firstName} ${t.lastName || ''}` : '—'
+  }
+
+  const openAdd = () => { setEditing(null); setForm({ dayOfWeek: 'Monday', status: 'Available' }); setOpen(true) }
+  const openEdit = (r: any) => {
+    setEditing(r)
+    setForm({ staffId: r.staffId, dayOfWeek: r.dayOfWeek, startTime: r.startTime, endTime: r.endTime, branchId: r.branchId, status: r.status })
+    setOpen(true)
+  }
+
+  const save = async () => {
+    if (!form.staffId) { toast.error('Trainer is required'); return }
+    if (!form.startTime || !form.endTime) { toast.error('Start and end time are required'); return }
+    if (String(form.endTime) <= String(form.startTime)) { toast.error('End time must be after start time'); return }
+    try {
+      if (editing) {
+        await apiPatch('/api/trainer-availability', { id: editing.id, ...form })
+        toast.success('Availability updated')
+      } else {
+        await apiPost('/api/trainer-availability', form)
+        toast.success('Availability added')
+      }
+      setOpen(false); reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
+  const doDelete = async () => {
+    if (!deleteTarget) return
+    try { await apiDelete(`/api/trainer-availability?id=${deleteTarget.id}`); toast.success('Availability removed'); setDeleteTarget(null); reload() }
+    catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  }
+
+  const canEdit = has('staff.edit')
+
+  return (
+    <div>
+      <PageHeader title="Trainer Availability" />
+      <ScreenShell actions={[
+        { label: 'Add', icon: Plus, onClick: openAdd, disabled: !canEdit },
+        { label: 'Print', icon: Printer, onClick: () => window.print(), disabled: records.length === 0 },
+      ]}>
+      <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
+      <DataTable
+        columns={[
+          { key: 'trainer', label: 'Trainer', render: (r: any) => trainerName(r.staffId) },
+          { key: 'dayOfWeek', label: 'Day' },
+          { key: 'startTime', label: 'From' },
+          { key: 'endTime', label: 'To' },
+          { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
+          { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status === 'Available' ? 'Active' : r.status} /> },
+          { key: 'actions', label: 'Actions', render: (r: any) => (
+            <div className="flex gap-1">
+              {canEdit && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(r) }}><Edit className="h-3.5 w-3.5" /></Button>}
+              {canEdit && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r) }}><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+            </div>
+          ) },
+        ]}
+        rows={records}
+        empty="No availability slots yet"
+      />
+      </ScreenShell>
+
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Edit Availability' : 'Add Availability'}
+        footer={<>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
+        </>}>
+        <div className="grid grid-cols-2 gap-3">
+          <FormRow label="Trainer" required>
+            <Select value={form.staffId || ''} onValueChange={v => setForm({ ...form, staffId: v })}>
+              <SelectTrigger><SelectValue placeholder="Select trainer" /></SelectTrigger>
+              <SelectContent>
+                {trainers.length === 0 ? <SelectItem value="__none__" disabled>No trainers found</SelectItem> :
+                  trainers.map((t: any) => <SelectItem key={t.id} value={t.id}>{t.employeeId} — {t.firstName} {t.lastName || ''}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Day" required>
+            <Select value={form.dayOfWeek || 'Monday'} onValueChange={v => setForm({ ...form, dayOfWeek: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>{DOW_FULL.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="From" required><Input type="time" value={form.startTime || ''} onChange={e => setForm({ ...form, startTime: e.target.value })} /></FormRow>
+          <FormRow label="To" required><Input type="time" value={form.endTime || ''} onChange={e => setForm({ ...form, endTime: e.target.value })} /></FormRow>
+          <FormRow label="Branch">
+            <Select value={form.branchId || '__none__'} onValueChange={v => setForm({ ...form, branchId: v === '__none__' ? '' : v })}>
+              <SelectTrigger><SelectValue placeholder="— All —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">— All —</SelectItem>
+                {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.code} — {b.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Status">
+            <Select value={form.status || 'Available'} onValueChange={v => setForm({ ...form, status: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Available">Available</SelectItem>
+                <SelectItem value="Busy">Busy</SelectItem>
+                <SelectItem value="Unavailable">Unavailable</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormRow>
+        </div>
+      </Modal>
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={doDelete}
+        title="Delete Availability"
+        message={deleteTarget ? `Delete ${trainerName(deleteTarget.staffId)}'s ${deleteTarget.dayOfWeek} slot?` : ''}
+      />
+    </div>
+  )
+}
+
+// =================================================================
+// TRAINER SCHEDULE — dated schedule entries per trainer (full CRUD)
+// =================================================================
+export function TrainerScheduleScreen() {
+  const { has, selectedBranchIds } = useApp()
+  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<any>(null)
+  const [form, setForm] = useState<any>({})
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
+  const { data, reload } = useFetch<any>('/api/trainer-schedule')
+  const { data: trainersData } = useFetch<any>('/api/staff?isTrainer=true')
+  const { data: membersData } = useFetch<any>('/api/members' + (branchesParam ? `?${branchesParam.slice(1)}` : ''))
+  const { data: branchesData } = useFetch<any>('/api/branches')
+  const records = data?.records || []
+  const trainers = trainersData?.staff || []
+  const members = membersData?.members || []
+  const branches = branchesData?.branches || []
+
+  const trainerName = (id: string) => {
+    const t = trainers.find((x: any) => x.id === id)
+    return t ? `${t.employeeId} — ${t.firstName} ${t.lastName || ''}` : '—'
+  }
+
+  const openAdd = () => {
+    setEditing(null)
+    const today = new Date()
+    setForm({ date: today.toISOString().slice(0, 10), dayOfWeek: DOW_FULL[(today.getDay() + 6) % 7], sessionType: 'PersonalTraining', status: 'Scheduled' })
+    setOpen(true)
+  }
+  const openEdit = (r: any) => {
+    setEditing(r)
+    setForm({
+      staffId: r.staffId, branchId: r.branchId, date: r.date?.slice(0, 10), dayOfWeek: r.dayOfWeek,
+      startTime: r.startTime, endTime: r.endTime, sessionType: r.sessionType, memberId: r.memberId,
+      status: r.status, notes: r.notes,
+    })
+    setOpen(true)
+  }
+
+  const save = async () => {
+    if (!form.staffId) { toast.error('Trainer is required'); return }
+    if (!form.date) { toast.error('Date is required'); return }
+    if (!form.startTime || !form.endTime) { toast.error('Start and end time are required'); return }
+    if (String(form.endTime) <= String(form.startTime)) { toast.error('End time must be after start time'); return }
+    try {
+      if (editing) {
+        await apiPatch('/api/trainer-schedule', { id: editing.id, ...form })
+        toast.success('Schedule updated')
+      } else {
+        await apiPost('/api/trainer-schedule', form)
+        toast.success('Scheduled')
+      }
+      setOpen(false); reload()
+    } catch (e: any) { toast.error(e.message) }
+  }
+
+  const doDelete = async () => {
+    if (!deleteTarget) return
+    try { await apiDelete(`/api/trainer-schedule?id=${deleteTarget.id}`); toast.success('Schedule entry removed'); setDeleteTarget(null); reload() }
+    catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
+  }
+
+  const canEdit = has('staff.edit')
+
+  return (
+    <div>
+      <PageHeader title="Trainer Schedule" />
+      <ScreenShell actions={[
+        { label: 'Add', icon: Plus, onClick: openAdd, disabled: !canEdit },
+        { label: 'Print', icon: Printer, onClick: () => window.print(), disabled: records.length === 0 },
+      ]}>
+      <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
+      <DataTable
+        columns={[
+          { key: 'trainer', label: 'Trainer', render: (r: any) => trainerName(r.staffId) },
+          { key: 'date', label: 'Date', render: (r: any) => fmtDateStr(r.date) },
+          { key: 'dayOfWeek', label: 'Day' },
+          { key: 'startTime', label: 'From' },
+          { key: 'endTime', label: 'To' },
+          { key: 'sessionType', label: 'Session Type', render: (r: any) => r.sessionType || '—' },
+          { key: 'member', label: 'Member', render: (r: any) => r.memberId ? `${members.find((m: any) => m.id === r.memberId)?.firstName || ''} ${members.find((m: any) => m.id === r.memberId)?.lastName || ''}`.trim() || r.memberId : '—' },
+          { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
+          { key: 'actions', label: 'Actions', render: (r: any) => (
+            <div className="flex gap-1">
+              {canEdit && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(r) }}><Edit className="h-3.5 w-3.5" /></Button>}
+              {canEdit && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r) }}><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+            </div>
+          ) },
+        ]}
+        rows={records}
+        empty="No schedule entries yet"
+      />
+      </ScreenShell>
+
+      <Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Edit Schedule Entry' : 'Add Schedule Entry'}
+        footer={<>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
+        </>}>
+        <div className="grid grid-cols-2 gap-3">
+          <FormRow label="Trainer" required>
+            <Select value={form.staffId || ''} onValueChange={v => setForm({ ...form, staffId: v })}>
+              <SelectTrigger><SelectValue placeholder="Select trainer" /></SelectTrigger>
+              <SelectContent>
+                {trainers.length === 0 ? <SelectItem value="__none__" disabled>No trainers found</SelectItem> :
+                  trainers.map((t: any) => <SelectItem key={t.id} value={t.id}>{t.employeeId} — {t.firstName} {t.lastName || ''}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Date" required>
+            <Input type="date" value={form.date || ''} onChange={e => {
+              const v = e.target.value
+              const d = v ? new Date(v + 'T00:00:00') : null
+              setForm({ ...form, date: v, dayOfWeek: d ? DOW_FULL[(d.getDay() + 6) % 7] : form.dayOfWeek })
+            }} />
+          </FormRow>
+          <FormRow label="Day"><Input value={form.dayOfWeek || ''} disabled className="bg-muted/40" /></FormRow>
+          <FormRow label="Branch">
+            <Select value={form.branchId || '__none__'} onValueChange={v => setForm({ ...form, branchId: v === '__none__' ? '' : v })}>
+              <SelectTrigger><SelectValue placeholder="— All —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">— All —</SelectItem>
+                {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.code} — {b.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="From" required><Input type="time" value={form.startTime || ''} onChange={e => setForm({ ...form, startTime: e.target.value })} /></FormRow>
+          <FormRow label="To" required><Input type="time" value={form.endTime || ''} onChange={e => setForm({ ...form, endTime: e.target.value })} /></FormRow>
+          <FormRow label="Session Type">
+            <Select value={form.sessionType || 'PersonalTraining'} onValueChange={v => setForm({ ...form, sessionType: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="PersonalTraining">Personal Training</SelectItem>
+                <SelectItem value="Class">Class</SelectItem>
+                <SelectItem value="GroupSession">Group Session</SelectItem>
+                <SelectItem value="Assessment">Assessment</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Member (optional)">
+            <Select value={form.memberId || '__none__'} onValueChange={v => setForm({ ...form, memberId: v === '__none__' ? '' : v })}>
+              <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">—</SelectItem>
+                {members.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.memberId} — {m.firstName} {m.lastName || ''}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <FormRow label="Status">
+            <Select value={form.status || 'Scheduled'} onValueChange={v => setForm({ ...form, status: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Scheduled">Scheduled</SelectItem>
+                <SelectItem value="Completed">Completed</SelectItem>
+                <SelectItem value="Cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormRow>
+          <div className="col-span-2"><FormRow label="Notes"><Textarea rows={2} value={form.notes || ''} onChange={e => setForm({ ...form, notes: e.target.value })} /></FormRow></div>
+        </div>
+      </Modal>
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={doDelete}
+        title="Delete Schedule Entry"
+        message={deleteTarget ? `Delete the ${deleteTarget.dayOfWeek} schedule entry for ${trainerName(deleteTarget.staffId)}?` : ''}
+      />
     </div>
   )
 }

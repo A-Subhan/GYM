@@ -60,6 +60,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const feeRelaxationDays = data.feeRelaxationDays !== undefined ? Math.max(0, Math.min(27, Number(data.feeRelaxationDays))) : undefined
+  const joiningFee = data.joiningFee !== undefined ? Math.max(0, Number(data.joiningFee) || 0) : undefined
   const member = await db.member.update({
     where: { id },
     data: {
@@ -76,6 +77,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       cnic: data.cnic,
       billingStartDate: data.billingStartDate ? new Date(data.billingStartDate) : undefined,
       feeRelaxationDays,
+      joiningFee,
       status: data.status,
       membershipPlanId: data.membershipPlanId,
       notes: data.notes,

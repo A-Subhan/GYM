@@ -1,72 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
-import { makeFreezeId } from '@/lib/ids'
-
-export async function GET(req: NextRequest) {
-  const session = await getSession()
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const url = new URL(req.url)
-  const memberId = url.searchParams.get('memberId')
-  const freezes = await db.membershipFreeze.findMany({
-    where: { ...(memberId ? { memberId } : {}), member: { isDeleted: false } },
-    include: { member: true, branch: true },
-    orderBy: { createdAt: 'desc' },
-    take: 200,
-  })
-  return NextResponse.json({ freezes })
-}
-
-export async function POST(req: NextRequest) {
-  const session = await getSession()
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!session.permissions.includes('freeze.add')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-
-  const data = await req.json()
-  if (!data.memberId || !data.freezeFrom || !data.freezeTo) return NextResponse.json({ error: 'memberId, freezeFrom, freezeTo required' }, { status: 400 })
-
-  const member = await db.member.findUnique({ where: { id: data.memberId } })
-  if (!member) return NextResponse.json({ error: 'Member not found' }, { status: 404 })
-
-  const from = new Date(data.freezeFrom)
-  const to = new Date(data.freezeTo)
-  if (to < from) return NextResponse.json({ error: 'freezeTo must be after freezeFrom' }, { status: 400 })
-  const days = Math.ceil((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)) + 1
-
-  // Check overlapping freezes
-  const overlapping = await db.membershipFreeze.findFirst({
-    where: { memberId: data.memberId, status: 'Active', freezeFrom: { lte: to }, freezeTo: { gte: from } },
-  })
-  if (overlapping) return NextResponse.json({ error: 'Overlapping freeze exists' }, { status: 400 })
-
-  // Business id: f-000001 (global sequence; the freeze id IS the business id)
-  const id = await makeFreezeId()
-
-  const freeze = await db.membershipFreeze.create({
-    data: {
-      id,
-      memberId: data.memberId,
-      branchId: member.branchId,
-      freezeFrom: from,
-      freezeTo: to,
-      days,
-      reason: data.reason,
-      approvedBy: session.id,
-      status: 'Active',
-    },
-  })
-  await db.auditLog.create({ data: { userId: session.id, action: 'CREATE', module: 'freeze', details: JSON.stringify({ id: freeze.id }) } })
-  return NextResponse.json({ freeze })
-}
 
 export async function PATCH(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const { id, action } = await req.json()
+  if (!session.permissions.includes('freeze.edit')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const { id, action, freezeFrom, freezeTo, reason } = await req.json()
+  if (!id) return NextResponse.json({ error: 'Freeze id required' }, { status: 400 })
+
   if (action === 'lift') {
     const freeze = await db.membershipFreeze.update({ where: { id }, data: { status: 'Lifted' } })
     await db.auditLog.create({ data: { userId: session.id, action: 'UPDATE', module: 'freeze', details: JSON.stringify({ id, action: 'lift' }) } })
     return NextResponse.json({ freeze })
   }
-  return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
+
+  // general edit of dates/reason (days recomputed)
+  const existing = await db.membershipFreeze.findUnique({ where: { id } })
+  if (!existing) return NextResponse.json({ error: 'Freeze not found' }, { status: 404 })
+  const from = freezeFrom ? new Date(freezeFrom) : existing.freezeFrom
+  const to = freezeTo ? new Date(freezeTo) : existing.freezeTo
+  if (isNaN(from.getTime()) || isNaN(to.getTime())) return NextResponse.json({ error: 'Invalid freeze dates' }, { status: 400 })
+  if (to.getTime() < from.getTime()) return NextResponse.json({ error: 'Freeze To date must be on or after From date' }, { status: 400 })
+  const days = Math.ceil((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)) + 1
+  const freeze = await db.membershipFreeze.update({
+    where: { id },
+    data: {
+      freezeFrom: from,
+      freezeTo: to,
+      days,
+      ...(reason !== undefined ? { reason } : {}),
+    },
+  })
+  await db.auditLog.create({ data: { userId: session.id, action: 'UPDATE', module: 'freeze', details: JSON.stringify({ id }) } })
+  return NextResponse.json({ freeze })
+}
+
+export async function DELETE(req: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!session.permissions.includes('freeze.delete')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const url = new URL(req.url)
+  const id = url.searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'Freeze id required' }, { status: 400 })
+  await db.membershipFreeze.delete({ where: { id } })
+  await db.auditLog.create({ data: { userId: session.id, action: 'DELETE', module: 'freeze', details: JSON.stringify({ id }) } })
+  return NextResponse.json({ success: true })
 }

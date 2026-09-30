@@ -54,3 +54,53 @@ export async function POST(req: NextRequest) {
     throw e
   }
 }
+
+export async function PATCH(req: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!session.permissions.includes('memberships.edit')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const data = await req.json()
+  if (!data.id) return NextResponse.json({ error: 'Plan id required' }, { status: 400 })
+  const existing = await db.membershipPlan.findUnique({ where: { id: data.id } })
+  if (!existing) return NextResponse.json({ error: 'Plan not found' }, { status: 404 })
+  const durationDays = data.durationDays !== undefined ? Number(data.durationDays) : undefined
+  if (durationDays !== undefined && (!durationDays || durationDays < 1)) {
+    return NextResponse.json({ error: 'Duration must be at least 1 day' }, { status: 400 })
+  }
+  const amount = data.amount !== undefined ? Number(data.amount) : undefined
+  if (amount !== undefined && (isNaN(amount) || amount < 0)) {
+    return NextResponse.json({ error: 'Amount must be a non-negative number' }, { status: 400 })
+  }
+  const plan = await db.membershipPlan.update({
+    where: { id: data.id },
+    data: {
+      ...(data.name !== undefined ? { name: String(data.name).trim() } : {}),
+      ...(durationDays !== undefined ? { durationDays } : {}),
+      ...(amount !== undefined ? { amount } : {}),
+      ...(data.description !== undefined ? { description: data.description } : {}),
+      ...(data.isActive !== undefined ? { isActive: !!data.isActive } : {}),
+    },
+  })
+  await db.auditLog.create({
+    data: { userId: session.id, action: 'UPDATE', module: 'memberships', details: JSON.stringify({ id: plan.id, name: plan.name }) },
+  })
+  return NextResponse.json({ plan })
+}
+
+export async function DELETE(req: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!session.permissions.includes('memberships.delete')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const url = new URL(req.url)
+  const id = url.searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'Plan id required' }, { status: 400 })
+  const attached = await db.member.count({ where: { membershipPlanId: id, isDeleted: false } })
+  if (attached > 0) {
+    return NextResponse.json({ error: `Cannot delete — ${attached} member(s) are on this plan. Deactivate it instead.` }, { status: 400 })
+  }
+  await db.membershipPlan.delete({ where: { id } })
+  await db.auditLog.create({
+    data: { userId: session.id, action: 'DELETE', module: 'memberships', details: JSON.stringify({ id }) },
+  })
+  return NextResponse.json({ success: true })
+}

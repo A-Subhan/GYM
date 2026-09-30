@@ -18,13 +18,15 @@ export type SessionUser = {
   email: string | null
   phone: string | null
   photo: string | null
-  roleId: string
+  /** "Admin" | "User" — Admin gets full rights automatically, User is gated per screen */
+  userType: string
+  roleId: string | null
   roleName: string | null
   branchId: string | null
   accessibleBranchIds: string
   isSuperAdmin: boolean
   permissions: string[]
-  /** per-screen permission matrix for the user's role (empty for Super Admin / Owner — never gated) */
+  /** per-screen permission matrix (empty for Admin — never gated) */
   screenPermissions: SessionScreenPermission[]
   lastLoginAt: Date | null
 }
@@ -44,10 +46,20 @@ export async function getSession(): Promise<SessionUser | null> {
   })
   if (!user || !user.isActive || user.isDeleted) return null
 
-  const perms = user.role?.permissions?.map(p => p.permission.code) ?? []
-  const isSuperAdmin = user.role?.name === 'Super Admin' || user.role?.name === 'Owner'
+  // --- User Type model -------------------------------------------------
+  // Admin: automatically full rights on the entire software.
+  // User: rights assigned per user, per screen (UserPermission). The legacy
+  // role grants (if any) are still honoured so pre-existing accounts and
+  // data keep working after the upgrade.
+  const isAdmin = (user.userType || 'User') === 'Admin'
+  const legacyRoleAdmin = user.role?.name === 'Super Admin' || user.role?.name === 'Owner'
+  const isSuperAdmin = isAdmin || legacyRoleAdmin
 
-  // Per-user screen permissions (dbo.UserPermission) override role-level grants
+  const rolePermCodes = user.role?.permissions?.map(p => p.permission.code) ?? []
+  const permissions = isSuperAdmin ? PERMISSION_CODES : rolePermCodes
+
+  // Per-user screen permissions (dbo.UserPermission); role-level screen rows
+  // act as the base layer that user rows override.
   const roleScreens = isSuperAdmin
     ? []
     : (user.role?.screenPermissions ?? []).map(r => ({
@@ -82,12 +94,13 @@ export async function getSession(): Promise<SessionUser | null> {
     email: user.email,
     phone: user.phone,
     photo: user.photo,
+    userType: isAdmin ? 'Admin' : 'User',
     roleId: user.roleId,
     roleName: user.role?.name ?? null,
     branchId: user.branchId,
     accessibleBranchIds: user.accessibleBranchIds,
     isSuperAdmin,
-    permissions: isSuperAdmin ? PERMISSION_CODES : perms,
+    permissions,
     screenPermissions,
     lastLoginAt: user.lastLoginAt,
   }

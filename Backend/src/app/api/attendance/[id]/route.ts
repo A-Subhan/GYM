@@ -30,6 +30,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!record) return NextResponse.json({ error: 'Attendance record not found' }, { status: 404 })
 
   if (data.action === 'check-out') {
+    // Check-out is only allowed for members who already have a check-in punched
+    if (!record.checkIn) {
+      return NextResponse.json({ error: 'Cannot check out — no check-in time has been recorded for this member yet' }, { status: 400 })
+    }
     const checkOut = new Date()
     const err = validateCheckOutAfterCheckIn(record.checkIn, checkOut)
     if (err) return NextResponse.json({ error: err }, { status: 400 })
@@ -50,6 +54,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   const orderErr = validateCheckOutAfterCheckIn(checkIn, checkOut)
   if (orderErr) return NextResponse.json({ error: orderErr }, { status: 400 })
+  // A check-out can only exist when a check-in time is present
+  if (checkOut && !checkIn) {
+    return NextResponse.json({ error: 'Cannot save a check-out time without a check-in time' }, { status: 400 })
+  }
 
   const updated = await db.attendance.update({
     where: { id },

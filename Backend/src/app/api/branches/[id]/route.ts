@@ -63,12 +63,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...(data.name !== undefined ? { name: String(data.name).trim() } : {}),
       ...(parentId !== undefined ? { parentId } : {}),
       ...(data.nodeType !== undefined ? { nodeType: data.nodeType === 'Control' ? 'Control' : 'Detail' } : {}),
+      // Control-level nodes cannot hold branch detail data — clear it on switch
+      ...(data.nodeType === 'Control'
+        ? { address: null, city: null, phone: null, email: null, strn: null, ntn: null, trn: null, fbr: null, logo: null }
+        : {}),
       ...(data.address !== undefined ? { address: data.address } : {}),
       ...(data.city !== undefined ? { city: data.city } : {}),
       ...(data.phone !== undefined ? { phone: data.phone } : {}),
       ...(data.email !== undefined ? { email: data.email } : {}),
       ...(data.strn !== undefined ? { strn: data.strn } : {}),
       ...(data.ntn !== undefined ? { ntn: data.ntn } : {}),
+      ...(data.trn !== undefined ? { trn: data.trn } : {}),
+      ...(data.fbr !== undefined ? { fbr: data.fbr } : {}),
       ...(data.logo !== undefined ? { logo: data.logo } : {}),
       ...(data.isActive !== undefined ? { isActive: !!data.isActive } : {}),
     },

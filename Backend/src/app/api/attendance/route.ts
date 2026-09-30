@@ -4,6 +4,18 @@ import { getSession, getSelectedBranchIds } from '@/lib/auth'
 import { makeBranchPeriodId } from '@/lib/ids'
 import { validateAttendanceDate, validateCheckOutAfterCheckIn } from '@/lib/attendance'
 
+// Local-day bounds: parse 'yyyy-mm-dd' into a LOCAL-midnight Date (mirrors POST,
+// which stores local midnight — a plain new Date('yyyy-mm-dd') is UTC midnight and
+// mismatches by the UTC offset, which hid manual check-ins from the grid).
+function localDayStart(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(y, (m || 1) - 1, d || 1, 0, 0, 0, 0)
+}
+function localDayEnd(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(y, (m || 1) - 1, d || 1, 23, 59, 59, 999)
+}
+
 export async function GET(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -15,7 +27,7 @@ export async function GET(req: NextRequest) {
   const records = await db.attendance.findMany({
     where: {
       ...(allowed ? { branchId: { in: allowed } } : {}),
-      ...(date ? { date: new Date(date) } : {}),
+      ...(date ? { date: { gte: localDayStart(date), lte: localDayEnd(date) } } : {}),
       ...(memberId ? { memberId } : {}),
       member: { isDeleted: false },
     },
@@ -37,7 +49,7 @@ export async function POST(req: NextRequest) {
   const member = await db.member.findFirst({ where: { id: data.memberId, isDeleted: false } })
   if (!member) return NextResponse.json({ error: 'Member not found' }, { status: 404 })
 
-  const date = data.date ? new Date(data.date) : new Date()
+  const date = data.date ? localDayStart(String(data.date).slice(0, 10)) : new Date()
   date.setHours(0, 0, 0, 0)
 
   const dateError = validateAttendanceDate(date)

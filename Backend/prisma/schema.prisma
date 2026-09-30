@@ -46,7 +46,6 @@ model Branch {
   equipment          Equipment[]
   inventory          InventoryItem[]
   prospects          Prospect[]
-  exercises          Exercise[]
   workoutPlans       WorkoutPlan[]
   dietPlans          DietPlan[]
   staff              Staff[]
@@ -74,6 +73,12 @@ model Branch {
   masterFiles        MasterFile[]      @relation("MasterFileBranch")
   payrollMasterFiles PayrollMasterFile[] @relation("PayrollMasterFileBranch")
   gymMasterFiles     GymMasterFile[]
+  gymMasters         GymMaster[]         @relation("GymMasterBranch")
+  gymMasterDetails   GymMasterDetail[]   @relation("GymMasterDetailBranch")
+  financeMasters     FinanceMaster[]     @relation("FinanceMasterBranch")
+  financeMasterDetails FinanceMasterDetail[] @relation("FinanceMasterDetailBranch")
+  payrollMasters     PayrollMaster[]     @relation("PayrollMasterBranch")
+  payrollMasterDetails PayrollMasterDetail[] @relation("PayrollMasterDetailBranch")
 }
 
 model Role {
@@ -146,8 +151,12 @@ model User {
   email              String? @db.NVarChar(191)  @unique
   fullName           String @db.NVarChar(255)
   passwordHash       String @db.NVarChar(255)
-  roleId             String @db.NVarChar(50)
-  role               Role     @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  // "User Type" security model: Admin = full rights automatically;
+  // User = per-screen permissions (dbo.UserPermission). Legacy role kept
+  // only for backward compatibility with pre-existing data.
+  userType           String @db.NVarChar(255) @default("User") // Admin | User
+  roleId             String? @db.NVarChar(50)
+  role               Role?    @relation(fields: [roleId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   branchId           String? @db.NVarChar(50)
   branch             Branch?  @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   accessibleBranchIds String @db.NVarChar(255)  @default("*")
@@ -628,6 +637,7 @@ model UserReportFormat {
 // id IS the business id ({branch}/{MMMyy}/{00001}); no separate memberId.
 model Member {
   id              String @db.NVarChar(50)   @id   // business id
+  joiningFee      Float    @default(0)       // one-time joining fee; first invoice = membership fee + joining fee
   firstName       String @db.NVarChar(255)
   lastName        String? @db.NVarChar(255)
   gender          String? @db.NVarChar(255)
@@ -737,7 +747,7 @@ model Fee {
 }
 
 model FeePayment {
-  id         String @db.NVarChar(50)   @id @default(cuid())
+  id         String @db.NVarChar(50)   @id   // business id FP/{branchCode}/{MMMyy}/{000001} (set by the API, not cuid)
   feeId      String @db.NVarChar(50)
   fee        Fee       @relation(fields: [feeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   bookVoucherId String @db.NVarChar(50) // CRV (cash) or BRV (bank) voucher number
@@ -863,28 +873,6 @@ model GymMasterFile {
   @@map("gymmasterfile")
 }
 
-model Exercise {
-  id         String @db.NVarChar(50)   @id @default(cuid())
-  code       String @db.NVarChar(255)
-  name       String @db.NVarChar(255)
-  category   String? @db.NVarChar(255)
-  muscleGroup String? @db.NVarChar(255)
-  instructions String? @db.NVarChar(MAX)
-  sets       Int?
-  reps       String? @db.NVarChar(255)
-  duration   String? @db.NVarChar(255)
-  rest       String? @db.NVarChar(255)
-  equipment  String? @db.NVarChar(255)
-  image      String? @db.NVarChar(255)
-  branchId   String? @db.NVarChar(50)
-  branch     Branch?  @relation(fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  status     String @db.NVarChar(255)   @default("Active")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  dayExercises WorkoutDayExercise[]
-}
-
 // id IS the business id (WO-000001, global sequence).
 model WorkoutPlan {
   id         String @db.NVarChar(50)   @id   // business id WO-000001
@@ -910,12 +898,14 @@ model WorkoutDay {
   exercises  WorkoutDayExercise[]
 }
 
+// Exercises live in the Gym Master File (gymmaster category '001' +
+// gymmasterdetail items); workout days reference those detail items directly.
 model WorkoutDayExercise {
   id          String @db.NVarChar(50)  @id @default(cuid())
   dayId       String @db.NVarChar(50)
   day         WorkoutDay @relation(fields: [dayId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   exerciseId  String @db.NVarChar(50)
-  exercise    Exercise @relation(fields: [exerciseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  exercise    GymMasterDetail @relation("WorkoutDayExerciseItem", fields: [exerciseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   sets        Int?
   reps        String? @db.NVarChar(255)
   duration    String? @db.NVarChar(255)
@@ -982,6 +972,114 @@ model DietAssignment {
   createdAt  DateTime @default(now())
 
   @@index([memberId])
+}
+
+// =================================================================
+// MASTER FILES — three IDENTICAL master/detail pairs, one per module.
+//   gymmaster     / gymmasterdetail       (Gym module)
+//   financemaster / financemasterdetail   (Finance module)
+//   payrollmaster / payrollmasterdetail   (HR & Payroll module)
+// master.id  = 3-digit category code ('001' Exercises, '002' Equipment, ...)
+// detail.id  = master code + 3-digit sequence ('0010001' Bench Press)
+// Structures are intentionally identical across all three pairs.
+// =================================================================
+
+model GymMaster {
+  id          String  @db.NVarChar(50)  @id   // category code, e.g. '001'
+  name        String  @db.NVarChar(255)
+  description String? @db.NVarChar(MAX)
+  branchId    String? @db.NVarChar(50)
+  branch      Branch? @relation("GymMasterBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  details GymMasterDetail[]
+
+  @@map("gymmaster")
+}
+
+model GymMasterDetail {
+  id          String  @db.NVarChar(50)  @id   // item code = master code + seq, e.g. '0010001'
+  masterId    String  @db.NVarChar(50)
+  master      GymMaster @relation(fields: [masterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  name        String  @db.NVarChar(255)
+  description String? @db.NVarChar(MAX)
+  branchId    String? @db.NVarChar(50)
+  branch      Branch? @relation("GymMasterDetailBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workoutDayExercises WorkoutDayExercise[] @relation("WorkoutDayExerciseItem")
+
+  @@index([masterId])
+
+  @@map("gymmasterdetail")
+}
+
+model FinanceMaster {
+  id          String  @db.NVarChar(50)  @id   // category code, e.g. '001'
+  name        String  @db.NVarChar(255)
+  description String? @db.NVarChar(MAX)
+  branchId    String? @db.NVarChar(50)
+  branch      Branch? @relation("FinanceMasterBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  details FinanceMasterDetail[]
+
+  @@map("financemaster")
+}
+
+model FinanceMasterDetail {
+  id          String  @db.NVarChar(50)  @id   // item code = master code + seq, e.g. '0010001'
+  masterId    String  @db.NVarChar(50)
+  master      FinanceMaster @relation(fields: [masterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  name        String  @db.NVarChar(255)
+  description String? @db.NVarChar(MAX)
+  branchId    String? @db.NVarChar(50)
+  branch      Branch? @relation("FinanceMasterDetailBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([masterId])
+
+  @@map("financemasterdetail")
+}
+
+model PayrollMaster {
+  id          String  @db.NVarChar(50)  @id   // category code, e.g. '001'
+  name        String  @db.NVarChar(255)
+  description String? @db.NVarChar(MAX)
+  branchId    String? @db.NVarChar(50)
+  branch      Branch? @relation("PayrollMasterBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  details PayrollMasterDetail[]
+
+  @@map("payrollmaster")
+}
+
+model PayrollMasterDetail {
+  id          String  @db.NVarChar(50)  @id   // item code = master code + seq, e.g. '0010001'
+  masterId    String  @db.NVarChar(50)
+  master      PayrollMaster @relation(fields: [masterId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  name        String  @db.NVarChar(255)
+  description String? @db.NVarChar(MAX)
+  branchId    String? @db.NVarChar(50)
+  branch      Branch? @relation("PayrollMasterDetailBranch", fields: [branchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([masterId])
+
+  @@map("payrollmasterdetail")
 }
 
 // =================================================================

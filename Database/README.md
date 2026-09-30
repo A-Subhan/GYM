@@ -5,15 +5,22 @@
 -- or sqlcmd invocation, executed top to bottom):
 --
 --   01_create_database.sql      optional  (creates GymDB; skip if it exists)
---   02_schema_tables.sql        required  (69 tables + indexes + foreign keys)
+--   02_schema_tables.sql        required  (74 tables + indexes + foreign keys)
 --   03_views_functions.sql      required  (8 views, 3 functions)
 --   04_stored_procedures.sql    required  (6 stored procedures)
 --   05_triggers.sql             required  (7 triggers)
---   06_master_data.sql          required  (company, branches, roles, permissions,
---                                         admin user, chart of accounts incl.
---                                         the ROOT anchor row, account mappings,
---                                         financial year, plans, shifts, staff...)
+--   06_master_data.sql          required  (company, branches, admin user (User Type
+--                                         = Admin), chart of accounts incl. the
+--                                         ROOT anchor row, account mappings,
+--                                         financial year, master files, plans,
+--                                         shifts, staff...)
 --   07_sample_data.sql          OPTIONAL  (October 2026 demo month; safe to skip)
+--   08_upgrade_2026_09.sql      OPTIONAL  (ONLY for an EXISTING GymDB that was
+--                                         built with the older 02-06: adds
+--                                         userType/joiningFee, creates the three
+--                                         master/detail pairs, migrates legacy
+--                                         master data, merges the Exercise table
+--                                         into gymmaster. Idempotent, re-runnable.)
 --
 -- Everything is pure ASCII (UTF-8 without BOM), so SSMS reads the files
 -- correctly regardless of codepage.
@@ -27,21 +34,27 @@
 --   * 07 detects existing sample data and skips itself the same way.
 --
 -- EXPECTED STATE AFTER 06 (before 07)
---   * SELECT COUNT(*) FROM sys.tables;                       -> 69
+--   * SELECT COUNT(*) FROM sys.tables;                       -> 74
 --   * SELECT name FROM sys.tables WHERE name IN ('Account','charts');
 --       -> exactly one row: charts  (the legacy 'Account' table is gone)
---   * Login: admin / admin123  (user 'admin', role 'Super Admin')
+--   * Login: admin / admin123  (user 'admin', User Type = Admin - full rights)
 --   * dbo.charts contains 13 rows, including the 'ROOT' anchor row.
 --     NOTE: 'ROOT' (name: Chart of Accounts Root) is a REQUIRED sentinel row -
 --     charts.parentCode is NOT NULL with a self-referencing FK and the
 --     application uses 'ROOT' as the tree-root parent. Do not delete it.
+--   * Master files seeded: gymmaster (001 Exercises, 002 Equipment,
+--     003 Equipment Category), financemaster (001 Banks, 002 Card Types),
+--     payrollmaster (001 Education ... 008 Deduction) with items.
+--     Detail codes = master code + 3-digit sequence (001001, 001002, ...).
 --
 -- VERIFICATION QUERIES (all of these pass after 02-06)
---   SELECT COUNT(*) FROM sys.tables;                                  -- 69
+--   SELECT COUNT(*) FROM sys.tables;                                  -- 74
 --   SELECT name FROM sys.tables WHERE name IN ('Account','charts');   -- charts
 --   SELECT COUNT(*) FROM dbo.charts;                                  -- 13
 --   SELECT COUNT(*) FROM dbo.AccountMapping;                          -- 8
 --   SELECT COUNT(*) FROM dbo.[User] WHERE username = N'admin';        -- 1
+--   SELECT [userType] FROM dbo.[User] WHERE username = N'admin';      -- Admin
+--   SELECT COUNT(*) FROM dbo.gymmasterdetail WHERE masterId = '001';  -- 6
 --   EXEC dbo.sp_GetDashboardStats;                                    -- 1 row
 --   EXEC dbo.sp_CalculatePayroll @month = 1, @year = 2026, @staffId = N'x';  -- runs
 --   SELECT name FROM sys.procedures ORDER BY name;

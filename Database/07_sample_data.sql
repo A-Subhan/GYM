@@ -180,7 +180,7 @@ BEGIN
     ('wd-0001', 'WO-000001', N'Day 1 - Push');
 
     INSERT INTO dbo.WorkoutDayExercise ([id], [dayId], [exerciseId], [sets], [reps]) VALUES
-    ('wde-0001', 'wd-0001', 'ex-0001', 3, N'10-12');
+    ('wde-0001', 'wd-0001', '001001', 3, N'10-12');
 
     INSERT INTO dbo.WorkoutAssignment ([id], [memberId], [planId], [trainerId], [startDate], [notes], [createdAt]) VALUES
     ('wa-0001', 'BR-001/OCT26/00001', 'WO-000001', @TRAINER1, '2026-10-05T00:00:00', N'First assignment', SYSDATETIME());

@@ -1,8 +1,6 @@
-// The 52 permission-gated data screens of the ERP, derived from the NAV
-// entries in src/app/page.tsx. Excluded: the Dashboard, the consolidated
-// Roles / Permissions entries (merged into Users & Permissions) and the two
-// purely-navigational stubs without any backend backing (Workout Assignment,
-// Diet Assignment).
+// The permission-gated data screens of the ERP, derived from the NAV
+// entries in src/app/page.tsx. Excluded: the Dashboard and the
+// purely-navigational Diet Assignment stub.
 export type ScreenDef = { key: string; label: string; module: string }
 
 export const SCREENS: ScreenDef[] = [
@@ -26,7 +24,8 @@ export const SCREENS: ScreenDef[] = [
   { key: 'gym-exercises', label: 'Exercises', module: 'Gym Management' },
   { key: 'gym-workouts', label: 'Workout Plans', module: 'Gym Management' },
   { key: 'gym-diet', label: 'Diet Plans', module: 'Gym Management' },
-  { key: 'gym-master-files', label: 'Master Files', module: 'Gym Management' },
+  { key: 'gym-master-files', label: 'Gym Master Files', module: 'Gym Management' },
+  { key: 'gym-workout-assignment', label: 'Workout Assignment', module: 'Gym Management' },
   // Finance — Vouchers (7)
   { key: 'finance-voucher-bpv', label: 'Bank Payment Voucher', module: 'Finance' },
   { key: 'finance-voucher-brv', label: 'Bank Receipt Voucher', module: 'Finance' },
@@ -38,9 +37,10 @@ export const SCREENS: ScreenDef[] = [
   // Finance — Reports (2)
   { key: 'finance-reports-aging', label: 'Aging Reports', module: 'Finance' },
   { key: 'finance-reports-main', label: 'Finance Reports', module: 'Finance' },
-  // Finance — Master (2)
+  // Finance — Master (3)
   { key: 'finance-coa', label: 'Chart of Accounts', module: 'Finance' },
   { key: 'finance-tax', label: 'Tax Heads', module: 'Finance' },
+  { key: 'finance-master-files', label: 'Master Files', module: 'Finance' },
   // HR and Payroll — Transactions (7)
   { key: 'payroll-staff', label: 'Staff', module: 'HR and Payroll' },
   { key: 'payroll-leaves', label: 'Leave', module: 'HR and Payroll' },
@@ -59,10 +59,9 @@ export const SCREENS: ScreenDef[] = [
   { key: 'inv-equipment', label: 'Equipment', module: 'Inventory' },
   // Inventory — Reports (1)
   { key: 'inv-reports', label: 'Inventory Reports', module: 'Inventory' },
-  // Inventory — Master (3)
+  // Inventory — Master (2)
   { key: 'inv-items', label: 'Items', module: 'Inventory' },
   { key: 'inv-suppliers', label: 'Suppliers', module: 'Inventory' },
-  { key: 'inv-master-files', label: 'Master Files', module: 'Inventory' },
   // Admin & Security — Management (4)
   { key: 'admin-company', label: 'Company Information', module: 'Admin & Security' },
   { key: 'admin-finance-defaults', label: 'Finance Defaults', module: 'Admin & Security' },

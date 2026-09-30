@@ -16,7 +16,9 @@ export type SessionUser = {
   username: string
   fullName: string
   email: string | null
-  roleId: string
+  /** "Admin" | "User" — Admin gets full rights automatically */
+  userType: string
+  roleId: string | null
   roleName: string | null
   branchId: string | null
   isSuperAdmin: boolean

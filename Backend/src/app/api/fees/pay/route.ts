@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { postBookVoucher } from '@/lib/accounting'
+import { makeFeePaymentId } from '@/lib/ids'
 
 // Pay a fee — posts an auto CRV (Cash) or BRV (Card/Bank Transfer/Online) book
 // voucher and links it to the fee via bookVoucherId.
@@ -22,34 +23,48 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'method must be Cash, Card, Bank Transfer, or Online' }, { status: 400 })
   }
 
-  // Backend validation per spec §6
+  // Backend validation per spec §6.
+  // Card Types / Banks live in the Finance Master File (financemasterdetail);
+  // legacy dbo.MasterFile rows are still accepted so pre-upgrade ids keep working.
   let cardTypeName: string | null = null
   let bankMasterName: string | null = null
   if (method === 'Card') {
     if (!cardTypeId) {
       return NextResponse.json({ error: 'Card Type is required when Payment Method is Card' }, { status: 400 })
     }
-    const cardType = await db.masterFile.findUnique({ where: { id: cardTypeId } })
-    if (!cardType || cardType.masterType !== 'CardTypes') {
-      return NextResponse.json({ error: 'Invalid Card Type' }, { status: 400 })
+    const detail = await db.financeMasterDetail.findUnique({ where: { id: cardTypeId }, include: { master: true } })
+    if (detail && detail.master.name === 'Card Types') {
+      if (!detail.isActive) return NextResponse.json({ error: 'Selected Card Type is inactive' }, { status: 400 })
+      cardTypeName = detail.name
+    } else {
+      const cardType = await db.masterFile.findUnique({ where: { id: cardTypeId } })
+      if (!cardType || cardType.masterType !== 'CardTypes') {
+        return NextResponse.json({ error: 'Invalid Card Type' }, { status: 400 })
+      }
+      if (!cardType.isActive) {
+        return NextResponse.json({ error: 'Selected Card Type is inactive' }, { status: 400 })
+      }
+      cardTypeName = cardType.name
     }
-    if (!cardType.isActive) {
-      return NextResponse.json({ error: 'Selected Card Type is inactive' }, { status: 400 })
-    }
-    cardTypeName = cardType.name
   }
   if (method === 'Bank Transfer') {
     if (!bankMasterId) {
       return NextResponse.json({ error: 'Bank is required when Payment Method is Bank Transfer' }, { status: 400 })
     }
-    const bank = await db.masterFile.findUnique({ where: { id: bankMasterId } })
-    if (!bank || bank.masterType !== 'Banks') {
-      return NextResponse.json({ error: 'Invalid Bank' }, { status: 400 })
+    const detail = await db.financeMasterDetail.findUnique({ where: { id: bankMasterId }, include: { master: true } })
+    if (detail && detail.master.name === 'Banks') {
+      if (!detail.isActive) return NextResponse.json({ error: 'Selected Bank is inactive' }, { status: 400 })
+      bankMasterName = detail.name
+    } else {
+      const bank = await db.masterFile.findUnique({ where: { id: bankMasterId } })
+      if (!bank || bank.masterType !== 'Banks') {
+        return NextResponse.json({ error: 'Invalid Bank' }, { status: 400 })
+      }
+      if (!bank.isActive) {
+        return NextResponse.json({ error: 'Selected Bank is inactive' }, { status: 400 })
+      }
+      bankMasterName = bank.name
     }
-    if (!bank.isActive) {
-      return NextResponse.json({ error: 'Selected Bank is inactive' }, { status: 400 })
-    }
-    bankMasterName = bank.name
   }
 
   const fee = await db.fee.findUnique({ where: { id: feeId }, include: { member: true, branch: true } })
@@ -122,6 +137,8 @@ export async function POST(req: NextRequest) {
         bookVoucherId: voucher.id,
         payments: {
           create: {
+            // business id: FP/{branchCode}/{MMMyy}/{000001}
+            id: await makeFeePaymentId(fee.branch.code, paymentDate ? new Date(paymentDate) : new Date()),
             bookVoucherId: voucher.id,
             amount: payAmount,
             method,

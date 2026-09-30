@@ -202,3 +202,10 @@ export async function makePayrollId(branchCode: string, date: Date): Promise<str
   const seq = await reserve(key)
   return `PAY/${branchCode}/${mmmYY(date)}/${pad(seq, 5)}`
 }
+
+/** FP/{branchCode}/{MMMyy}/{000001} (fee payments), key FEEPAY/{branchCode}/{MMMyy} */
+export async function makeFeePaymentId(branchCode: string, date: Date): Promise<string> {
+  const key = `FEEPAY/${branchCode}/${mmmYY(date)}`
+  const seq = await reserve(key)
+  return `FP/${branchCode}/${mmmYY(date)}/${pad(seq, 6)}`
+}
