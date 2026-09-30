@@ -38,7 +38,7 @@ BEGIN
     DECLARE @BR1      NVARCHAR(50) = (SELECT id FROM dbo.Branch WHERE code = N'BR-001');
     DECLARE @BR2      NVARCHAR(50) = (SELECT id FROM dbo.Branch WHERE code = N'BR-002');
     DECLARE @ADMIN    NVARCHAR(50) = (SELECT id FROM dbo.[User] WHERE username = N'admin');
-    DECLARE @TRAINER1 NVARCHAR(50) = (SELECT id FROM dbo.Staff  WHERE employeeId = N'EMP-0001');
+    DECLARE @TRAINER1 NVARCHAR(50) = (SELECT id FROM dbo.Staff  WHERE id = N'EMP-0001');
     DECLARE @PLAN_M   NVARCHAR(50) = (SELECT id FROM dbo.MembershipPlan WHERE name = N'Monthly');
     DECLARE @PLAN_Q   NVARCHAR(50) = (SELECT id FROM dbo.MembershipPlan WHERE name = N'Quarterly');
     DECLARE @PLAN_Y   NVARCHAR(50) = (SELECT id FROM dbo.MembershipPlan WHERE name = N'Annual');
@@ -63,11 +63,11 @@ BEGIN
     -- ---------------------------------------------------------------------
     -- 2) Staff (four more employees; EMP-0001 already seeded by step 06)
     -- ---------------------------------------------------------------------
-    INSERT INTO dbo.Staff ([id], [employeeId], [firstName], [lastName], [fatherGuardian], [cnic], [phone], [email], [joiningDate], [department], [designation], [isTrainer], [branchId], [shiftId], [basicSalary], [overtimeAllowed], [overtimeRate], [isActive], [createdAt], [updatedAt], [isDeleted]) VALUES
-    ('staff-0002', 'EMP-0002', N'Sana',    N'Ahmed',   N'M. Ahmed',   N'42101-1234567-2', N'+92 321 2222222', 'sana@contouragym.com',   '2026-01-05T00:00:00', N'Reception', N'Receptionist', 0, @BR1, 'shift-morning-default',  25000, 0, 0, 1, SYSDATETIME(), SYSDATETIME(), 0),
-    ('staff-0003', 'EMP-0003', N'Bilal',   N'Hussain', N'A. Hussain', N'42101-2345678-3', N'+92 333 3333333', 'bilal@contouragym.com',  '2026-02-01T00:00:00', N'Trainers',  N'Trainer',      1, @BR1, 'shift-evening-default',  35000, 1, 250, 1, SYSDATETIME(), SYSDATETIME(), 0),
-    ('staff-0004', 'EMP-0004', N'Ayesha',  N'Malik',   N'R. Malik',   N'42101-3456789-4', N'+92 345 5555555', 'ayesha@contouragym.com', '2026-03-15T00:00:00', N'Housekeeping', N'Cleaner',   0, @BR1, 'shift-general-default',  20000, 0, 0, 1, SYSDATETIME(), SYSDATETIME(), 0),
-    ('staff-0005', 'EMP-0005', N'Usman',   N'Tariq',   N'M. Tariq',   N'42101-4567890-5', N'+92 347 7777777', 'usman@contouragym.com',  '2026-04-10T00:00:00', N'Finance',   N'Accountant',   0, @BR1, 'shift-general-default',  45000, 0, 0, 1, SYSDATETIME(), SYSDATETIME(), 0);
+    INSERT INTO dbo.Staff ([id], [firstName], [lastName], [fatherGuardian], [cnic], [phone], [email], [joiningDate], [department], [designation], [isTrainer], [branchId], [shiftId], [basicSalary], [overtimeAllowed], [overtimeRate], [isActive], [createdAt], [updatedAt], [isDeleted]) VALUES
+    ('EMP-0002', N'Sana',    N'Ahmed',   N'M. Ahmed',   N'42101-1234567-2', N'+92 321 2222222', 'sana@contouragym.com',   '2026-01-05T00:00:00', N'Reception', N'Receptionist', 0, @BR1, '001',  25000, 0, 0, 1, SYSDATETIME(), SYSDATETIME(), 0),
+    ('EMP-0003', N'Bilal',   N'Hussain', N'A. Hussain', N'42101-2345678-3', N'+92 333 3333333', 'bilal@contouragym.com',  '2026-02-01T00:00:00', N'Trainers',  N'Trainer',      1, @BR1, '002',  35000, 1, 250, 1, SYSDATETIME(), SYSDATETIME(), 0),
+    ('EMP-0004', N'Ayesha',  N'Malik',   N'R. Malik',   N'42101-3456789-4', N'+92 345 5555555', 'ayesha@contouragym.com', '2026-03-15T00:00:00', N'Housekeeping', N'Cleaner',   0, @BR1, '003',  20000, 0, 0, 1, SYSDATETIME(), SYSDATETIME(), 0),
+    ('EMP-0005', N'Usman',   N'Tariq',   N'M. Tariq',   N'42101-4567890-5', N'+92 347 7777777', 'usman@contouragym.com',  '2026-04-10T00:00:00', N'Finance',   N'Accountant',   0, @BR1, '003',  45000, 0, 0, 1, SYSDATETIME(), SYSDATETIME(), 0);
 
     -- ---------------------------------------------------------------------
     -- 3) Members (4 at BR-001, 1 at BR-002)
@@ -202,10 +202,10 @@ BEGIN
     -- 13) HR: leave, overtime, payroll run
     -- ---------------------------------------------------------------------
     INSERT INTO dbo.Leave ([id], [staffId], [branchId], [leaveType], [fromDate], [toDate], [days], [reason], [status], [approvedBy], [approvedAt], [createdAt], [updatedAt]) VALUES
-    ('LV-0001', 'staff-0002', @BR1, N'Casual', '2026-10-12T00:00:00', '2026-10-13T00:00:00', 2, N'Family matter', 'Approved', N'Admin', '2026-10-10T00:00:00', SYSDATETIME(), SYSDATETIME());
+    ('LV-0001', 'EMP-0002', @BR1, N'Casual', '2026-10-12T00:00:00', '2026-10-13T00:00:00', 2, N'Family matter', 'Approved', N'Admin', '2026-10-10T00:00:00', SYSDATETIME(), SYSDATETIME());
 
     INSERT INTO dbo.Overtime ([id], [staffId], [date], [hours], [rate], [amount], [status], [createdAt], [updatedAt]) VALUES
-    ('ot-0001', 'staff-0003', '2026-10-08T00:00:00', 2, 250, 500, 'Pending', SYSDATETIME(), SYSDATETIME());
+    ('ot-0001', 'EMP-0003', '2026-10-08T00:00:00', 2, 250, 500, 'Pending', SYSDATETIME(), SYSDATETIME());
 
     INSERT INTO dbo.Payroll ([id], [payrollNo], [staffId], [branchId], [month], [year], [basicSalary], [totalAllowances], [overtimeAmount], [totalEarnings], [totalDeductions], [netPay], [status], [createdAt], [updatedAt]) VALUES
     ('payroll-0001', 'PAY/BR-001/OCT26/00001', @TRAINER1, @BR1, 10, 2026, 40000, 5000, 0, 45000, 0, 45000, 'Draft', SYSDATETIME(), SYSDATETIME());
@@ -245,7 +245,7 @@ BEGIN
     ('pos-0001-1', 'POS/BR-001/OCT26/00001', 'inv-0001', 2, 9000, 18000);
 
     INSERT INTO dbo.CalendarDay ([id], [date], [branchId], [dayType], [notes], [createdAt], [updatedAt]) VALUES
-    ('cd-2026-10-25', '2026-10-25T00:00:00', @BR1, N'Holiday', N'Branch maintenance day', SYSDATETIME(), SYSDATETIME());
+    ('001', '2026-10-25T00:00:00', @BR1, N'Holiday', N'Branch maintenance day', SYSDATETIME(), SYSDATETIME());
 
     INSERT INTO dbo.AuditLog ([id], [action], [module], [details], [createdAt]) VALUES
     ('audit-0001', N'SEED', N'database', N'Sample data (step 07) installed', SYSDATETIME());

@@ -168,7 +168,7 @@ AS
 SELECT  p.id, p.payrollNo, p.[month], p.[year], p.basicSalary, p.totalAllowances,
         p.overtimeAmount, p.totalEarnings, p.totalDeductions, p.netPay, p.status,
         p.bookVoucherId,
-        s.employeeId, (s.firstName + N' ' + s.lastName) AS staffName,
+        s.id AS employeeId, (s.firstName + N' ' + s.lastName) AS staffName,
         s.designation, s.department,
         b.name AS branchName
 FROM dbo.Payroll p

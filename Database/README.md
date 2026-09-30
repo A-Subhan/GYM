@@ -21,6 +21,15 @@
 --                                         master/detail pairs, migrates legacy
 --                                         master data, merges the Exercise table
 --                                         into gymmaster. Idempotent, re-runnable.)
+--   09_upgrade_finance_hr.sql   OPTIONAL  (ONLY for an EXISTING GymDB; run AFTER 08:
+--                                         voucher soft delete (isDeleted/deletedBy/
+--                                         deletedAt), book line ids C|B|J|O/{year}/
+--                                         {000001}, Staff id+employeeId merged into
+--                                         ONE column (id = EMP-00001), Shift and
+--                                         CalendarDay ids 001/002/003. Idempotent,
+--                                         transaction-wrapped, fails loud.)
+--   09_verify.sql               AFTER 09  (row counts before/after + id format
+--                                         checks - confirms NO DATA WAS LOST.)
 --
 -- Everything is pure ASCII (UTF-8 without BOM), so SSMS reads the files
 -- correctly regardless of codepage.

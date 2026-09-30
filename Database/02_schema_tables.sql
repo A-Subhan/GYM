@@ -251,6 +251,11 @@ CREATE TABLE [dbo].[CashBook] (
     [paymentMode] NVARCHAR(255),
     [totalAmount] FLOAT(53) NOT NULL CONSTRAINT [CashBook_totalAmount_df] DEFAULT 0,
     [status] NVARCHAR(255) NOT NULL CONSTRAINT [CashBook_status_df] DEFAULT 'Posted',
+    -- SOFT delete (deleted vouchers stay for the audit trail; excluded from
+    -- lists/reports/ledgers by the app)
+    [isDeleted] BIT NOT NULL CONSTRAINT [CashBook_isDeleted_df] DEFAULT 0,
+    [deletedById] NVARCHAR(50),
+    [deletedAt] DATETIME2,
     [reversedById] NVARCHAR(50),
     [reversedAt] DATETIME2,
     [reversalReason] NVARCHAR(255),
@@ -300,6 +305,11 @@ CREATE TABLE [dbo].[BankBook] (
     [paymentMode] NVARCHAR(255),
     [totalAmount] FLOAT(53) NOT NULL CONSTRAINT [BankBook_totalAmount_df] DEFAULT 0,
     [status] NVARCHAR(255) NOT NULL CONSTRAINT [BankBook_status_df] DEFAULT 'Posted',
+    -- SOFT delete (deleted vouchers stay for the audit trail; excluded from
+    -- lists/reports/ledgers by the app)
+    [isDeleted] BIT NOT NULL CONSTRAINT [BankBook_isDeleted_df] DEFAULT 0,
+    [deletedById] NVARCHAR(50),
+    [deletedAt] DATETIME2,
     [reversedById] NVARCHAR(50),
     [reversedAt] DATETIME2,
     [reversalReason] NVARCHAR(255),
@@ -348,6 +358,11 @@ CREATE TABLE [dbo].[JV] (
     [totalDebit] FLOAT(53) NOT NULL CONSTRAINT [JV_totalDebit_df] DEFAULT 0,
     [totalCredit] FLOAT(53) NOT NULL CONSTRAINT [JV_totalCredit_df] DEFAULT 0,
     [status] NVARCHAR(255) NOT NULL CONSTRAINT [JV_status_df] DEFAULT 'Posted',
+    -- SOFT delete (deleted vouchers stay for the audit trail; excluded from
+    -- lists/reports/ledgers by the app)
+    [isDeleted] BIT NOT NULL CONSTRAINT [JV_isDeleted_df] DEFAULT 0,
+    [deletedById] NVARCHAR(50),
+    [deletedAt] DATETIME2,
     [reversedById] NVARCHAR(50),
     [reversedAt] DATETIME2,
     [reversalReason] NVARCHAR(255),
@@ -392,6 +407,11 @@ CREATE TABLE [dbo].[OpenTB] (
     [difference] FLOAT(53) NOT NULL CONSTRAINT [OpenTB_difference_df] DEFAULT 0,
     [isBalanced] BIT NOT NULL CONSTRAINT [OpenTB_isBalanced_df] DEFAULT 0,
     [status] NVARCHAR(255) NOT NULL CONSTRAINT [OpenTB_status_df] DEFAULT 'Posted',
+    -- SOFT delete (deleted vouchers stay for the audit trail; excluded from
+    -- lists/reports/ledgers by the app)
+    [isDeleted] BIT NOT NULL CONSTRAINT [OpenTB_isDeleted_df] DEFAULT 0,
+    [deletedById] NVARCHAR(50),
+    [deletedAt] DATETIME2,
     [reversedById] NVARCHAR(50),
     [reversedAt] DATETIME2,
     [reversalReason] NVARCHAR(255),
@@ -1058,8 +1078,8 @@ GO
 -- ---- table 51/69: Staff -----------------------------------
 IF OBJECT_ID(N'dbo.Staff', N'U') IS NULL
 CREATE TABLE [dbo].[Staff] (
+    -- id IS the employee id (EMP-00001) - merged column per 09 upgrade
     [id] NVARCHAR(50) NOT NULL,
-    [employeeId] NVARCHAR(50) NOT NULL,
     [firstName] NVARCHAR(255) NOT NULL,
     [lastName] NVARCHAR(255),
     [fatherGuardian] NVARCHAR(255),
@@ -1093,8 +1113,7 @@ CREATE TABLE [dbo].[Staff] (
     [createdAt] DATETIME2 NOT NULL CONSTRAINT [Staff_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
     [updatedAt] DATETIME2 NOT NULL,
     [isDeleted] BIT NOT NULL CONSTRAINT [Staff_isDeleted_df] DEFAULT 0,
-    CONSTRAINT [Staff_pkey] PRIMARY KEY CLUSTERED ([id]),
-    CONSTRAINT [Staff_employeeId_key] UNIQUE NONCLUSTERED ([employeeId])
+    CONSTRAINT [Staff_pkey] PRIMARY KEY CLUSTERED ([id])
 );
 GO
 
