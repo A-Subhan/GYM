@@ -386,27 +386,41 @@ ELSE
 IF OBJECT_ID('dbo.Branch','U') IS NOT NULL
 BEGIN
     DECLARE @orphanBranch INT = 0;
-    DECLARE @orphanTbl NVARCHAR(128);
-    DECLARE @orphanChkSql NVARCHAR(MAX);
-    DECLARE orphan_b_cur CURSOR LOCAL FAST_FORWARD FOR
-        SELECT t.name
-        FROM sys.tables t
-        JOIN sys.columns c ON c.object_id = t.object_id
-        WHERE c.name = N'branchId' AND t.name <> N'Branch'
-        ORDER BY t.name;
+    -- Check orphan branchId in known child tables using static SQL
+    IF OBJECT_ID('dbo.Member','U') IS NOT NULL AND EXISTS (
+        SELECT 1 FROM dbo.Member m WHERE m.[branchId] IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM dbo.Branch b WHERE b.[id] = m.[branchId])
+    ) SET @orphanBranch = @orphanBranch + 1;
 
-    OPEN orphan_b_cur;
-    FETCH NEXT FROM orphan_b_cur INTO @orphanTbl;
-    WHILE @@FETCH_STATUS = 0
-    BEGIN
-        SELECT @orphanBranch = COUNT(*)
-        FROM [dbo].[Branch] b
-        WHERE b.[branchId] IS NOT NULL
-          AND NOT EXISTS (SELECT 1 FROM [dbo].[Branch] p WHERE p.[id] = b.[branchId]);
-        FETCH NEXT FROM orphan_b_cur INTO @orphanTbl;
-    END
-    CLOSE orphan_b_cur;
-    DEALLOCATE orphan_b_cur;
+    IF OBJECT_ID('dbo.Staff','U') IS NOT NULL AND EXISTS (
+        SELECT 1 FROM dbo.Staff s WHERE s.[branchId] IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM dbo.Branch b WHERE b.[id] = s.[branchId])
+    ) SET @orphanBranch = @orphanBranch + 1;
+
+    IF OBJECT_ID('dbo.Attendance','U') IS NOT NULL AND EXISTS (
+        SELECT 1 FROM dbo.Attendance a WHERE a.[branchId] IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM dbo.Branch b WHERE b.[id] = a.[branchId])
+    ) SET @orphanBranch = @orphanBranch + 1;
+
+    IF OBJECT_ID('dbo.Fee','U') IS NOT NULL AND EXISTS (
+        SELECT 1 FROM dbo.Fee f WHERE f.[branchId] IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM dbo.Branch b WHERE b.[id] = f.[branchId])
+    ) SET @orphanBranch = @orphanBranch + 1;
+
+    IF OBJECT_ID('dbo.CashBook','U') IS NOT NULL AND EXISTS (
+        SELECT 1 FROM dbo.CashBook c WHERE c.[branchId] IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM dbo.Branch b WHERE b.[id] = c.[branchId])
+    ) SET @orphanBranch = @orphanBranch + 1;
+
+    IF OBJECT_ID('dbo.BankBook','U') IS NOT NULL AND EXISTS (
+        SELECT 1 FROM dbo.BankBook bk WHERE bk.[branchId] IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM dbo.Branch b WHERE b.[id] = bk.[branchId])
+    ) SET @orphanBranch = @orphanBranch + 1;
+
+    IF OBJECT_ID('dbo.[User]','U') IS NOT NULL AND EXISTS (
+        SELECT 1 FROM dbo.[User] u WHERE u.[branchId] IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM dbo.Branch b WHERE b.[id] = u.[branchId])
+    ) SET @orphanBranch = @orphanBranch + 1;
 
     IF @orphanBranch > 0
         INSERT INTO #v VALUES (N'No orphan branchId', N'FAIL', CAST(@orphanBranch AS NVARCHAR(10)) + N' orphaned branchId references');
