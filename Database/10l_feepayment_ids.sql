@@ -160,9 +160,13 @@ BEGIN
                 ) AS NVARCHAR(10)
             ), 6)
         FROM dbo.FeePayment fp
-        WHERE NOT EXISTS (SELECT 1 FROM #fp_map m WHERE m.old_id = fp.[id]);
+        WHERE NOT EXISTS (SELECT 1 FROM #fp_map existing_m WHERE existing_m.old_id = fp.[id]);
 
-        PRINT N'  11c: built ' + CAST(@@ROWCOUNT AS NVARCHAR(10)) + N' new FeePayment ids';
+        DECLARE @map_count1 INT = 0, @map_count2 INT = 0;
+        SELECT @map_count1 = COUNT(*) FROM #fp_map
+        WHERE new_id LIKE N'FP/%/%/%' AND new_id NOT LIKE N'FP/UNKNOWN/%';
+        SELECT @map_count2 = COUNT(*) FROM #fp_map WHERE new_id LIKE N'FP/UNKNOWN/%';
+        PRINT N'  11c: built ' + CAST(@map_count1 + @map_count2 AS NVARCHAR(10)) + N' new FeePayment ids';
 
         -- 11c-c. Drop FeePayment PK.
         DECLARE @fp_pk_name NVARCHAR(256);
@@ -223,49 +227,42 @@ BEGIN
 
         -- 11c-g. Update IdSequence so app-generated ids continue after migrated ones.
         -- The backend uses key: FEEPAY/{branchCode}/{MMMyy}
-        -- We need to set the next value to max(migrated sequence) + 1 for each key.
+        -- We need to set the next value to MAX(migrated sequence) + 1 for each key.
+        -- IdSequence has [updatedAt] DATETIME2 NOT NULL (no default) — must supply it.
         IF OBJECT_ID('dbo.IdSequence','U') IS NOT NULL
         BEGIN
-            -- Build a list of (key, nextValue) from the migrated ids
-            INSERT INTO dbo.IdSequence ([key], [next])
+            -- Build the aggregated (key, max_seq+1) from migrated ids.
+            IF OBJECT_ID('tempdb..#fp_seq', 'U') IS NOT NULL DROP TABLE #fp_seq;
+            CREATE TABLE #fp_seq (seq_key NVARCHAR(191), next_val INT);
+
+            INSERT INTO #fp_seq (seq_key, next_val)
             SELECT
                 N'FEEPAY/' + b.[code] + N'/'
                     + UPPER(SUBSTRING(DATENAME(month, fp.[createdAt]), 1, 3))
                     + RIGHT(CAST(YEAR(fp.[createdAt]) AS NVARCHAR(10)), 2),
-                CAST(RIGHT(m.new_id, 6) AS INT) + 1
-            FROM #fp_map m
-            JOIN dbo.FeePayment fp ON fp.[id] = m.new_id
+                MAX(CAST(RIGHT(fp_m.new_id, 6) AS INT)) + 1
+            FROM #fp_map fp_m
+            JOIN dbo.FeePayment fp ON fp.[id] = fp_m.new_id
             JOIN dbo.Fee f ON f.[id] = fp.[feeId]
             JOIN dbo.Branch b ON b.[id] = f.[branchId]
-            WHERE m.new_id LIKE N'FP/%/%/%'
-              AND NOT EXISTS (
-                  SELECT 1 FROM dbo.IdSequence s
-                  WHERE s.[key] = N'FEEPAY/' + b.[code] + N'/'
-                      + UPPER(SUBSTRING(DATENAME(month, fp.[createdAt]), 1, 3))
-                      + RIGHT(CAST(YEAR(fp.[createdAt]) AS NVARCHAR(10)), 2)
-              )
+            WHERE fp_m.new_id LIKE N'FP/%/%/%'
+              AND fp_m.new_id NOT LIKE N'FP/UNKNOWN/%'
             GROUP BY b.[code],
                 UPPER(SUBSTRING(DATENAME(month, fp.[createdAt]), 1, 3))
                 + RIGHT(CAST(YEAR(fp.[createdAt]) AS NVARCHAR(10)), 2);
 
-            -- Update existing IdSequence rows to max(current, migrated max + 1)
-            UPDATE s SET s.[next] = CAST(RIGHT(m.new_id, 6) AS INT) + 1
+            -- Insert new IdSequence rows (for keys that don't exist yet).
+            INSERT INTO dbo.IdSequence ([key], [next], [updatedAt])
+            SELECT fs.seq_key, fs.next_val, SYSDATETIME()
+            FROM #fp_seq fs
+            WHERE NOT EXISTS (SELECT 1 FROM dbo.IdSequence s WHERE s.[key] = fs.seq_key);
+
+            -- Update existing IdSequence rows: only set next if the migrated max+1
+            -- is larger than the current next value.
+            UPDATE s SET s.[next] = d.next_val, s.[updatedAt] = SYSDATETIME()
             FROM dbo.IdSequence s
-            JOIN (
-                SELECT
-                    N'FEEPAY/' + b.[code] + N'/'
-                        + UPPER(SUBSTRING(DATENAME(month, fp.[createdAt]), 1, 3))
-                        + RIGHT(CAST(YEAR(fp.[createdAt]) AS NVARCHAR(10)), 2) AS seq_key,
-                    MAX(CAST(RIGHT(m.new_id, 6) AS INT)) AS max_seq
-                FROM #fp_map m
-                JOIN dbo.FeePayment fp ON fp.[id] = m.new_id
-                JOIN dbo.Fee f ON f.[id] = fp.[feeId]
-                JOIN dbo.Branch b ON b.[id] = f.[branchId]
-                WHERE m.new_id LIKE N'FP/%/%/%'
-                GROUP BY b.[code],
-                    UPPER(SUBSTRING(DATENAME(month, fp.[createdAt]), 1, 3))
-                    + RIGHT(CAST(YEAR(fp.[createdAt]) AS NVARCHAR(10)), 2)
-            ) m ON s.[key] = m.seq_key AND s.[next] <= m.max_seq + 1;
+            JOIN #fp_seq d ON s.[key] = d.seq_key
+            WHERE s.[next] < d.next_val;
 
             PRINT N'  11c: updated IdSequence for FeePayment';
         END
