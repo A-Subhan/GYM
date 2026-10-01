@@ -18,3 +18,13 @@ dist/
 *.pem
 npm-debug.log*
 *.tsbuildinfo
+
+# sandbox artifacts & local files
+skills/
+tool-results/
+backup/
+*.bak
+Changes*.txt
+Querries*.txt
+Backend/public/uploads/
+/package-lock.json
