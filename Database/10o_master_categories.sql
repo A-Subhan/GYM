@@ -10,9 +10,13 @@ GO
 -- Mapping:
 --   payrollmaster:  004 Department    <- MasterFile masterType='Department'
 --                   005 Designation   <- MasterFile masterType='Designation'
---   gymmaster:      003 Exercise Type  <- MasterFile masterType='ExerciseCategories' (append to existing 003)
---                   004 Trainer Spec   <- MasterFile masterType='TrainerSpecializations' (new head)
---   financemaster:  003 Currency       <- MasterFile masterType='Currency' (new head)
+--   gymmaster:      003 Exercise Type  <- MasterFile masterType='ExerciseCategories'
+--                   004 Trainer Spec   <- MasterFile masterType='TrainerSpecializations'
+--   financemaster:  003 Currency       <- MasterFile masterType='Currency'
+--
+-- Safety: refuses to run if payrollmaster still has duplicate head names
+-- (10n must run first). Guards each head: if id exists with a different
+-- name, RAISERROR and roll back.
 --
 -- Idempotent: each insert guarded by WHERE NOT EXISTS.
 -- One transaction, SET XACT_ABORT ON, XACT_STATE() check in CATCH.
@@ -23,19 +27,79 @@ SET XACT_ABORT ON;
 
 PRINT N'=== STEP 14: Master categories copy ===';
 
+-- Preflight: refuse if payrollmaster still has duplicate head names
+DECLARE @pf_pm_dups INT = 0;
+IF OBJECT_ID('dbo.payrollmaster','U') IS NOT NULL
+BEGIN
+    SELECT @pf_pm_dups = COUNT(*) FROM (
+        SELECT [name], COUNT(*) AS cnt
+        FROM dbo.payrollmaster
+        GROUP BY [name]
+        HAVING COUNT(*) > 1
+    ) x;
+END
+
+IF @pf_pm_dups > 0
+BEGIN
+    INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'14-master-categories', N'SKIPPED', N'payrollmaster still has duplicate head names — run 10n first');
+    PRINT N'  14-master-categories: SKIPPED - payrollmaster still has duplicate head names. Run 10n first.';
+END
+ELSE
+BEGIN
+    -- Continue in the next batch
+    PRINT N'  preflight: payrollmaster has no duplicate head names — proceeding';
+END
+GO
+
+-- Main copy (only if no duplicate heads)
+USE GymDB;
+GO
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+
 DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
 
 IF OBJECT_ID('dbo.MasterFile','U') IS NOT NULL
+   AND OBJECT_ID('dbo.payrollmaster','U') IS NOT NULL
+   AND NOT EXISTS (
+       SELECT 1 FROM (
+           SELECT [name], COUNT(*) AS cnt
+           FROM dbo.payrollmaster
+           GROUP BY [name]
+           HAVING COUNT(*) > 1
+       ) x
+   )
 BEGIN
     BEGIN TRY
         SET XACT_ABORT ON;
         BEGIN TRAN;
 
         -- ====================================================================
+        -- GUARD: verify each target head id does not exist or has the expected name
+        -- ====================================================================
+
+        -- payrollmaster 004 must be 'Department' or not exist
+        IF EXISTS (SELECT 1 FROM dbo.payrollmaster WHERE [id] = N'004' AND [name] <> N'Department')
+            RAISERROR(N'payrollmaster head 004 exists with unexpected name — expected Department', 16, 1);
+
+        IF EXISTS (SELECT 1 FROM dbo.payrollmaster WHERE [id] = N'005' AND [name] <> N'Designation')
+            RAISERROR(N'payrollmaster head 005 exists with unexpected name — expected Designation', 16, 1);
+
+        IF EXISTS (SELECT 1 FROM dbo.gymmaster WHERE [id] = N'003' AND [name] <> N'Exercise Type')
+            RAISERROR(N'gymmaster head 003 exists with unexpected name — expected Exercise Type', 16, 1);
+
+        IF EXISTS (SELECT 1 FROM dbo.gymmaster WHERE [id] = N'004' AND [name] <> N'Trainer Specializations')
+            RAISERROR(N'gymmaster head 004 exists with unexpected name — expected Trainer Specializations', 16, 1);
+
+        IF EXISTS (SELECT 1 FROM dbo.financemaster WHERE [id] = N'003' AND [name] <> N'Currency')
+            RAISERROR(N'financemaster head 003 exists with unexpected name — expected Currency', 16, 1);
+
+        PRINT N'  14: all head guards passed';
+
+        -- ====================================================================
         -- PAYROLL MASTER: Department (004), Designation (005)
         -- ====================================================================
 
-        -- Head 004: Department
         IF NOT EXISTS (SELECT 1 FROM dbo.payrollmaster WHERE [id] = N'004')
         BEGIN
             INSERT INTO dbo.payrollmaster ([id], [name], [description], [branchId], [isActive], [createdAt], [updatedAt])
@@ -69,7 +133,6 @@ BEGIN
         );
         PRINT N'  14: copied Department details into payrollmasterdetail';
 
-        -- Head 005: Designation
         IF NOT EXISTS (SELECT 1 FROM dbo.payrollmaster WHERE [id] = N'005')
         BEGIN
             INSERT INTO dbo.payrollmaster ([id], [name], [description], [branchId], [isActive], [createdAt], [updatedAt])
@@ -107,7 +170,6 @@ BEGIN
         -- GYM MASTER: ExerciseCategories (003), TrainerSpecializations (004)
         -- ====================================================================
 
-        -- Head 003: Exercise Type (may already exist from gymmasterfile migration)
         IF NOT EXISTS (SELECT 1 FROM dbo.gymmaster WHERE [id] = N'003')
         BEGIN
             INSERT INTO dbo.gymmaster ([id], [name], [description], [branchId], [isActive], [createdAt], [updatedAt])
@@ -141,7 +203,6 @@ BEGIN
         );
         PRINT N'  14: copied ExerciseCategories details into gymmasterdetail';
 
-        -- Head 004: Trainer Specializations (new)
         IF NOT EXISTS (SELECT 1 FROM dbo.gymmaster WHERE [id] = N'004')
         BEGIN
             INSERT INTO dbo.gymmaster ([id], [name], [description], [branchId], [isActive], [createdAt], [updatedAt])
@@ -179,7 +240,6 @@ BEGIN
         -- FINANCE MASTER: Currency (003)
         -- ====================================================================
 
-        -- Head 003: Currency (new)
         IF NOT EXISTS (SELECT 1 FROM dbo.financemaster WHERE [id] = N'003')
         BEGIN
             INSERT INTO dbo.financemaster ([id], [name], [description], [branchId], [isActive], [createdAt], [updatedAt])
@@ -242,7 +302,7 @@ BEGIN
         PRINT N'  14-master-categories: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
     END CATCH
 END
-ELSE
+ELSE IF OBJECT_ID('dbo.MasterFile','U') IS NULL
 BEGIN
     INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'14-master-categories', N'SKIPPED', N'MasterFile table missing');
     PRINT N'  14-master-categories: SKIPPED - MasterFile table missing';
