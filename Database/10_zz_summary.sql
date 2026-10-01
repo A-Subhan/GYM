@@ -38,7 +38,7 @@ INSERT INTO @expected (step) VALUES
     (N'4c-payrollmasterfile'),
     (N'4d-gymmasterfile'),
     (N'5b-staff-merge'),
-    (N'6-Shift-renumber'),
+    (N'6b-shift-ids'),
     (N'7-CalendarDay-renumber'),
     (N'9a-ScreenPermission'),
     (N'9b-UserPermission'),
@@ -51,8 +51,9 @@ INSERT INTO @expected (step) VALUES
     (N'9i-Staff-isDeleted'),
     (N'9j-Member-softdelete'),
     (N'10-Branch-nodeType'),
+    (N'10b-Branch-hierarchy'),
     (N'11a-IdSequence'),
-    (N'11b-FeePayment-format');
+    (N'11c-FeePayment-ids');
 
 -- Check for missing steps (logged by no entry at all)
 DECLARE @missing INT = 0;

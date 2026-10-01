@@ -369,10 +369,11 @@ GO
 -- 9j. Member soft-delete columns (isDeleted + deletedAt)
 SET NOCOUNT ON; SET XACT_ABORT ON;
 
+DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
+
 IF COL_LENGTH('dbo.Member', 'isDeleted') IS NULL
    AND COL_LENGTH('dbo.Member', 'deletedAt') IS NULL
 BEGIN
-    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
         ALTER TABLE dbo.Member ADD [isDeleted] BIT NOT NULL CONSTRAINT [Member_isDeleted_df] DEFAULT 0;
@@ -391,7 +392,6 @@ END
 ELSE IF COL_LENGTH('dbo.Member', 'isDeleted') IS NOT NULL
         AND COL_LENGTH('dbo.Member', 'deletedAt') IS NULL
 BEGIN
-    DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
     BEGIN TRY
         BEGIN TRAN;
         ALTER TABLE dbo.Member ADD [deletedAt] DATETIME2;

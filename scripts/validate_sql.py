@@ -18,6 +18,8 @@ FILES = [
     "10h_misc_tables.sql",
     "10i_branch.sql",
     "10j_feepayment_id.sql",
+    "10k_branch_hierarchy.sql",
+    "10l_feepayment_ids.sql",
     "10_zz_summary.sql",
     "10_verify.sql",
 ]

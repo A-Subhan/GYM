@@ -306,6 +306,117 @@ BEGIN
 END
 
 -- ============================================================================
+-- 14. FeePayment ids match FP/...
+-- ============================================================================
+IF OBJECT_ID('dbo.FeePayment','U') IS NOT NULL
+BEGIN
+    DECLARE @fpBad INT = 0;
+    SELECT @fpBad = COUNT(*) FROM dbo.FeePayment WHERE [id] NOT LIKE N'FP/%/%/%';
+    IF @fpBad > 0
+        INSERT INTO #v VALUES (N'FeePayment ids FP/...', N'FAIL', CAST(@fpBad AS NVARCHAR(10)) + N' rows have non-FP/ ids');
+    ELSE
+        INSERT INTO #v VALUES (N'FeePayment ids FP/...', N'PASS', N'All FeePayment ids match FP/{branch}/{MMMyy}/{nnnnnn}');
+END
+ELSE
+    INSERT INTO #v VALUES (N'FeePayment ids FP/...', N'FAIL', N'FeePayment table missing');
+
+-- ============================================================================
+-- 15. Branch id = code
+-- ============================================================================
+IF OBJECT_ID('dbo.Branch','U') IS NOT NULL
+BEGIN
+    DECLARE @bidBad INT = 0;
+    SELECT @bidBad = COUNT(*) FROM dbo.Branch WHERE [id] <> [code];
+    IF @bidBad > 0
+        INSERT INTO #v VALUES (N'Branch id = code', N'FAIL', CAST(@bidBad AS NVARCHAR(10)) + N' branches where id <> code');
+    ELSE
+        INSERT INTO #v VALUES (N'Branch id = code', N'PASS', N'All branches have id = code');
+END
+ELSE
+    INSERT INTO #v VALUES (N'Branch id = code', N'FAIL', N'Branch table missing');
+
+-- ============================================================================
+-- 16. Control nodes have no detail data
+-- ============================================================================
+IF OBJECT_ID('dbo.Branch','U') IS NOT NULL
+    AND COL_LENGTH('dbo.Branch','nodeType') IS NOT NULL
+BEGIN
+    DECLARE @ctrlBad INT = 0;
+    SELECT @ctrlBad = COUNT(*) FROM dbo.Branch
+    WHERE [nodeType] = N'Control'
+      AND ([address] IS NOT NULL OR [city] IS NOT NULL OR [phone] IS NOT NULL
+           OR [email] IS NOT NULL OR [strn] IS NOT NULL OR [ntn] IS NOT NULL
+           OR [trn] IS NOT NULL OR [fbr] IS NOT NULL OR [logo] IS NOT NULL);
+    IF @ctrlBad > 0
+        INSERT INTO #v VALUES (N'Control nodes clean', N'FAIL', CAST(@ctrlBad AS NVARCHAR(10)) + N' Control nodes have detail data');
+    ELSE
+        INSERT INTO #v VALUES (N'Control nodes clean', N'PASS', N'Control nodes have NULL detail fields');
+END
+ELSE
+    INSERT INTO #v VALUES (N'Control nodes clean', N'FAIL', N'Branch table or nodeType column missing');
+
+-- ============================================================================
+-- 17. Every branch has a valid parent chain (no cycles, root = 00)
+-- ============================================================================
+IF OBJECT_ID('dbo.Branch','U') IS NOT NULL
+    AND COL_LENGTH('dbo.Branch','parentId') IS NOT NULL
+BEGIN
+    DECLARE @chainBad INT = 0;
+    -- Check: root node 00 exists with parentId NULL
+    IF NOT EXISTS (SELECT 1 FROM dbo.Branch WHERE [id] = N'00' AND [parentId] IS NULL)
+        SET @chainBad = @chainBad + 1;
+    -- Check: no branches with parentId pointing to non-existent branch
+    IF EXISTS (
+        SELECT 1 FROM dbo.Branch b
+        WHERE b.[parentId] IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM dbo.Branch p WHERE p.[id] = b.[parentId])
+    )
+        SET @chainBad = @chainBad + 1;
+    IF @chainBad > 0
+        INSERT INTO #v VALUES (N'Branch parent chain', N'FAIL', N'Invalid parent chain (root 00 missing or orphan parentId)');
+    ELSE
+        INSERT INTO #v VALUES (N'Branch parent chain', N'PASS', N'All branches have valid parent chain, root = 00');
+END
+ELSE
+    INSERT INTO #v VALUES (N'Branch parent chain', N'FAIL', N'Branch table or parentId column missing');
+
+-- ============================================================================
+-- 18. No orphan branchId in any table (FK + non-FK)
+-- ============================================================================
+IF OBJECT_ID('dbo.Branch','U') IS NOT NULL
+BEGIN
+    DECLARE @orphanBranch INT = 0;
+    DECLARE @orphanTbl NVARCHAR(128);
+    DECLARE @orphanChkSql NVARCHAR(MAX);
+    DECLARE orphan_b_cur CURSOR LOCAL FAST_FORWARD FOR
+        SELECT t.name
+        FROM sys.tables t
+        JOIN sys.columns c ON c.object_id = t.object_id
+        WHERE c.name = N'branchId' AND t.name <> N'Branch'
+        ORDER BY t.name;
+
+    OPEN orphan_b_cur;
+    FETCH NEXT FROM orphan_b_cur INTO @orphanTbl;
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        SELECT @orphanBranch = COUNT(*)
+        FROM [dbo].[Branch] b
+        WHERE b.[branchId] IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM [dbo].[Branch] p WHERE p.[id] = b.[branchId]);
+        FETCH NEXT FROM orphan_b_cur INTO @orphanTbl;
+    END
+    CLOSE orphan_b_cur;
+    DEALLOCATE orphan_b_cur;
+
+    IF @orphanBranch > 0
+        INSERT INTO #v VALUES (N'No orphan branchId', N'FAIL', CAST(@orphanBranch AS NVARCHAR(10)) + N' orphaned branchId references');
+    ELSE
+        INSERT INTO #v VALUES (N'No orphan branchId', N'PASS', N'No orphaned branchId in any table');
+END
+ELSE
+    INSERT INTO #v VALUES (N'No orphan branchId', N'FAIL', N'Branch table missing');
+
+-- ============================================================================
 -- SUMMARY
 -- ============================================================================
 DECLARE @totalFail INT = 0;
