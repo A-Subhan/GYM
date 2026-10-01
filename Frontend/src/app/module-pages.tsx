@@ -3491,9 +3491,11 @@ export function EquipmentModule() {
   const [form, setForm] = useState<any>({})
   const branchesParam = selectedBranchIds.length ? `&branches=${selectedBranchIds.join(',')}` : ''
   const { data, reload } = useFetch<any>(`/api/equipment?condition=${condition !== 'all' ? condition : ''}${branchesParam}`)
-  const { data: categoriesData } = useFetch<any>('/api/master-files?type=EquipmentCategory')
   const equipment = (data?.equipment || []).filter((e: any) => !search || e.code?.toLowerCase().includes(search.toLowerCase()) || e.name?.toLowerCase().includes(search.toLowerCase()))
-  const categories = (categoriesData?.records || []).filter((c: any) => c.isActive)
+  // Equipment categories: try gymmasterdetail via hierarchy endpoint.
+  // If no head for EquipmentCategory exists, returns empty (same as old MasterFile with 0 rows).
+  const { data: gymMasterForCats } = useFetch<any>('/api/master-file-hierarchy?type=gym')
+  const categories = (gymMasterForCats?.details || []).filter((c: any) => c.isActive && c.masterId === '002')
 
   return (
     <div>
@@ -3771,12 +3773,13 @@ export function StaffModule() {
   const [confirmDel, setConfirmDel] = useState<any>(null)
   const { data, reload } = useFetch<any>(`/api/staff${selectedBranchIds.length ? `?branches=${selectedBranchIds.join(',')}` : ''}`)
   const { data: shiftsData } = useFetch<any>('/api/shifts')
-  const { data: deptData } = useFetch<any>('/api/master-files?masterType=Department')
-  const { data: desigData } = useFetch<any>('/api/master-files?masterType=Designation')
+  // Department & Designation now come from the paired payrollmaster/payrollmasterdetail tables
+  // via /api/master-file-hierarchy?type=payroll (heads 004 Department, 005 Designation)
+  const { data: payrollMasterData } = useFetch<any>('/api/master-file-hierarchy?type=payroll')
   const allStaff = (data?.staff || [])
   const staff = allStaff.filter((s: any) => !search || s.id?.toLowerCase().includes(search.toLowerCase()) || s.firstName?.toLowerCase().includes(search.toLowerCase()))
-  const departments = (deptData?.records || []).filter((r: any) => r.isActive !== false)
-  const designations = (desigData?.records || []).filter((r: any) => r.isActive !== false)
+  const departments = (payrollMasterData?.details || []).filter((r: any) => r.masterId === '004' && r.isActive !== false)
+  const designations = (payrollMasterData?.details || []).filter((r: any) => r.masterId === '005' && r.isActive !== false)
   const shifts = shiftsData?.shifts || []
 
   const openForm = (row?: any) => {
@@ -4301,13 +4304,16 @@ export function LeavesModule() {
   const [confirmDel, setConfirmDel] = useState<any>(null)
   const { data, reload } = useFetch<any>(`/api/leaves?status=${status !== 'all' ? status : ''}&branchId=${branchId !== 'all' ? branchId : ''}`)
   const { data: staffData } = useFetch<any>('/api/staff')
-  const { data: ltData } = useFetch<any>('/api/master-files?masterType=LeaveType')
-  const leaveTypes = (ltData?.records || []).filter((r: any) => r.isActive !== false)
+  // Leave types now come from payrollmasterdetail (head 003 Leave Type)
+  // via /api/master-file-hierarchy?type=payroll
+  // The JSON (allowedDays/isPaid) is stored in description, not extra
+  const { data: payrollMasterForLeaves } = useFetch<any>('/api/master-file-hierarchy?type=payroll')
+  const leaveTypes = (payrollMasterForLeaves?.details || []).filter((r: any) => r.masterId === '003' && r.isActive !== false)
   const staffList = staffData?.staff || []
   const leaves = data?.leaves || []
 
   const selectedType = leaveTypes.find((t: any) => t.name === form.leaveType)
-  const typeExtra: any = (() => { try { return selectedType?.extra ? JSON.parse(selectedType.extra) : null } catch { return null } })()
+  const typeExtra: any = (() => { try { return selectedType?.description ? JSON.parse(selectedType.description) : null } catch { return null } })()
 
   // auto days between from/to (inclusive)
   const autoDays = (() => {
