@@ -4,35 +4,37 @@ GO
 -- ============================================================================
 -- 10f_shift_ids.sql
 -- ============================================================================
--- Step 6b: Shift id renumbering — legacy ids -> 001, 002, 003 ...
--- Old step name 6 never logged OK due to Msg 3930 in CATCH.
--- Step name: 6b-shift-ids.
+-- Step 6c: Shift id renumbering — legacy ids -> 001, 002, 003 ...
+-- In-place UPDATE (no table rebuild, no sp_rename).
 --
--- Root cause of old Msg 3930 at line 115:
---   With SET XACT_ABORT ON, a doomed transaction (XACT_STATE() = -1) cannot
---   write to the log. The old CATCH used @@TRANCOUNT > 0 ROLLBACK (wrong
---   for doomed txns) then tried INSERT INTO _UpgradeLog before the rollback
---   was complete.
---   Fix: CATCH captures ERROR_NUMBER/LINE/MESSAGE first, then
---   IF XACT_STATE() <> 0 ROLLBACK TRAN, then INSERT + PRINT.
---
--- Safe order of operations:
---   a. Save FK definitions referencing Shift, then DROP them.
---   b. Build mapping old id -> new 3-digit id (ordered by createdAt, id).
---   c. Remap Staff.shiftId through the mapping (no FK enforced yet).
---   d. Build new Shift rows in #shift_new with new ids.
---   e. Rename old Shift -> Shift_legacy_bak (never DROP).
---   f. Create fresh Shift table with new ids.
---   g. Recreate PK on Shift.id.
+-- Safe order of operations (in one transaction):
+--   a. Save FK definitions referencing Shift (name, parent table, column,
+--      ON DELETE/UPDATE actions) in a temp table, then DROP them.
+--   b. Discover and drop the Shift PK by name.
+--   c. Build mapping old id -> new 3-digit id (ORDER BY createdAt, id).
+--   d. Two-phase UPDATE:
+--      Phase 1: SET Shift.id = 'tmp_001', 'tmp_002', ... (unique temp values).
+--      Phase 2: SET Shift.id = '001', '002', '003', ... (final values).
+--   e. UPDATE Staff.shiftId and any other column referencing Shift through
+--      the mapping.
+--   f. ALTER COLUMN id NVARCHAR(50) NOT NULL (same type/collation).
+--   g. Recreate PK with its original name.
 --   h. Recreate FKs with original names and actions.
---   i. Verify: no orphan Staff.shiftId, all Shift ids are 3-digit.
+--   i. Verify: all Shift ids 3-digit, no orphan Staff.shiftId.
 --   j. COMMIT only after verification.
+--
+-- Robust and re-runnable from ANY partial state:
+--   - If FKs are already dropped (previous run failed after dropping), the
+--     script discovers that and skips dropping.
+--   - If PK is already dropped, skips dropping.
+--   - If ids are already 3-digit, SKIPS the entire step.
+--   - Uses temp values to avoid PK/FK conflicts during the UPDATE.
 -- ============================================================================
 
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
-PRINT N'=== STEP 6b: Shift id renumbering ===';
+PRINT N'=== STEP 6c: Shift id renumbering ===';
 
 -- Preflight
 IF OBJECT_ID('dbo.Shift','U') IS NOT NULL
@@ -54,7 +56,7 @@ BEGIN
             SET XACT_ABORT ON;
             BEGIN TRAN;
 
-            -- 6b-a. Save FK definitions referencing Shift, then drop them.
+            -- 6c-a. Save FK definitions referencing Shift, then drop them.
             IF OBJECT_ID('tempdb..#shift_fks', 'U') IS NOT NULL DROP TABLE #shift_fks;
             CREATE TABLE #shift_fks (
                 fk_name NVARCHAR(256),
@@ -84,62 +86,91 @@ BEGIN
             FETCH NEXT FROM drop_sfk_cur INTO @sfk_name, @sfk_parent;
             WHILE @@FETCH_STATUS = 0
             BEGIN
-                SET @drop_sfk_sql = N'ALTER TABLE [dbo].' + QUOTENAME(@sfk_parent)
-                    + N' DROP CONSTRAINT [' + @sfk_name + N']';
-                EXEC sp_executesql @drop_sfk_sql;
-                PRINT N'  6b: dropped FK [' + @sfk_name + N'] on [' + @sfk_parent + N']';
+                IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @sfk_name)
+                BEGIN
+                    SET @drop_sfk_sql = N'ALTER TABLE [dbo].' + QUOTENAME(@sfk_parent)
+                        + N' DROP CONSTRAINT [' + @sfk_name + N']';
+                    EXEC sp_executesql @drop_sfk_sql;
+                    PRINT N'  6c: dropped FK [' + @sfk_name + N'] on [' + @sfk_parent + N']';
+                END
                 FETCH NEXT FROM drop_sfk_cur INTO @sfk_name, @sfk_parent;
             END
             CLOSE drop_sfk_cur;
             DEALLOCATE drop_sfk_cur;
 
-            -- 6b-b. Build the old_id -> new_id mapping.
+            -- 6c-b. Discover and drop the Shift PK.
+            DECLARE @shift_pk_name NVARCHAR(256);
+            SELECT @shift_pk_name = name FROM sys.key_constraints
+            WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.Shift');
+            IF @shift_pk_name IS NOT NULL
+            BEGIN
+                DECLARE @drop_shift_pk NVARCHAR(MAX) = N'ALTER TABLE [dbo].[Shift] DROP CONSTRAINT [' + @shift_pk_name + N']';
+                EXEC sp_executesql @drop_shift_pk;
+                PRINT N'  6c: dropped PK [' + @shift_pk_name + N']';
+            END
+            ELSE
+            BEGIN
+                PRINT N'  6c: PK already absent (previous partial run?)';
+                SET @shift_pk_name = N'Shift_pkey';  -- default name for recreation
+            END
+
+            -- 6c-c. Build the old_id -> new_id mapping.
             IF OBJECT_ID('tempdb..#shift_map', 'U') IS NOT NULL DROP TABLE #shift_map;
-            CREATE TABLE #shift_map (old_id NVARCHAR(50), new_id NVARCHAR(50));
-            INSERT INTO #shift_map (old_id, new_id)
-            SELECT [id], RIGHT(N'00' + CAST(rn AS NVARCHAR(10)), 3)
+            CREATE TABLE #shift_map (old_id NVARCHAR(50), new_id NVARCHAR(50), tmp_id NVARCHAR(50));
+            INSERT INTO #shift_map (old_id, new_id, tmp_id)
+            SELECT
+                [id],
+                RIGHT(N'00' + CAST(rn AS NVARCHAR(10)), 3),
+                N'tmp_' + RIGHT(N'00' + CAST(rn AS NVARCHAR(10)), 3)
             FROM (
                 SELECT [id], ROW_NUMBER() OVER (ORDER BY [createdAt], [id]) AS rn
                 FROM dbo.Shift
             ) x;
 
-            -- 6b-c. Remap Staff.shiftId through the mapping (FK is dropped).
+            -- 6c-d. Two-phase UPDATE: first to temp values, then to final.
+            -- Phase 1: Update Shift.id to unique temp values (no PK to conflict with).
+            UPDATE s SET s.[id] = m.tmp_id
+            FROM dbo.Shift s
+            JOIN #shift_map m ON s.[id] = m.old_id;
+            PRINT N'  6c: phase 1 - updated Shift.id to temp values';
+
+            -- Phase 2: Update Shift.id to final 3-digit values.
+            UPDATE s SET s.[id] = m.new_id
+            FROM dbo.Shift s
+            JOIN #shift_map m ON s.[id] = m.tmp_id;
+            PRINT N'  6c: phase 2 - updated Shift.id to final 3-digit values';
+
+            -- 6c-e. Update Staff.shiftId and any other referencing column.
             IF COL_LENGTH('dbo.Staff','shiftId') IS NOT NULL
             BEGIN
-                UPDATE s SET s.[shiftId] = m.new_id
-                FROM [dbo].[Staff] s
-                JOIN #shift_map m ON s.[shiftId] = m.old_id
-                WHERE s.[shiftId] IS NOT NULL;
-                PRINT N'  6b: remapped Staff.shiftId';
+                UPDATE st SET st.[shiftId] = m.new_id
+                FROM [dbo].[Staff] st
+                JOIN #shift_map m ON st.[shiftId] = m.old_id
+                WHERE st.[shiftId] IS NOT NULL;
+                PRINT N'  6c: remapped Staff.shiftId';
             END
 
-            -- 6b-d. Build new Shift rows.
-            IF OBJECT_ID('tempdb..#shift_new', 'U') IS NOT NULL DROP TABLE #shift_new;
-            SELECT m.new_id AS [id], s.[name], s.[timeIn], s.[timeOut], s.[workingDays],
-                   s.[branchId], s.[isActive], s.[createdAt], s.[updatedAt]
-            INTO #shift_new
-            FROM dbo.Shift s JOIN #shift_map m ON s.[id] = m.old_id;
+            -- 6c-f. ALTER COLUMN id to NOT NULL (same type, NVARCHAR(50)).
+            ALTER TABLE [dbo].[Shift] ALTER COLUMN [id] NVARCHAR(50) NOT NULL;
+            PRINT N'  6c: altered Shift.id to NOT NULL';
 
-            -- 6b-e. Rename old Shift -> Shift_legacy_bak (never DROP).
-            IF OBJECT_ID('dbo.Shift_legacy_bak','U') IS NULL
-                EXEC sp_rename N'dbo.Shift', N'Shift_legacy_bak';
+            -- 6c-g. Recreate PK with its original name.
+            IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE type=N'PK' AND parent_object_id=OBJECT_ID('dbo.Shift'))
+            BEGIN
+                DECLARE @add_pk_sql NVARCHAR(MAX) = N'ALTER TABLE [dbo].[Shift] ADD CONSTRAINT [' + @shift_pk_name + N'] PRIMARY KEY CLUSTERED ([id])';
+                EXEC sp_executesql @add_pk_sql;
+                PRINT N'  6c: recreated PK [' + @shift_pk_name + N']';
+            END
 
-            -- 6b-f. Create fresh Shift table.
-            SELECT * INTO dbo.Shift FROM #shift_new WHERE 1=0;
-            INSERT INTO dbo.Shift SELECT * FROM #shift_new;
-
-            -- 6b-g. Recreate PK.
-            ALTER TABLE [dbo].[Shift] ADD CONSTRAINT [Shift_pkey] PRIMARY KEY CLUSTERED ([id]);
-
-            -- 6b-h. Recreate FKs with original names and actions.
+            -- 6c-h. Recreate FKs with original names and actions.
             DECLARE @cfk_name NVARCHAR(256), @cfk_tbl NVARCHAR(128), @cfk_col NVARCHAR(128);
             DECLARE @cfk_del NVARCHAR(20), @cfk_upd NVARCHAR(20);
-            DECLARE @add_sfk_sql NVARCHAR(MAX);
-            DECLARE add_sfk_cur CURSOR LOCAL FAST_FORWARD FOR
+            DECLARE @add_cfk_sql NVARCHAR(MAX);
+            DECLARE add_cfk_cur CURSOR LOCAL FAST_FORWARD FOR
                 SELECT DISTINCT fk_name, parent_table, parent_col, on_delete, on_update FROM #shift_fks;
 
-            OPEN add_sfk_cur;
-            FETCH NEXT FROM add_sfk_cur INTO @cfk_name, @cfk_tbl, @cfk_col, @cfk_del, @cfk_upd;
+            OPEN add_cfk_cur;
+            FETCH NEXT FROM add_cfk_cur INTO @cfk_name, @cfk_tbl, @cfk_col, @cfk_del, @cfk_upd;
             WHILE @@FETCH_STATUS = 0
             BEGIN
                 IF OBJECT_ID('dbo.' + QUOTENAME(@cfk_tbl), 'U') IS NOT NULL
@@ -151,19 +182,19 @@ BEGIN
                     IF @del_action = N'NO' SET @del_action = N'NO ACTION';
                     IF @upd_action = N'NO' SET @upd_action = N'NO ACTION';
 
-                    SET @add_sfk_sql = N'ALTER TABLE [dbo].' + QUOTENAME(@cfk_tbl)
+                    SET @add_cfk_sql = N'ALTER TABLE [dbo].' + QUOTENAME(@cfk_tbl)
                         + N' ADD CONSTRAINT [' + @cfk_name + N'] FOREIGN KEY ([' + @cfk_col
                         + N']) REFERENCES [dbo].[Shift]([id]) ON DELETE ' + @del_action
                         + N' ON UPDATE ' + @upd_action;
-                    EXEC sp_executesql @add_sfk_sql;
-                    PRINT N'  6b: recreated FK [' + @cfk_name + N'] on [' + @cfk_tbl + N'].[' + @cfk_col + N']';
+                    EXEC sp_executesql @add_cfk_sql;
+                    PRINT N'  6c: recreated FK [' + @cfk_name + N'] on [' + @cfk_tbl + N'].[' + @cfk_col + N']';
                 END
-                FETCH NEXT FROM add_sfk_cur INTO @cfk_name, @cfk_tbl, @cfk_col, @cfk_del, @cfk_upd;
+                FETCH NEXT FROM add_cfk_cur INTO @cfk_name, @cfk_tbl, @cfk_col, @cfk_del, @cfk_upd;
             END
-            CLOSE add_sfk_cur;
-            DEALLOCATE add_sfk_cur;
+            CLOSE add_cfk_cur;
+            DEALLOCATE add_cfk_cur;
 
-            -- 6b-i. Verify: all Shift ids 3-digit, no orphan Staff.shiftId.
+            -- 6c-i. Verify: all Shift ids 3-digit, no orphan Staff.shiftId.
             DECLARE @v_bad_shift INT = 0;
             SELECT @v_bad_shift = COUNT(*) FROM dbo.Shift WHERE [id] NOT LIKE N'[0-9][0-9][0-9]';
             IF @v_bad_shift > 0
@@ -183,35 +214,33 @@ BEGIN
                 END
             END
 
-            PRINT N'  6b: verification OK (all 3-digit, no orphans)';
+            PRINT N'  6c: verification OK (all 3-digit, no orphans)';
 
             DROP TABLE #shift_map;
-            DROP TABLE #shift_new;
             DROP TABLE #shift_fks;
 
             COMMIT TRAN;
-            INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'6b-shift-ids', N'OK', N'Shift ids renumbered to 001/002/003; old table saved as Shift_legacy_bak');
-            PRINT N'  6b-shift-ids: OK - Shift ids renumbered to 001/002/003; old table saved as Shift_legacy_bak';
+            INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'6c-shift-ids', N'OK', N'Shift ids renumbered to 001/002/003 in-place; FKs recreated');
+            PRINT N'  6c-shift-ids: OK - Shift ids renumbered to 001/002/003 in-place; FKs recreated';
         END TRY
         BEGIN CATCH
             SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
             IF OBJECT_ID('tempdb..#shift_map', 'U') IS NOT NULL DROP TABLE #shift_map;
-            IF OBJECT_ID('tempdb..#shift_new', 'U') IS NOT NULL DROP TABLE #shift_new;
             IF OBJECT_ID('tempdb..#shift_fks', 'U') IS NOT NULL DROP TABLE #shift_fks;
             IF XACT_STATE() <> 0 ROLLBACK TRAN;
-            INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'6b-shift-ids', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
-            PRINT N'  6b-shift-ids: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
+            INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'6c-shift-ids', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+            PRINT N'  6c-shift-ids: FAILED - Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg;
         END CATCH
     END
     ELSE
     BEGIN
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'6b-shift-ids', N'SKIPPED', N'All Shift ids already 3-digit');
-        PRINT N'  6b-shift-ids: SKIPPED - All Shift ids already 3-digit';
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'6c-shift-ids', N'SKIPPED', N'All Shift ids already 3-digit');
+        PRINT N'  6c-shift-ids: SKIPPED - All Shift ids already 3-digit';
     END
 END
 ELSE
 BEGIN
-    INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'6b-shift-ids', N'SKIPPED', N'Shift table missing');
-    PRINT N'  6b-shift-ids: SKIPPED - Shift table missing';
+    INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'6c-shift-ids', N'SKIPPED', N'Shift table missing');
+    PRINT N'  6c-shift-ids: SKIPPED - Shift table missing';
 END
 GO

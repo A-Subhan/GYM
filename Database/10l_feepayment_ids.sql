@@ -181,12 +181,16 @@ BEGIN
         JOIN #fp_map m ON fp.[id] = m.old_id;
         PRINT N'  11c: updated FeePayment.id';
 
-        -- 11c-e. Recreate PK.
+        -- 11c-e. Ensure id column is NOT NULL before recreating PK.
+        ALTER TABLE [dbo].[FeePayment] ALTER COLUMN [id] NVARCHAR(50) NOT NULL;
+        PRINT N'  11c: altered FeePayment.id to NOT NULL';
+
+        -- 11c-f. Recreate PK.
         IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE type=N'PK' AND parent_object_id=OBJECT_ID('dbo.FeePayment'))
             ALTER TABLE [dbo].[FeePayment] ADD CONSTRAINT [FeePayment_pkey] PRIMARY KEY CLUSTERED ([id]);
         PRINT N'  11c: recreated PK FeePayment_pkey';
 
-        -- 11c-f. Recreate FKs (if any were dropped).
+        -- 11c-g. Recreate FKs (if any were dropped).
         DECLARE @rfk_name NVARCHAR(256), @rfk_tbl NVARCHAR(128), @rfk_col NVARCHAR(128);
         DECLARE @rfk_del NVARCHAR(20), @rfk_upd NVARCHAR(20);
         DECLARE @add_rfk_sql NVARCHAR(MAX);
