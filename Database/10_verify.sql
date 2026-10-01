@@ -34,7 +34,7 @@ ELSE
 IF OBJECT_ID('dbo.Staff','U') IS NOT NULL
 BEGIN
     DECLARE @staffBad INT = 0;
-    SELECT @staffBad = COUNT(*) FROM dbo.Staff WHERE [id] NOT LIKE N'EMP-[0-9][0-9][0-9][0-9][0-9]';
+    SELECT @staffBad = COUNT(*) FROM dbo.Staff WHERE [id] NOT LIKE N'EMP-[0-9][0-9][0-9][0-9]%';
     IF @staffBad > 0
         INSERT INTO #v VALUES (N'Staff ids EMP-xxxxx', N'FAIL', CAST(@staffBad AS NVARCHAR(10)) + N' rows have non-EMP-xxxxx ids');
     ELSE
