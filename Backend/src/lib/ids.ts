@@ -94,11 +94,28 @@ export async function makeBookVoucherId(prefix: BookVoucherPrefix, branchCode: s
 export type BookLineKind = 'C' | 'B' | 'J' | 'O'
 
 /** e.g. makeBookLineId('B', new Date()) -> B/2026/000001 */
-export async function makeBookLineId(kind: BookLineKind, date: Date): Promise<string> {
+export async function makeBookLineId(kind: BookLineKind, date: Date, client?: any): Promise<string> {
   const year = date.getFullYear()
   const key = `LINE/${kind}/${year}`
-  const seq = await reserve(key)
-  return `${kind}/${year}/${pad(seq, 6)}`
+  const prefix = `${kind}/${year}/`
+  // The migrations regenerated line ids in place without advancing the
+  // LINE/{kind}/{year} sequence rows, so reconcile the counter with the
+  // highest existing line id for this kind/year before reserving
+  // (same pattern as makeFeeId/makeEmployeeId). When called inside a
+  // transaction, pass that client — running the read on a separate
+  // connection self-blocks on the transaction's own row locks.
+  const modelName = kind === 'C' ? 'cashBookLine'
+    : kind === 'B' ? 'bankBookLine'
+    : kind === 'J' ? 'journalVoucherLine'
+    : 'openingTbLine'
+  const reader: any = client || db
+  const rows = await reader[modelName].findMany({ where: { id: { startsWith: prefix } }, select: { id: true } })
+  const maxSeq = rows.reduce((m: number, r: any) => {
+    const n = Number(r.id.slice(prefix.length))
+    return Number.isFinite(n) && n > m ? n : m
+  }, 0)
+  const seq = await reserve(key, maxSeq + 1)
+  return `${prefix}${pad(seq, 6)}`
 }
 
 /** Knock-off bill id: OTB-{branch}/{0000001}, key KOFF/{branch} */

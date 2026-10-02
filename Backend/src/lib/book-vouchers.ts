@@ -143,7 +143,7 @@ function lineData(bookType: BookType, voucherId: string, voucherType: BookVouche
 async function persistLines(tx: any, bookType: BookType, voucherId: string, voucherType: BookVoucherType, voucherDate: Date, lines: FinalLine[]) {
   const { line, lineKind } = bookDelegates(bookType)
   for (const l of lines) {
-    const lineId = await makeBookLineId(lineKind, voucherDate)
+    const lineId = await makeBookLineId(lineKind, voucherDate, tx)
     await tx[line].create({ data: lineData(bookType, voucherId, voucherType, l, lineId) })
   }
 }
@@ -320,7 +320,7 @@ export async function postBookVoucher(input: PostBookVoucherInput) {
       include: { lines: { include: { account: true } } },
     })
     return created
-  })
+  }, { timeout: 15000 })
 }
 
 // =================================================================
@@ -420,7 +420,7 @@ export async function reverseBookVoucher(voucherId: string, voucherType: BookVou
         status: 'Active',
       }
       if (lineHasTax(bookType)) {
-        linePayload.id = await makeBookLineId(bookDelegates(bookType).lineKind, new Date())
+        linePayload.id = await makeBookLineId(bookDelegates(bookType).lineKind, new Date(), tx)
         linePayload.taxPercent = l.taxPercent
         linePayload.taxAmount = l.taxAmount
         linePayload.total = l.total
@@ -440,7 +440,7 @@ export async function reverseBookVoucher(voucherId: string, voucherType: BookVou
     await tx.auditLog.create({ data: { userId, action: 'REVERSE', module: 'book-vouchers', details: JSON.stringify({ voucherId, reversalId, reason }) } })
 
     return reversalId
-  })
+  }, { timeout: 15000 })
 }
 
 // =================================================================

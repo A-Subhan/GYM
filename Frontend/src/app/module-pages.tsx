@@ -807,7 +807,7 @@ function BookVoucherFormModal({ open, onClose, voucherType, editing, onSaved }: 
     }
     try {
       const res = editing
-        ? await apiPatch(`${endpoint}/${editing.id}`, payload)
+        ? await apiPatch(`${endpoint}/${encodeURIComponent(editing.id)}`, payload)
         : await apiPost(endpoint, payload)
       toast.success(editing ? 'Voucher updated' : `Voucher posted: ${res.voucher?.id || ''}`)
       onSaved(res.voucher)
@@ -1218,7 +1218,7 @@ function ReverseModal({ open, voucher, onClose, onDone }: any) {
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button variant="destructive" onClick={async () => {
           try {
-            await apiPost(`${endpoint}/${voucher.id}`, { action: 'reverse', reason })
+            await apiPost(`${endpoint}/${encodeURIComponent(voucher.id)}`, { action: 'reverse', reason })
             toast.success(`Voucher reversed (${voucher.id}-R)`)
             setReason('')
             onDone()
@@ -1245,7 +1245,7 @@ function DeleteVoucherModal({ open, voucher, onClose, onDone }: any) {
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button variant="destructive" onClick={async () => {
           try {
-            await apiPost(`${endpoint}/${voucher.id}`, { action: 'delete', reason })
+            await apiPost(`${endpoint}/${encodeURIComponent(voucher.id)}`, { action: 'delete', reason })
             toast.success(`Voucher ${voucher.id} deleted (soft) — excluded from lists, reports and ledgers`)
             setReason('')
             onDone()
@@ -1401,7 +1401,7 @@ export function OpeningTrialBalanceModule() {
         lines,
       }
       const res = loadedId
-        ? await apiPatch(`${endpoint}/${loadedId}`, payload)
+        ? await apiPatch(`${endpoint}/${encodeURIComponent(loadedId)}`, payload)
         : await apiPost(endpoint, payload)
       const diff = Math.abs(res?.voucher?.difference ?? difference)
       if (diff >= 0.01) {
@@ -2102,7 +2102,7 @@ export function MembersModule() {
   const confirmDelete = async () => {
     if (!deleteTarget) return
     try {
-      await apiDelete(`/api/members/${deleteTarget.id}`)
+      await apiDelete(`/api/members/${encodeURIComponent(deleteTarget.id)}`)
       toast.success('Member deleted (soft delete — records preserved)')
       if (selectedId === deleteTarget.id) setSelectedId(null)
       setDeleteTarget(null)
@@ -2312,7 +2312,7 @@ function MemberFormModal({ open, onClose, editing, plans, trainers, onSaved }: a
       if (editing) {
         // Persist whatsapp = phone when the checkbox is checked
         const payload = sameAsPhone ? { ...form, whatsapp: form.phone } : form
-        await apiPatch(`/api/members/${editing.id}`, payload)
+        await apiPatch(`/api/members/${encodeURIComponent(editing.id)}`, payload)
         toast.success('Member updated')
       } else {
         const payload = sameAsPhone ? { ...form, whatsapp: form.phone } : form
@@ -2512,7 +2512,7 @@ function MemberViewModal({ open, member, onClose, onEdit }: any) {
         <TabsContent value="fees">
           <DataTable
             columns={[
-              { key: 'feeNo', label: 'Fee #', mono: true },
+              { key: 'feeNo', label: 'Fee #', mono: true, render: (r: any) => r.id },
               { key: 'dueDate', label: 'Due', render: (r: any) => fmtDateStr(r.dueDate) },
               { key: 'amount', label: 'Amount', align: 'right', mono: true, render: (r: any) => fmtMoney(r.amount) },
               { key: 'paidAmount', label: 'Paid', align: 'right', mono: true, render: (r: any) => fmtMoney(r.paidAmount) },
@@ -2703,7 +2703,7 @@ export function AttendanceModule() {
 
   const doCheckOut = async (r: any) => {
     try {
-      await apiPatch(`/api/attendance/${r.id}`, { action: 'check-out' })
+      await apiPatch(`/api/attendance/${encodeURIComponent(r.id)}`, { action: 'check-out' })
       toast.success('Checked out')
       reload()
     } catch (e: any) { toast.error(e.message) }
@@ -2820,7 +2820,7 @@ export function AttendanceModule() {
               toast.error('Check-out time must be after check-in time'); return
             }
             try {
-              await apiPatch(`/api/attendance/${editTarget.id}`, { checkIn: checkIn || null, checkOut: checkOut || null, notes: editTarget.notes })
+              await apiPatch(`/api/attendance/${encodeURIComponent(editTarget.id)}`, { checkIn: checkIn || null, checkOut: checkOut || null, notes: editTarget.notes })
               toast.success('Attendance updated')
               setEditOpen(false); reload()
             } catch (e: any) { toast.error(e.message) }
@@ -2915,7 +2915,7 @@ export function FeesModule() {
               <Button size="sm" onClick={(e) => { e.stopPropagation(); setPayTarget(r); setPayOpen(true) }}>Collect</Button>
             ) : null
           ) },
-          { key: 'feeNo', label: 'Fee #', mono: true },
+          { key: 'feeNo', label: 'Fee #', mono: true, render: (r: any) => r.id },
           { key: 'member', label: 'Member', render: (r: any) => `${r.member?.firstName} ${r.member?.lastName || ''}` },
           { key: 'billingPeriodStart', label: 'Period', render: (r: any) => `${fmtDateStr(r.billingPeriodStart)} — ${fmtDateStr(r.billingPeriodEnd)}` },
           { key: 'amount', label: 'Amount', align: 'right', mono: true, render: (r: any) => fmtMoney(r.amount) },
@@ -3113,7 +3113,7 @@ export function ProspectsModule() {
     const payload = sameAsPhone ? { ...form, whatsapp: form.phone } : form
     try {
       if (editing) {
-        await apiPatch(`/api/prospects/${editing.id}`, payload)
+        await apiPatch(`/api/prospects/${encodeURIComponent(editing.id)}`, payload)
         toast.success('Prospect updated')
       } else {
         await apiPost('/api/prospects', payload)
@@ -3125,7 +3125,7 @@ export function ProspectsModule() {
 
   const doDelete = async () => {
     if (!deleteTarget) return
-    try { await apiDelete(`/api/prospects/${deleteTarget.id}`); toast.success('Prospect deleted'); setDeleteTarget(null); reload() }
+    try { await apiDelete(`/api/prospects/${encodeURIComponent(deleteTarget.id)}`); toast.success('Prospect deleted'); setDeleteTarget(null); reload() }
     catch (e: any) { toast.error(e.message); setDeleteTarget(null) }
   }
 
@@ -3172,7 +3172,7 @@ export function ProspectsModule() {
                 e.stopPropagation()
                 // open member form pre-filled — quick action: just mark as converted for demo
                 if (confirm(`Mark ${r.name} as converted? This will open the member form pre-populated.`)) {
-                  try { await apiPatch(`/api/prospects/${r.id}`, { action: 'convert', convertedMemberId: null }); toast.success('Marked as converted'); reload() }
+                  try { await apiPatch(`/api/prospects/${encodeURIComponent(r.id)}`, { action: 'convert', convertedMemberId: null }); toast.success('Marked as converted'); reload() }
                   catch (e: any) { toast.error(e.message) }
                 }
               }}>Convert</Button>
@@ -3443,7 +3443,7 @@ export function MemberStatusModule() {
   const apply = async () => {
     if (selected.size === 0) { toast.error('Select at least one member'); return }
     for (const id of selected) {
-      try { await apiPatch(`/api/members/${id}`, { action: 'status', status: bulkStatus }) } catch (e: any) { toast.error(e.message); return }
+      try { await apiPatch(`/api/members/${encodeURIComponent(id)}`, { action: 'status', status: bulkStatus }) } catch (e: any) { toast.error(e.message); return }
     }
     toast.success(`${selected.size} member(s) updated to ${bulkStatus}`)
     setSelected(new Set()); reload()
@@ -4394,7 +4394,7 @@ export function LeavesModule() {
         </Toolbar>
         <DataTable
           columns={[
-            { key: 'leaveNo', label: 'Leave No', mono: true, sticky: true },
+            { key: 'leaveNo', label: 'Leave No', mono: true, sticky: true, render: (r: any) => r.id },
             { key: 'staff', label: 'Staff', render: (r: any) => `${r.staff?.firstName} ${r.staff?.lastName || ''}` },
             { key: 'employeeId', label: 'Emp ID', mono: true, render: (r: any) => r.staff?.id },
             { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },

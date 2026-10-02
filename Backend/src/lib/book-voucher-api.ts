@@ -271,7 +271,7 @@ export function bookVoucherApi(bookType: BookApiBookType) {
         await (tx as any).auditLog.create({
           data: { userId: session.id, action: 'SOFT_DELETE', module: 'book-vouchers', details: JSON.stringify({ voucherId: id, reason: reason || '' }) },
         })
-      })
+      }, { timeout: 15000 })
       return NextResponse.json({ success: true, message: `Voucher ${id} deleted (soft)` })
     } catch (e: any) {
       return NextResponse.json({ error: e.message || 'Failed to delete voucher' }, { status: 400 })

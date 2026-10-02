@@ -171,6 +171,12 @@ export const PERMISSIONS = [
   { code: 'overtime.view', module: 'overtime', action: 'view' },
   { code: 'overtime.add', module: 'overtime', action: 'add' },
   { code: 'overtime.approve', module: 'overtime', action: 'approve' },
+  { code: 'overtime.edit', module: 'overtime', action: 'edit' },
+  { code: 'overtime.delete', module: 'overtime', action: 'delete' },
+
+  // Account mappings (DB has these; Super Admin session list needs them too)
+  { code: 'accountMappings.view', module: 'accountMappings', action: 'view' },
+  { code: 'accountMappings.edit', module: 'accountMappings', action: 'edit' },
 
   // Payroll
   { code: 'payroll.view', module: 'payroll', action: 'view' },
