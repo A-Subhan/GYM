@@ -3493,9 +3493,10 @@ export function EquipmentModule() {
   const { data, reload } = useFetch<any>(`/api/equipment?condition=${condition !== 'all' ? condition : ''}${branchesParam}`)
   const equipment = (data?.equipment || []).filter((e: any) => !search || e.code?.toLowerCase().includes(search.toLowerCase()) || e.name?.toLowerCase().includes(search.toLowerCase()))
   // Equipment categories: try gymmasterdetail via hierarchy endpoint.
-  // If no head for EquipmentCategory exists, returns empty (same as old MasterFile with 0 rows).
+  // Head 005 'Equipment Category' (Cardio, Strength, Free Weights) replaces
+  // the empty head 002 'Equipment' — see Database/11a_equipment_category.sql.
   const { data: gymMasterForCats } = useFetch<any>('/api/master-file-hierarchy?type=gym')
-  const categories = (gymMasterForCats?.details || []).filter((c: any) => c.isActive && c.masterId === '002')
+  const categories = (gymMasterForCats?.details || []).filter((c: any) => c.isActive && c.masterId === '005')
 
   return (
     <div>
