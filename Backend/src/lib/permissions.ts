@@ -165,6 +165,7 @@ export const PERMISSIONS = [
   { code: 'leaves.view', module: 'leaves', action: 'view' },
   { code: 'leaves.add', module: 'leaves', action: 'add' },
   { code: 'leaves.approve', module: 'leaves', action: 'approve' },
+  { code: 'leaves.edit', module: 'leaves', action: 'edit' },
   { code: 'leaves.delete', module: 'leaves', action: 'delete' },
 
   // Overtime
@@ -182,6 +183,7 @@ export const PERMISSIONS = [
   { code: 'payroll.view', module: 'payroll', action: 'view' },
   { code: 'payroll.add', module: 'payroll', action: 'add' },
   { code: 'payroll.edit', module: 'payroll', action: 'edit' },
+  { code: 'payroll.delete', module: 'payroll', action: 'delete' },
   { code: 'payroll.post', module: 'payroll', action: 'post', description: 'Post payroll payment' },
   { code: 'payroll.export', module: 'payroll', action: 'export' },
 

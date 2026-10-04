@@ -29,6 +29,14 @@ export async function POST(req: NextRequest) {
   const existing = await db.user.findUnique({ where: { username: data.username } })
   if (existing) return NextResponse.json({ error: 'Username already exists' }, { status: 400 })
 
+  // Duplicate email on an ACTIVE user -> clear 400 (the DB filtered index
+  // User_email_active_uq would otherwise surface as a 500). Deleted users'
+  // emails stay reusable, matching the index filter.
+  if (data.email) {
+    const emailTaken = await db.user.findFirst({ where: { email: String(data.email).trim(), isDeleted: false } })
+    if (emailTaken) return NextResponse.json({ error: 'Email already in use' }, { status: 400 })
+  }
+
   // User Type security model: Admin = full rights, User = per-screen permissions.
   const userType = data.userType === 'Admin' ? 'Admin' : 'User'
   // Legacy role is optional and only kept for pre-existing data compatibility.

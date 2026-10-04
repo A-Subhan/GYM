@@ -1369,8 +1369,8 @@ export function OpeningTrialBalanceModule() {
         ...r,
         // knock-off totals stay separate (they are bill-wise rows); the grid
         // cell holds the voucher's own amount for non-KO rows
-        debit: r.isDetail && billWise && (r.accountTag === 'Customer' || r.accountTag === 'Supplier') ? 0 : (l.debit || 0) - (ko?.debit || 0),
-        credit: r.isDetail && billWise && (r.accountTag === 'Customer' || r.accountTag === 'Supplier') ? 0 : (l.credit || 0) - (ko?.credit || 0),
+        debit: r.isDetail && billWise && (r.accountTag === 'Customer' || r.accountTag === 'Supplier' || r.accountTag === 'Vendor') ? 0 : (l.debit || 0) - (ko?.debit || 0),
+        credit: r.isDetail && billWise && (r.accountTag === 'Customer' || r.accountTag === 'Supplier' || r.accountTag === 'Vendor') ? 0 : (l.credit || 0) - (ko?.credit || 0),
       }
     }))
     setLoadedId(voucher.id)
@@ -1494,7 +1494,7 @@ export function OpeningTrialBalanceModule() {
                 <tr><td colSpan={6} className="text-center py-6 text-muted-foreground">No accounts</td></tr>
               )}
               {rows.map(r => {
-                const isCustomerVendor = billWise && r.isDetail && (r.accountTag === 'Customer' || r.accountTag === 'Supplier')
+                const isCustomerVendor = billWise && r.isDetail && (r.accountTag === 'Customer' || r.accountTag === 'Supplier' || r.accountTag === 'Vendor')
                 const ko = koTotals.get(r.id) || { debit: 0, credit: 0 }
                 const editable = r.isDetail && !isCustomerVendor
                 return (
