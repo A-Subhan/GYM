@@ -1,17 +1,18 @@
 -- ============================================================================
 -- Contoura Gym Management System - STEP 7: Sample Data (FINAL design, optional)
 -- ============================================================================
--- A small, coherent month of demo operations (October 2026) for branch BR-001
--- (+ one member at BR-002), built entirely on top of 06_master_data.sql.
+-- A small, coherent month of demo operations (October 2026) for branch 01001
+-- (+ one member at 01002), built entirely on top of 06_master_data.sql.
+-- Branch hierarchy is 00 > 01 > 01001/01002 with id = code (step 06 seeds it).
 --
 -- Everything follows the FINAL business-ID contract of Backend/src/lib/ids.ts:
---   Book vouchers : CRV|CPV|BRV|BPV|JV|OTV/BR-001/OCT26/000001
---   Knock-off     : OTB-BR-001/0000001
---   Member / Fee / Attendance : BR-001/OCT26/00001
---   Prospect      : BR-001/p-00001      Follow-up : BR-001/fw-000001
---   Progress      : BR-001/Pg-000001    Freeze    : f-000001
+--   Book vouchers : CRV|CPV|BRV|BPV|JV|OTV/01001/OCT26/000001
+--   Knock-off     : OTB-01001/0000001        Book lines : C|B|J|O/2026/000001
+--   Member / Fee / Attendance : 01001/OCT26/00001
+--   Prospect      : 01001/p-00001      Follow-up : 01001/fw-000001
+--   Progress      : 01001/Pg-000001    Freeze    : f-000001
 --   Workout/Diet  : WO-000001 / DP-000001          Leave : LV-0001
---   POS sale      : POS/BR-001/OCT26/00001         Payroll run : PAY/BR-001/OCT26/00001
+--   POS sale      : POS/01001/OCT26/00001         Payroll run : PAY/01001/OCT26/00001
 -- IdSequence rows are initialised just past every sample id so the
 -- application continues numbering without collisions.
 --
@@ -30,13 +31,13 @@ SET NOCOUNT ON;
 SET XACT_ABORT ON;
 GO
 
-IF NOT EXISTS (SELECT 1 FROM dbo.Member WHERE id = N'BR-001/OCT26/00001')
+IF NOT EXISTS (SELECT 1 FROM dbo.Member WHERE id = N'01001/OCT26/00001')
 BEGIN
     -- ---------------------------------------------------------------------
     -- Anchors (resolve ids created by step 06)
     -- ---------------------------------------------------------------------
-    DECLARE @BR1      NVARCHAR(50) = (SELECT id FROM dbo.Branch WHERE code = N'BR-001');
-    DECLARE @BR2      NVARCHAR(50) = (SELECT id FROM dbo.Branch WHERE code = N'BR-002');
+    DECLARE @BR1      NVARCHAR(50) = (SELECT id FROM dbo.Branch WHERE code = N'01001');
+    DECLARE @BR2      NVARCHAR(50) = (SELECT id FROM dbo.Branch WHERE code = N'01002');
     DECLARE @ADMIN    NVARCHAR(50) = (SELECT id FROM dbo.[User] WHERE username = N'admin');
     DECLARE @TRAINER1 NVARCHAR(50) = (SELECT id FROM dbo.Staff  WHERE id = N'EMP-0001');
     DECLARE @PLAN_M   NVARCHAR(50) = (SELECT id FROM dbo.MembershipPlan WHERE name = N'Monthly');
@@ -70,105 +71,105 @@ BEGIN
     ('EMP-0005', N'Usman',   N'Tariq',   N'M. Tariq',   N'42101-4567890-5', N'+92 347 7777777', 'usman@contouragym.com',  '2026-04-10T00:00:00', N'Finance',   N'Accountant',   0, @BR1, '003',  45000, 0, 0, 1, SYSDATETIME(), SYSDATETIME(), 0);
 
     -- ---------------------------------------------------------------------
-    -- 3) Members (4 at BR-001, 1 at BR-002)
+    -- 3) Members (4 at 01001, 1 at 01002)
     -- ---------------------------------------------------------------------
     INSERT INTO dbo.Member ([id], [firstName], [lastName], [gender], [phone], [whatsapp], [email], [joiningDate], [billingStartDate], [feeRelaxationDays], [status], [membershipPlanId], [branchId], [assignedTrainerId], [isActive], [isDeleted], [createdAt], [updatedAt]) VALUES
-    ('BR-001/OCT26/00001', N'Ali',     N'Raza',    N'Male',   N'+92 300 1111111', N'+92 300 1111111', 'ali@example.com',    '2026-10-01T00:00:00', '2026-10-01T00:00:00', 0, 'Active', @PLAN_M, @BR1, @TRAINER1, 1, 0, SYSDATETIME(), SYSDATETIME()),
-    ('BR-001/OCT26/00002', N'Sara',    N'Khan',    N'Female', N'+92 300 2222222', N'+92 300 2222222', 'sara@example.com',   '2026-10-02T00:00:00', '2026-10-02T00:00:00', 0, 'Active', @PLAN_Q, @BR1, NULL,      1, 0, SYSDATETIME(), SYSDATETIME()),
-    ('BR-001/OCT26/00003', N'Hamza',   N'Iqbal',   N'Male',   N'+92 300 3333333', N'+92 300 3333333', 'hamza@example.com',  '2026-10-03T00:00:00', '2026-10-03T00:00:00', 0, 'Active', @PLAN_Y, @BR1, @TRAINER1, 1, 0, SYSDATETIME(), SYSDATETIME()),
-    ('BR-001/OCT26/00004', N'Ayesha',  N'Siddiqui',N'Female', N'+92 300 4444444', NULL,               'ayesha@example.com', '2026-10-04T00:00:00', '2026-10-04T00:00:00', 3, 'Active', NULL,    @BR1, NULL,      1, 0, SYSDATETIME(), SYSDATETIME()),
-    ('BR-002/OCT26/00001', N'Bilal',   N'Ahmad',   N'Male',   N'+92 301 5555555', NULL,               'bilal.a@example.com','2026-10-05T00:00:00', '2026-10-05T00:00:00', 0, 'Active', NULL,    @BR2, NULL,      1, 0, SYSDATETIME(), SYSDATETIME());
+    ('01001/OCT26/00001', N'Ali',     N'Raza',    N'Male',   N'+92 300 1111111', N'+92 300 1111111', 'ali@example.com',    '2026-10-01T00:00:00', '2026-10-01T00:00:00', 0, 'Active', @PLAN_M, @BR1, @TRAINER1, 1, 0, SYSDATETIME(), SYSDATETIME()),
+    ('01001/OCT26/00002', N'Sara',    N'Khan',    N'Female', N'+92 300 2222222', N'+92 300 2222222', 'sara@example.com',   '2026-10-02T00:00:00', '2026-10-02T00:00:00', 0, 'Active', @PLAN_Q, @BR1, NULL,      1, 0, SYSDATETIME(), SYSDATETIME()),
+    ('01001/OCT26/00003', N'Hamza',   N'Iqbal',   N'Male',   N'+92 300 3333333', N'+92 300 3333333', 'hamza@example.com',  '2026-10-03T00:00:00', '2026-10-03T00:00:00', 0, 'Active', @PLAN_Y, @BR1, @TRAINER1, 1, 0, SYSDATETIME(), SYSDATETIME()),
+    ('01001/OCT26/00004', N'Ayesha',  N'Siddiqui',N'Female', N'+92 300 4444444', NULL,               'ayesha@example.com', '2026-10-04T00:00:00', '2026-10-04T00:00:00', 3, 'Active', NULL,    @BR1, NULL,      1, 0, SYSDATETIME(), SYSDATETIME()),
+    ('01002/OCT26/00001', N'Bilal',   N'Ahmad',   N'Male',   N'+92 301 5555555', NULL,               'bilal.a@example.com','2026-10-05T00:00:00', '2026-10-05T00:00:00', 0, 'Active', NULL,    @BR2, NULL,      1, 0, SYSDATETIME(), SYSDATETIME());
 
     -- ---------------------------------------------------------------------
     -- 4) Attendance (unique per member + date)
     -- ---------------------------------------------------------------------
     INSERT INTO dbo.Attendance ([id], [memberId], [branchId], [date], [checkIn], [checkOut], [createdAt]) VALUES
-    ('BR-001/OCT26/00001', 'BR-001/OCT26/00001', @BR1, '2026-10-05T00:00:00', '2026-10-05T06:12:00', '2026-10-05T07:40:00', SYSDATETIME()),
-    ('BR-001/OCT26/00002', 'BR-001/OCT26/00001', @BR1, '2026-10-06T00:00:00', '2026-10-06T06:05:00', '2026-10-06T07:30:00', SYSDATETIME()),
-    ('BR-001/OCT26/00003', 'BR-001/OCT26/00002', @BR1, '2026-10-05T00:00:00', '2026-10-05T17:20:00', '2026-10-05T18:50:00', SYSDATETIME());
+    ('01001/OCT26/00001', '01001/OCT26/00001', @BR1, '2026-10-05T00:00:00', '2026-10-05T06:12:00', '2026-10-05T07:40:00', SYSDATETIME()),
+    ('01001/OCT26/00002', '01001/OCT26/00001', @BR1, '2026-10-06T00:00:00', '2026-10-06T06:05:00', '2026-10-06T07:30:00', SYSDATETIME()),
+    ('01001/OCT26/00003', '01001/OCT26/00002', @BR1, '2026-10-05T00:00:00', '2026-10-05T17:20:00', '2026-10-05T18:50:00', SYSDATETIME());
 
     -- ---------------------------------------------------------------------
     -- 5) Fees + one cash payment (fee 1 paid via CRV below; fee 2 outstanding)
     -- ---------------------------------------------------------------------
     INSERT INTO dbo.Fee ([id], [memberId], [branchId], [billingPeriodStart], [billingPeriodEnd], [amount], [discount], [paidAmount], [balance], [dueDate], [status], [paymentMethod], [paymentAccountId], [paymentDate], [reference], [bookVoucherId], [createdAt], [updatedAt]) VALUES
-    ('BR-001/OCT26/00001', 'BR-001/OCT26/00001', @BR1, '2026-10-01T00:00:00', '2026-10-31T00:00:00', 5000, 0, 5000, 0,    '2026-10-05T00:00:00', 'Paid',   'Cash', '01001', '2026-10-05T00:00:00', N'Oct monthly fee', 'CRV/BR-001/OCT26/000001', SYSDATETIME(), SYSDATETIME()),
-    ('BR-001/OCT26/00002', 'BR-001/OCT26/00002', @BR1, '2026-10-01T00:00:00', '2026-11-30T00:00:00', 8000, 2000, 0, 6000, '2026-10-10T00:00:00', 'Unpaid', NULL,   NULL,    NULL,                  N'Quarterly (discount 2000)', NULL, SYSDATETIME(), SYSDATETIME());
+    ('01001/OCT26/00001', '01001/OCT26/00001', @BR1, '2026-10-01T00:00:00', '2026-10-31T00:00:00', 5000, 0, 5000, 0,    '2026-10-05T00:00:00', 'Paid',   'Cash', '01001', '2026-10-05T00:00:00', N'Oct monthly fee', 'CRV/01001/OCT26/000001', SYSDATETIME(), SYSDATETIME()),
+    ('01001/OCT26/00002', '01001/OCT26/00002', @BR1, '2026-10-01T00:00:00', '2026-11-30T00:00:00', 8000, 2000, 0, 6000, '2026-10-10T00:00:00', 'Unpaid', NULL,   NULL,    NULL,                  N'Quarterly (discount 2000)', NULL, SYSDATETIME(), SYSDATETIME());
 
     INSERT INTO dbo.FeePayment ([id], [feeId], [bookVoucherId], [amount], [method], [accountId], [createdAt]) VALUES
-    ('fp-0001', 'BR-001/OCT26/00001', 'CRV/BR-001/OCT26/000001', 5000, N'Cash', '01001', SYSDATETIME());
+    ('FP/01001/OCT26/000001', '01001/OCT26/00001', 'CRV/01001/OCT26/000001', 5000, N'Cash', '01001', SYSDATETIME());
 
     -- ---------------------------------------------------------------------
-    -- 6) Opening trial balance (balanced) - OTV/BR-001/OCT26/000001
+    -- 6) Opening trial balance (balanced) - OTV/01001/OCT26/000001
     -- ---------------------------------------------------------------------
     INSERT INTO dbo.OpenTB ([id], [voucherType], [voucherDate], [branchId], [description], [reference], [totalDebit], [totalCredit], [difference], [isBalanced], [status], [postedById], [createdAt], [updatedAt]) VALUES
-    ('OTV/BR-001/OCT26/000001', 'OTV', '2026-10-01T00:00:00', @BR1, N'Opening balances for October 2026', NULL, 78000, 78000, 0, 1, 'Posted', @ADMIN, SYSDATETIME(), SYSDATETIME());
+    ('OTV/01001/OCT26/000001', 'OTV', '2026-10-01T00:00:00', @BR1, N'Opening balances for October 2026', NULL, 78000, 78000, 0, 1, 'Posted', @ADMIN, SYSDATETIME(), SYSDATETIME());
 
     INSERT INTO dbo.OpenTBLine ([id], [voucherId], [accountId], [debit], [credit], [amount], [lineDescription], [status], [createdAt]) VALUES
-    ('otl-0001', 'OTV/BR-001/OCT26/000001', '01001', 20000, 0, 20000, N'Cash in hand',  'Active', SYSDATETIME()),
-    ('otl-0002', 'OTV/BR-001/OCT26/000001', '01002', 50000, 0, 50000, N'Bank balance',  'Active', SYSDATETIME()),
-    ('otl-0003', 'OTV/BR-001/OCT26/000001', '01003',  8000, 0,  8000, N'Members receivable', 'Active', SYSDATETIME()),
-    ('otl-0004', 'OTV/BR-001/OCT26/000001', '03001', 0, 78000, 78000, N'Owner capital', 'Active', SYSDATETIME());
+    ('O/2026/000001', 'OTV/01001/OCT26/000001', '01001', 20000, 0, 20000, N'Cash in hand',  'Active', SYSDATETIME()),
+    ('O/2026/000002', 'OTV/01001/OCT26/000001', '01002', 50000, 0, 50000, N'Bank balance',  'Active', SYSDATETIME()),
+    ('O/2026/000003', 'OTV/01001/OCT26/000001', '01003',  8000, 0,  8000, N'Members receivable', 'Active', SYSDATETIME()),
+    ('O/2026/000004', 'OTV/01001/OCT26/000001', '03001', 0, 78000, 78000, N'Owner capital', 'Active', SYSDATETIME());
 
     -- ---------------------------------------------------------------------
     -- 7) Cash receipts / payments
     -- ---------------------------------------------------------------------
     -- CRV: cash received from member 1 against the October fee
     INSERT INTO dbo.CashBook ([id], [voucherType], [voucherDate], [branchId], [bookChartId], [description], [reference], [paymentMode], [totalAmount], [status], [postedById], [createdAt], [updatedAt]) VALUES
-    ('CRV/BR-001/OCT26/000001', 'CRV', '2026-10-05T00:00:00', @BR1, '01001', N'October monthly fee received', N'RCPT-1001', 'Cash', 5000, 'Posted', @ADMIN, SYSDATETIME(), SYSDATETIME());
+    ('CRV/01001/OCT26/000001', 'CRV', '2026-10-05T00:00:00', @BR1, '01001', N'October monthly fee received', N'RCPT-1001', 'Cash', 5000, 'Posted', @ADMIN, SYSDATETIME(), SYSDATETIME());
 
     INSERT INTO dbo.CashBookLine ([id], [voucherId], [accountId], [debit], [credit], [amount], [taxPercent], [taxAmount], [total], [lineDescription], [title], [reference], [billType], [status], [createdAt]) VALUES
-    ('cbl-0001', 'CRV/BR-001/OCT26/000001', '01001', 5000, 0,    5000, 0, 0, 5000, N'Fee received from BR-001/OCT26/00001', N'Ali Raza',  N'RCPT-1001', N'Sales Bill', 'Active', SYSDATETIME()),
-    ('cbl-0002', 'CRV/BR-001/OCT26/000001', '04001', 0,    5000, 5000, 0, 0, 5000, N'Membership fee income',               N'Ali Raza',  N'RCPT-1001', N'Sales Bill', 'Active', SYSDATETIME());
+    ('C/2026/000001', 'CRV/01001/OCT26/000001', '01001', 5000, 0,    5000, 0, 0, 5000, N'Fee received from 01001/OCT26/00001', N'Ali Raza',  N'RCPT-1001', N'Sales Bill', 'Active', SYSDATETIME()),
+    ('C/2026/000002', 'CRV/01001/OCT26/000001', '04001', 0,    5000, 5000, 0, 0, 5000, N'Membership fee income',               N'Ali Raza',  N'RCPT-1001', N'Sales Bill', 'Active', SYSDATETIME());
 
     -- CPV: utilities paid in cash
     INSERT INTO dbo.CashBook ([id], [voucherType], [voucherDate], [branchId], [bookChartId], [description], [reference], [paymentMode], [totalAmount], [status], [postedById], [createdAt], [updatedAt]) VALUES
-    ('CPV/BR-001/OCT26/000001', 'CPV', '2026-10-07T00:00:00', @BR1, '01001', N'Electricity bill paid', N'BILL-K-E-2210', 'Cash', 2500, 'Posted', @ADMIN, SYSDATETIME(), SYSDATETIME());
+    ('CPV/01001/OCT26/000001', 'CPV', '2026-10-07T00:00:00', @BR1, '01001', N'Electricity bill paid', N'BILL-K-E-2210', 'Cash', 2500, 'Posted', @ADMIN, SYSDATETIME(), SYSDATETIME());
 
     INSERT INTO dbo.CashBookLine ([id], [voucherId], [accountId], [debit], [credit], [amount], [taxPercent], [taxAmount], [total], [lineDescription], [reference], [status], [createdAt]) VALUES
-    ('cbl-0003', 'CPV/BR-001/OCT26/000001', '05002', 2500, 0,    2500, 0, 0, 2500, N'K-Electric October', N'BILL-K-E-2210', 'Active', SYSDATETIME()),
-    ('cbl-0004', 'CPV/BR-001/OCT26/000001', '01001', 0,    2500, 2500, 0, 0, 2500, N'Paid in cash',       N'BILL-K-E-2210', 'Active', SYSDATETIME());
+    ('C/2026/000003', 'CPV/01001/OCT26/000001', '05002', 2500, 0,    2500, 0, 0, 2500, N'K-Electric October', N'BILL-K-E-2210', 'Active', SYSDATETIME()),
+    ('C/2026/000004', 'CPV/01001/OCT26/000001', '01001', 0,    2500, 2500, 0, 0, 2500, N'Paid in cash',       N'BILL-K-E-2210', 'Active', SYSDATETIME());
 
     -- ---------------------------------------------------------------------
-    -- 8) Bank payment (rent by cheque) - BPV/BR-001/OCT26/000001
+    -- 8) Bank payment (rent by cheque) - BPV/01001/OCT26/000001
     -- ---------------------------------------------------------------------
     INSERT INTO dbo.BankBook ([id], [voucherType], [voucherDate], [branchId], [bookChartId], [description], [reference], [paymentMode], [totalAmount], [status], [postedById], [createdAt], [updatedAt]) VALUES
-    ('BPV/BR-001/OCT26/000001', 'BPV', '2026-10-08T00:00:00', @BR1, '01002', N'Branch rent paid by cheque', N'RENT-OCT-26', 'Cheque', 15000, 'Posted', @ADMIN, SYSDATETIME(), SYSDATETIME());
+    ('BPV/01001/OCT26/000001', 'BPV', '2026-10-08T00:00:00', @BR1, '01002', N'Branch rent paid by cheque', N'RENT-OCT-26', 'Cheque', 15000, 'Posted', @ADMIN, SYSDATETIME(), SYSDATETIME());
 
     INSERT INTO dbo.BankBookLine ([id], [voucherId], [accountId], [debit], [credit], [amount], [taxPercent], [taxAmount], [total], [lineDescription], [reference], [chequeNo], [chequeAmount], [chequeBankName], [chequeStatus], [status], [createdAt]) VALUES
-    ('bbl-0001', 'BPV/BR-001/OCT26/000001', '05003', 0,    15000, 15000, 0, 0, 15000, N'October rent', N'RENT-OCT-26', 'CH-100234', 15000, N'Meezan Bank', N'Pending', 'Active', SYSDATETIME()),
-    ('bbl-0002', 'BPV/BR-001/OCT26/000001', '01002', 15000, 0,   15000, 0, 0, 15000, N'Cheque issued', N'RENT-OCT-26', 'CH-100234', 15000, N'Meezan Bank', N'Pending', 'Active', SYSDATETIME());
+    ('B/2026/000001', 'BPV/01001/OCT26/000001', '05003', 0,    15000, 15000, 0, 0, 15000, N'October rent', N'RENT-OCT-26', 'CH-100234', 15000, N'Meezan Bank', N'Pending', 'Active', SYSDATETIME()),
+    ('B/2026/000002', 'BPV/01001/OCT26/000001', '01002', 15000, 0,   15000, 0, 0, 15000, N'Cheque issued', N'RENT-OCT-26', 'CH-100234', 15000, N'Meezan Bank', N'Pending', 'Active', SYSDATETIME());
 
     -- ---------------------------------------------------------------------
-    -- 9) Journal voucher (supplies bought on account) - JV/BR-001/OCT26/000001
+    -- 9) Journal voucher (supplies bought on account) - JV/01001/OCT26/000001
     -- ---------------------------------------------------------------------
     INSERT INTO dbo.JV ([id], [voucherType], [voucherDate], [branchId], [description], [reference], [totalDebit], [totalCredit], [status], [postedById], [createdAt], [updatedAt]) VALUES
-    ('JV/BR-001/OCT26/000001', 'JV', '2026-10-09T00:00:00', @BR1, N'Gym supplies purchased on account', N'INV-7723', 1200, 1200, 'Posted', @ADMIN, SYSDATETIME(), SYSDATETIME());
+    ('JV/01001/OCT26/000001', 'JV', '2026-10-09T00:00:00', @BR1, N'Gym supplies purchased on account', N'INV-7723', 1200, 1200, 'Posted', @ADMIN, SYSDATETIME(), SYSDATETIME());
 
     INSERT INTO dbo.JVLine ([id], [voucherId], [accountId], [debit], [credit], [amount], [taxPercent], [taxAmount], [total], [lineDescription], [reference], [status], [createdAt]) VALUES
-    ('jvl-0001', 'JV/BR-001/OCT26/000001', '05004', 1200, 0, 1200, 0, 0, 1200, N'Cleaning supplies', N'INV-7723', 'Active', SYSDATETIME()),
-    ('jvl-0002', 'JV/BR-001/OCT26/000001', '01004', 0, 1200, 1200, 0, 0, 1200, N'Due to supplier',   N'INV-7723', 'Active', SYSDATETIME());
+    ('J/2026/000001', 'JV/01001/OCT26/000001', '05004', 1200, 0, 1200, 0, 0, 1200, N'Cleaning supplies', N'INV-7723', 'Active', SYSDATETIME()),
+    ('J/2026/000002', 'JV/01001/OCT26/000001', '01004', 0, 1200, 1200, 0, 0, 1200, N'Due to supplier',   N'INV-7723', 'Active', SYSDATETIME());
 
     -- ---------------------------------------------------------------------
     -- 10) Knock-off (bill-wise receivable for the outstanding fee)
     -- ---------------------------------------------------------------------
     INSERT INTO dbo.KnockOff ([id], [billId], [billNumber], [referenceNumber], [billType], [amount], [dcFlag], [referenceDate], [dueDate], [description], [accountId], [branchId], [createdById], [createdAt], [updatedAt]) VALUES
-    ('ko-0001', 'OTB-BR-001/0000001', 'BR-001/OCT26/00002', N'Q3-QTR-FEE', N'Membership Fee', 6000, 'Debit', '2026-10-02T00:00:00', '2026-10-10T00:00:00', N'Fee receivable', '01003', @BR1, @ADMIN, SYSDATETIME(), SYSDATETIME());
+    ('ko-0001', 'OTB-01001/0000001', '01001/OCT26/00002', N'Q3-QTR-FEE', N'Membership Fee', 6000, 'Debit', '2026-10-02T00:00:00', '2026-10-10T00:00:00', N'Fee receivable', '01003', @BR1, @ADMIN, SYSDATETIME(), SYSDATETIME());
 
     -- ---------------------------------------------------------------------
     -- 11) Prospects, follow-up, freeze, progress
     -- ---------------------------------------------------------------------
     INSERT INTO dbo.Prospect ([id], [name], [phone], [whatsapp], [gender], [age], [interestedMembership], [branchId], [source], [status], [inquiryDate], [followUpDate], [assignedTo], [notes], [createdAt], [updatedAt]) VALUES
-    ('BR-001/p-00001', N'Zain Abbas',   N'+92 302 6666666', NULL, N'Male',   26, N'Monthly',   @BR1, N'WalkIn',   'New',       '2026-10-05T00:00:00', '2026-10-12T00:00:00', N'Nida Kamran', N'Wants evening slot', SYSDATETIME(), SYSDATETIME()),
-    ('BR-002/p-00001', N'Mariam Nawaz', N'+92 302 7777777', NULL, N'Female', 31, N'Quarterly', @BR2, N'Instagram','Contacted', '2026-10-06T00:00:00', '2026-10-13T00:00:00', N'Nida Kamran', N'Asked about ladies timings', SYSDATETIME(), SYSDATETIME());
+    ('01001/p-00001', N'Zain Abbas',   N'+92 302 6666666', NULL, N'Male',   26, N'Monthly',   @BR1, N'WalkIn',   'New',       '2026-10-05T00:00:00', '2026-10-12T00:00:00', N'Nida Kamran', N'Wants evening slot', SYSDATETIME(), SYSDATETIME()),
+    ('01002/p-00001', N'Mariam Nawaz', N'+92 302 7777777', NULL, N'Female', 31, N'Quarterly', @BR2, N'Instagram','Contacted', '2026-10-06T00:00:00', '2026-10-13T00:00:00', N'Nida Kamran', N'Asked about ladies timings', SYSDATETIME(), SYSDATETIME());
 
     INSERT INTO dbo.FollowUp ([id], [prospectId], [branchId], [date], [type], [userId], [notes], [outcome], [nextFollowUpDate], [createdAt]) VALUES
-    ('BR-001/fw-000001', 'BR-001/p-00001', @BR1, '2026-10-06T00:00:00', N'Call', @ADMIN, N'Called and shared plan rates', N'Interested', '2026-10-12T00:00:00', SYSDATETIME());
+    ('01001/fw-000001', '01001/p-00001', @BR1, '2026-10-06T00:00:00', N'Call', @ADMIN, N'Called and shared plan rates', N'Interested', '2026-10-12T00:00:00', SYSDATETIME());
 
     INSERT INTO dbo.MembershipFreeze ([id], [memberId], [branchId], [freezeFrom], [freezeTo], [days], [reason], [status], [createdAt], [updatedAt]) VALUES
-    ('f-000001', 'BR-001/OCT26/00002', @BR1, '2026-10-15T00:00:00', '2026-10-25T00:00:00', 10, N'Out of city', 'Active', SYSDATETIME(), SYSDATETIME());
+    ('f-000001', '01001/OCT26/00002', @BR1, '2026-10-15T00:00:00', '2026-10-25T00:00:00', 10, N'Out of city', 'Active', SYSDATETIME(), SYSDATETIME());
 
     INSERT INTO dbo.ProgressEntry ([id], [memberId], [branchId], [date], [weight], [chest], [waist], [biceps], [notes], [createdAt]) VALUES
-    ('BR-001/Pg-000001', 'BR-001/OCT26/00001', @BR1, '2026-10-06T00:00:00', 82.5, 101, 89, 33, N'Baseline measurement', SYSDATETIME());
+    ('01001/Pg-000001', '01001/OCT26/00001', @BR1, '2026-10-06T00:00:00', 82.5, 101, 89, 33, N'Baseline measurement', SYSDATETIME());
 
     -- ---------------------------------------------------------------------
     -- 12) Workout / diet plans + assignments + goal
@@ -183,7 +184,7 @@ BEGIN
     ('wde-0001', 'wd-0001', '001001', 3, N'10-12');
 
     INSERT INTO dbo.WorkoutAssignment ([id], [memberId], [planId], [trainerId], [startDate], [notes], [createdAt]) VALUES
-    ('wa-0001', 'BR-001/OCT26/00001', 'WO-000001', @TRAINER1, '2026-10-05T00:00:00', N'First assignment', SYSDATETIME());
+    ('wa-0001', '01001/OCT26/00001', 'WO-000001', @TRAINER1, '2026-10-05T00:00:00', N'First assignment', SYSDATETIME());
 
     INSERT INTO dbo.DietPlan ([id], [name], [description], [branchId], [isActive], [createdAt], [updatedAt]) VALUES
     ('DP-000001', N'Cutting Plan', N'High protein, calorie deficit', @BR1, 1, SYSDATETIME(), SYSDATETIME());
@@ -193,10 +194,10 @@ BEGIN
     ('dm-0002', 'DP-000001', N'Monday', N'Lunch',     N'Grilled chicken, brown rice',    N'200g, 1 cup',      520, 42, 55, 10);
 
     INSERT INTO dbo.DietAssignment ([id], [memberId], [planId], [startDate], [createdAt]) VALUES
-    ('da-0001', 'BR-001/OCT26/00001', 'DP-000001', '2026-10-05T00:00:00', SYSDATETIME());
+    ('da-0001', '01001/OCT26/00001', 'DP-000001', '2026-10-05T00:00:00', SYSDATETIME());
 
     INSERT INTO dbo.FitnessGoal ([id], [memberId], [goalType], [targetValue], [unit], [startDate], [status], [createdAt], [updatedAt]) VALUES
-    ('fg-0001', 'BR-001/OCT26/00001', N'WeightLoss', 75, N'kg', '2026-10-05T00:00:00', 'Active', SYSDATETIME(), SYSDATETIME());
+    ('fg-0001', '01001/OCT26/00001', N'WeightLoss', 75, N'kg', '2026-10-05T00:00:00', 'Active', SYSDATETIME(), SYSDATETIME());
 
     -- ---------------------------------------------------------------------
     -- 13) HR: leave, overtime, payroll run
@@ -208,7 +209,7 @@ BEGIN
     ('ot-0001', 'EMP-0003', '2026-10-08T00:00:00', 2, 250, 500, 'Pending', SYSDATETIME(), SYSDATETIME());
 
     INSERT INTO dbo.Payroll ([id], [payrollNo], [staffId], [branchId], [month], [year], [basicSalary], [totalAllowances], [overtimeAmount], [totalEarnings], [totalDeductions], [netPay], [status], [createdAt], [updatedAt]) VALUES
-    ('payroll-0001', 'PAY/BR-001/OCT26/00001', @TRAINER1, @BR1, 10, 2026, 40000, 5000, 0, 45000, 0, 45000, 'Draft', SYSDATETIME(), SYSDATETIME());
+    ('payroll-0001', 'PAY/01001/OCT26/00001', @TRAINER1, @BR1, 10, 2026, 40000, 5000, 0, 45000, 0, 45000, 'Draft', SYSDATETIME(), SYSDATETIME());
 
     -- ---------------------------------------------------------------------
     -- 14) Inventory, supplier, purchase, stock movement
@@ -239,10 +240,10 @@ BEGIN
     ('em-0001', 'eq-0001', '2026-10-04T00:00:00', N'Service', N'Belt alignment + lubrication', 1500, N'FitServ', SYSDATETIME());
 
     INSERT INTO dbo.PosSale ([id], [saleNo], [date], [branchId], [cashierId], [total], [paymentMethod], [paymentAccountId], [status], [createdAt], [updatedAt]) VALUES
-    ('POS/BR-001/OCT26/00001', 'POS/BR-001/OCT26/00001', '2026-10-06T00:00:00', @BR1, @ADMIN, 18000, N'Cash', '01001', 'Completed', SYSDATETIME(), SYSDATETIME());
+    ('POS/01001/OCT26/00001', 'POS/01001/OCT26/00001', '2026-10-06T00:00:00', @BR1, @ADMIN, 18000, N'Cash', '01001', 'Completed', SYSDATETIME(), SYSDATETIME());
 
     INSERT INTO dbo.PosSaleLine ([id], [saleId], [inventoryItemId], [quantity], [unitPrice], [amount]) VALUES
-    ('pos-0001-1', 'POS/BR-001/OCT26/00001', 'inv-0001', 2, 9000, 18000);
+    ('pos-0001-1', 'POS/01001/OCT26/00001', 'inv-0001', 2, 9000, 18000);
 
     INSERT INTO dbo.CalendarDay ([id], [date], [branchId], [dayType], [notes], [createdAt], [updatedAt]) VALUES
     ('001', '2026-10-25T00:00:00', @BR1, N'Holiday', N'Branch maintenance day', SYSDATETIME(), SYSDATETIME());
@@ -258,32 +259,36 @@ BEGIN
        SET s.[next] = d.nextVal, s.updatedAt = SYSDATETIME()
     FROM dbo.IdSequence s
     INNER JOIN (VALUES
-        (N'CRV/BR-001/OCT26',      2), (N'CPV/BR-001/OCT26',   2),
-        (N'BPV/BR-001/OCT26',      2), (N'JV/BR-001/OCT26',    2),
-        (N'OTV/BR-001/OCT26',      2), (N'KOFF/BR-001',        2),
-        (N'MEMBER/BR-001/OCT26',   5), (N'MEMBER/BR-002/OCT26',2),
-        (N'FEE/BR-001/OCT26',      3), (N'ATTENDANCE/BR-001/OCT26', 4),
-        (N'PROSPECT/BR-001',       2), (N'PROSPECT/BR-002',    2),
-        (N'FOLLOWUP/BR-001',       2), (N'PROGRESS/BR-001',    2),
+        (N'LINE/C/2026', 5), (N'LINE/B/2026', 3),
+        (N'LINE/J/2026', 3), (N'LINE/O/2026', 5),
+        (N'CRV/01001/OCT26',      2), (N'CPV/01001/OCT26',   2),
+        (N'BPV/01001/OCT26',      2), (N'JV/01001/OCT26',    2),
+        (N'OTV/01001/OCT26',      2), (N'KOFF/01001',        2),
+        (N'MEMBER/01001/OCT26',   5), (N'MEMBER/01002/OCT26',2),
+        (N'FEE/01001/OCT26',      3), (N'ATTENDANCE/01001/OCT26', 4),
+        (N'PROSPECT/01001',       2), (N'PROSPECT/01002',    2),
+        (N'FOLLOWUP/01001',       2), (N'PROGRESS/01001',    2),
         (N'FREEZE',                2), (N'WORKOUTPLAN',        2),
         (N'DIETPLAN',              2), (N'LEAVE',              2),
-        (N'POS/BR-001/OCT26',      2), (N'PAY/BR-001/OCT26',   2),
+        (N'POS/01001/OCT26',      2), (N'PAY/01001/OCT26',   2),
         (N'EQUIPMENT',             2), (N'EMPLOYEE',           6)
     ) d([key], nextVal) ON d.[key] = s.[key];
 
     INSERT INTO dbo.IdSequence ([key], [next], [updatedAt])
     SELECT d.[key], d.nextVal, SYSDATETIME()
     FROM (VALUES
-        (N'CRV/BR-001/OCT26',      2), (N'CPV/BR-001/OCT26',   2),
-        (N'BPV/BR-001/OCT26',      2), (N'JV/BR-001/OCT26',    2),
-        (N'OTV/BR-001/OCT26',      2), (N'KOFF/BR-001',        2),
-        (N'MEMBER/BR-001/OCT26',   5), (N'MEMBER/BR-002/OCT26',2),
-        (N'FEE/BR-001/OCT26',      3), (N'ATTENDANCE/BR-001/OCT26', 4),
-        (N'PROSPECT/BR-001',       2), (N'PROSPECT/BR-002',    2),
-        (N'FOLLOWUP/BR-001',       2), (N'PROGRESS/BR-001',    2),
+        (N'LINE/C/2026', 5), (N'LINE/B/2026', 3),
+        (N'LINE/J/2026', 3), (N'LINE/O/2026', 5),
+        (N'CRV/01001/OCT26',      2), (N'CPV/01001/OCT26',   2),
+        (N'BPV/01001/OCT26',      2), (N'JV/01001/OCT26',    2),
+        (N'OTV/01001/OCT26',      2), (N'KOFF/01001',        2),
+        (N'MEMBER/01001/OCT26',   5), (N'MEMBER/01002/OCT26',2),
+        (N'FEE/01001/OCT26',      3), (N'ATTENDANCE/01001/OCT26', 4),
+        (N'PROSPECT/01001',       2), (N'PROSPECT/01002',    2),
+        (N'FOLLOWUP/01001',       2), (N'PROGRESS/01001',    2),
         (N'FREEZE',                2), (N'WORKOUTPLAN',        2),
         (N'DIETPLAN',              2), (N'LEAVE',              2),
-        (N'POS/BR-001/OCT26',      2), (N'PAY/BR-001/OCT26',   2),
+        (N'POS/01001/OCT26',      2), (N'PAY/01001/OCT26',   2),
         (N'EQUIPMENT',             2), (N'EMPLOYEE',           6)
     ) d([key], nextVal)
     WHERE NOT EXISTS (SELECT 1 FROM dbo.IdSequence s WHERE s.[key] = d.[key]);
