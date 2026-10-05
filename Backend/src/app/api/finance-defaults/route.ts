@@ -2,15 +2,39 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { makeFinanceDefaultsId } from '@/lib/ids'
+import { Prisma } from '@prisma/client'
 
 // GET /api/finance-defaults?branchId=… — FinanceDefaults row (branchId blank = company-wide) + financial year options
+//
+// SAFE FOR PRE-MIGRATION: if the FinanceDefaults table doesn't have the 12
+// expanded columns yet (migration 13 not run), the Prisma query fails
+// because it tries to SELECT all schema columns. We catch the error and
+// fall back to raw SQL that only selects the base columns.
 export async function GET(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const url = new URL(req.url)
   const branchId = url.searchParams.get('branchId') || null
 
-  const defaults = await db.financeDefaults.findFirst({ where: { branchId } })
+  let defaults: any = null
+  try {
+    defaults = await db.financeDefaults.findFirst({ where: { branchId } })
+  } catch {
+    // Fallback: only base columns exist (pre-migration)
+    if (branchId) {
+      defaults = await db.$queryRawUnsafe(
+        'SELECT id, branchId, defaultCashAccountId, defaultBankAccountId, defaultTaxHeadId, financialYearId, createdAt, updatedAt FROM FinanceDefaults WHERE branchId = ?',
+        branchId,
+      )
+      defaults = (defaults as any[])[0] || null
+    } else {
+      defaults = await db.$queryRawUnsafe(
+        'SELECT id, branchId, defaultCashAccountId, defaultBankAccountId, defaultTaxHeadId, financialYearId, createdAt, updatedAt FROM FinanceDefaults WHERE branchId IS NULL',
+      )
+      defaults = (defaults as any[])[0] || null
+    }
+  }
+
   const financialYears = await db.financialYear.findMany({
     orderBy: { startDate: 'desc' },
     select: { id: true, name: true, startDate: true, endDate: true, isActive: true, isClosed: true },
@@ -25,6 +49,10 @@ export async function GET(req: NextRequest) {
 //     allowEditPostedVouchers?, defaultCurrency?, decimalPlaces?,
 //     defaultCashPaymentMode?, defaultBankPaymentMode?, allowNegativeCash?,
 //     autoPostReceipts? }
+//
+// SAFE FOR PRE-MIGRATION: detects which columns exist via INFORMATION_SCHEMA
+// and only includes existing columns in the payload. Pre-migration saves
+// silently drop the expanded fields (DB defaults apply).
 export async function POST(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -52,41 +80,52 @@ export async function POST(req: NextRequest) {
     if (!fy) return NextResponse.json({ error: 'Invalid financial year' }, { status: 400 })
   }
 
-  // Helper: convert an incoming value to a Date if truthy, else undefined (leave alone).
+  // Detect which columns exist in the FinanceDefaults table (pre-migration safety)
+  const existingCols = new Set<string>(
+    (await db.$queryRawUnsafe(
+      "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'FinanceDefaults'",
+    ) as { COLUMN_NAME: string }[]).map((r) => r.COLUMN_NAME),
+  )
+
   const asDate = (v: any): Date | undefined => {
     if (v === undefined || v === null || v === '') return undefined
     const d = new Date(v)
     return isNaN(d.getTime()) ? undefined : d
   }
 
-  // Build the payload. Each field is omitted when not present in the request,
-  // so existing rows keep their previous values for those fields.
-  const payload: any = {
-    defaultCashAccountId: data.defaultCashAccountId ?? null,
-    defaultBankAccountId: data.defaultBankAccountId ?? null,
-    defaultTaxHeadId: data.defaultTaxHeadId ?? null,
-    financialYearId: data.financialYearId ?? null,
+  // Build the payload — only include fields that exist in the DB
+  const payload: any = {}
+  payload.defaultCashAccountId = data.defaultCashAccountId ?? null
+  payload.defaultBankAccountId = data.defaultBankAccountId ?? null
+  payload.defaultTaxHeadId = data.defaultTaxHeadId ?? null
+  payload.financialYearId = data.financialYearId ?? null
+
+  const safeSet = (col: string, val: any) => {
+    if (existingCols.has(col) && val !== undefined) payload[col] = val
   }
-  if (data.fiscalYearStart !== undefined) payload.fiscalYearStart = asDate(data.fiscalYearStart) ?? null
-  if (data.fiscalYearEnd !== undefined) payload.fiscalYearEnd = asDate(data.fiscalYearEnd) ?? null
-  if (data.allowUnbalancedOTB !== undefined) payload.allowUnbalancedOTB = !!data.allowUnbalancedOTB
-  if (data.allowBackDatedVouchers !== undefined) payload.allowBackDatedVouchers = !!data.allowBackDatedVouchers
-  if (data.voucherApprovalRequired !== undefined) payload.voucherApprovalRequired = !!data.voucherApprovalRequired
-  if (data.allowEditPostedVouchers !== undefined) payload.allowEditPostedVouchers = !!data.allowEditPostedVouchers
-  if (data.allowNegativeCash !== undefined) payload.allowNegativeCash = !!data.allowNegativeCash
-  if (data.autoPostReceipts !== undefined) payload.autoPostReceipts = !!data.autoPostReceipts
-  if (data.defaultCurrency !== undefined) payload.defaultCurrency = data.defaultCurrency || null
-  if (data.decimalPlaces !== undefined) payload.decimalPlaces = Number(data.decimalPlaces) || 0
-  if (data.defaultCashPaymentMode !== undefined) payload.defaultCashPaymentMode = data.defaultCashPaymentMode || null
-  if (data.defaultBankPaymentMode !== undefined) payload.defaultBankPaymentMode = data.defaultBankPaymentMode || null
+  safeSet('fiscalYearStart', data.fiscalYearStart !== undefined ? asDate(data.fiscalYearStart) ?? null : undefined)
+  safeSet('fiscalYearEnd', data.fiscalYearEnd !== undefined ? asDate(data.fiscalYearEnd) ?? null : undefined)
+  safeSet('allowUnbalancedOTB', data.allowUnbalancedOTB !== undefined ? !!data.allowUnbalancedOTB : undefined)
+  safeSet('allowBackDatedVouchers', data.allowBackDatedVouchers !== undefined ? !!data.allowBackDatedVouchers : undefined)
+  safeSet('voucherApprovalRequired', data.voucherApprovalRequired !== undefined ? !!data.voucherApprovalRequired : undefined)
+  safeSet('allowEditPostedVouchers', data.allowEditPostedVouchers !== undefined ? !!data.allowEditPostedVouchers : undefined)
+  safeSet('allowNegativeCash', data.allowNegativeCash !== undefined ? !!data.allowNegativeCash : undefined)
+  safeSet('autoPostReceipts', data.autoPostReceipts !== undefined ? !!data.autoPostReceipts : undefined)
+  safeSet('defaultCurrency', data.defaultCurrency !== undefined ? data.defaultCurrency || null : undefined)
+  safeSet('decimalPlaces', data.decimalPlaces !== undefined ? Number(data.decimalPlaces) || 0 : undefined)
+  safeSet('defaultCashPaymentMode', data.defaultCashPaymentMode !== undefined ? data.defaultCashPaymentMode || null : undefined)
+  safeSet('defaultBankPaymentMode', data.defaultBankPaymentMode !== undefined ? data.defaultBankPaymentMode || null : undefined)
 
   // nullable unique column (branchId): find first, then update or create
   const existing = await db.financeDefaults.findFirst({ where: { branchId } })
-  const defaults = existing
-    ? await db.financeDefaults.update({ where: { id: existing.id }, data: payload })
-    : await db.financeDefaults.create({
-        data: { id: await makeFinanceDefaultsId(), branchId, ...payload },
-      })
+  let defaults: any
+  if (existing) {
+    defaults = await db.financeDefaults.update({ where: { id: existing.id }, data: payload })
+  } else {
+    defaults = await db.financeDefaults.create({
+      data: { id: await makeFinanceDefaultsId(), branchId, ...payload },
+    })
+  }
   await db.auditLog.create({
     data: { userId: session.id, action: 'UPDATE', module: 'company', details: JSON.stringify({ screen: 'finance-defaults', branchId }) },
   })

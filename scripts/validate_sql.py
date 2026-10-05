@@ -7,6 +7,8 @@ import sys
 import sqlglot
 from sqlglot.errors import ErrorLevel
 
+sys.setrecursionlimit(10000)
+
 def main(path: str) -> int:
     src = open(path, 'r', encoding='utf-8').read()
     batches = []

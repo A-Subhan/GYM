@@ -111,18 +111,28 @@ export function bookVoucherApi(bookType: BookApiBookType) {
    * the request's `allowUnbalanced=true` is overridden to `false` so the
    * voucher must balance before it can be saved.
    * Returns the effective allowUnbalanced value.
+   *
+   * SAFE FOR PRE-MIGRATION: if the FinanceDefaults table doesn't have the
+   * allowUnbalancedOTB column yet (migration 13 not run), the Prisma query
+   * will fail. We catch the error and default to true (historical behaviour).
    */
   async function resolveAllowUnbalanced(branchId: string, requested: boolean): Promise<boolean> {
     if (bookType !== 'OTB') return requested
     if (!requested) return false
-    // Try branch-specific first, then fall back to company-wide (branchId NULL).
-    const fd = (await db.financeDefaults.findFirst({
-      where: { OR: [{ branchId }, { branchId: null }] },
-      orderBy: [{ branchId: 'desc' }], // branch-specific row wins if both exist
-      select: { allowUnbalancedOTB: true },
-    })) as { allowUnbalancedOTB: boolean } | null
-    // Default ON when no row exists yet (preserves historical behaviour).
-    return fd ? !!fd.allowUnbalancedOTB : true
+    try {
+      // Try branch-specific first, then fall back to company-wide (branchId NULL).
+      const fd = (await db.financeDefaults.findFirst({
+        where: { OR: [{ branchId }, { branchId: null }] },
+        orderBy: [{ branchId: 'desc' }], // branch-specific row wins if both exist
+        select: { allowUnbalancedOTB: true },
+      })) as { allowUnbalancedOTB: boolean } | null
+      // Default ON when no row exists yet (preserves historical behaviour).
+      return fd ? !!fd.allowUnbalancedOTB : true
+    } catch {
+      // Column doesn't exist yet (migration not run) — default to historical
+      // behaviour (unbalanced OTB allowed).
+      return true
+    }
   }
 
   // GET list -----------------------------------------------------------

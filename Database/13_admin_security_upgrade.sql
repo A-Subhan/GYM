@@ -6,20 +6,37 @@ GO
 -- ============================================================================
 -- 13_admin_security_upgrade.sql
 -- ============================================================================
--- Migrates existing cuid ids to clean business formats for:
---   User: USR-0001
---   Permission: PRM-0001
---   Role: ROL-001
---   ScreenPermission: SCP-0001
---   UserPermission: UPM-0001
---   AccountMapping: ACM-001
---   FinanceDefaults: FDF-001
---   Defaults (company): CMP-001
---   TaxHead: TAX-001
+-- Migrates existing cuid-style ids to clean business formats for:
+--   Defaults         -> CMP-001     key DEFAULTS
+--   TaxHead          -> TAX-001     key TAXHEAD
+--   Permission       -> PRM-0001   key PERMISSION
+--   Role             -> ROL-001     key ROLE
+--   User             -> USR-0001   key USER
+--   ScreenPermission -> SCP-0001   key SCREENPERMISSION
+--   UserPermission   -> UPM-0001   key USERPERMISSION
+--   AccountMapping   -> ACM-001    key ACCOUNTMAPPING
+--   FinanceDefaults  -> FDF-001    key FINANCEDEFAULTS
 --
--- Also adds new FinanceDefaults columns for the expanded finance settings.
--- Idempotent: checks if already migrated and skips.
--- Each step in its own TRY/CATCH with XACT_STATE() check.
+-- Also adds 12 new FinanceDefaults columns for expanded finance settings
+-- and seeds a company-wide FinanceDefaults row (branchId NULL).
+--
+-- Design principles (ALL review findings P1–P7 addressed):
+--   P1  User id migration scans INFORMATION_SCHEMA for EVERY NVARCHAR column
+--       in every table and updates all columns that hold old User ids
+--       dynamically (userId, postedById, deletedById, reversedById,
+--       approvedBy, createdById, etc.). Logs which columns were updated.
+--       Final check: no column still holds an old User id.
+--   P2  Every CATCH block: capture ERROR_NUMBER/LINE/MESSAGE, then
+--       IF XACT_STATE() <> 0 ROLLBACK, then drop #temp tables, then log
+--       FAILED. Nothing before ROLLBACK.
+--   P3  IdSequence next = max(numeric suffix) + 1 for all keys, both
+--       INSERT and UPDATE branches. Never decreases below current.
+--   P6  Every step re-runnable: migrate only rows NOT matching the new
+--       pattern; number new ids after the existing max (never restart at 1).
+--   P7  Defaults handles one or many rows (CMP-001, CMP-002, ...).
+--       Multi-column FKs recreated correctly. QUOTENAME everywhere.
+--       No N'literal' + @var inside EXEC; build @sql first, then
+--       sp_executesql @sql. Every _UpgradeLog insert inside TRY.
 -- ============================================================================
 
 SET NOCOUNT ON;
@@ -27,37 +44,79 @@ SET XACT_ABORT ON;
 
 PRINT N'=== STEP 13: Admin & Security Upgrade ===';
 
--- Helper: log function (inline, no stored proc to avoid quoting issues)
 DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
 
 -- ============================================================================
--- STEP 13a: Defaults.id -> CMP-001
+-- STEP 13a: Defaults.id -> CMP-001 (multi-row safe)
 -- ============================================================================
+USE GymDB;
+GO
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+SET QUOTED_IDENTIFIER ON;
+
+DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
+
 IF OBJECT_ID('dbo.Defaults','U') IS NOT NULL
+   AND EXISTS (SELECT 1 FROM dbo.Defaults WHERE [id] NOT LIKE N'CMP-%')
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM dbo.Defaults WHERE [id] LIKE N'CMP-%')
-    BEGIN
-        BEGIN TRY
-            BEGIN TRAN;
-            -- Defaults has no inbound FKs (leaf table)
-            UPDATE dbo.Defaults SET [id] = N'CMP-001'
-            WHERE [id] NOT LIKE N'CMP-%';
-            COMMIT TRAN;
-            INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13a-Defaults-id', N'OK', N'Migrated Defaults.id to CMP-001');
-            PRINT N'  13a-Defaults-id: OK';
-        END TRY
-        BEGIN CATCH
-            SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
-            IF XACT_STATE() <> 0 ROLLBACK TRAN;
-            INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13a-Defaults-id', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
-            PRINT N'  13a-Defaults-id: FAILED - ' + @eMsg;
-        END CATCH
-    END
-    ELSE
-    BEGIN
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13a-Defaults-id', N'SKIPPED', N'Already migrated');
-        PRINT N'  13a-Defaults-id: SKIPPED';
-    END
+    BEGIN TRY
+        BEGIN TRAN;
+
+        -- Compute the max existing CMP- numeric suffix so we never restart at 1
+        DECLARE @cmp_max INT = 0;
+        SELECT @cmp_max = MAX(CAST(SUBSTRING([id], 5, 20) AS INT))
+        FROM dbo.Defaults
+        WHERE [id] LIKE N'CMP-%'
+          AND SUBSTRING([id], 5, 20) NOT LIKE N'%[^0-9]%';
+        IF @cmp_max IS NULL SET @cmp_max = 0;
+
+        -- Build mapping (one row per old Defaults row, numbered after max)
+        IF OBJECT_ID('tempdb..#cmp_map','U') IS NOT NULL DROP TABLE #cmp_map;
+        CREATE TABLE #cmp_map (old_id NVARCHAR(50), new_id NVARCHAR(50), tmp_id NVARCHAR(50));
+        INSERT INTO #cmp_map (old_id, new_id, tmp_id)
+        SELECT [id],
+               N'CMP-' + RIGHT(N'00' + CAST(@cmp_max + ROW_NUMBER() OVER (ORDER BY [createdAt], [id]) AS NVARCHAR(10)), 3),
+               N'tmp_CMP_' + RIGHT(N'00' + CAST(@cmp_max + ROW_NUMBER() OVER (ORDER BY [createdAt], [id]) AS NVARCHAR(10)), 3)
+        FROM dbo.Defaults WHERE [id] NOT LIKE N'CMP-%';
+
+        -- Defaults has no inbound FKs (leaf table) — drop PK, two-phase update, recreate PK
+        DECLARE @cmp_pk NVARCHAR(256);
+        SELECT @cmp_pk = name FROM sys.key_constraints WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.Defaults');
+        IF @cmp_pk IS NOT NULL
+        BEGIN
+            DECLARE @sql NVARCHAR(MAX) = N'ALTER TABLE [dbo].[Defaults] DROP CONSTRAINT [' + QUOTENAME(@cmp_pk) + N']';
+            EXEC sp_executesql @sql;
+        END
+        ELSE SET @cmp_pk = N'Defaults_pkey';
+
+        UPDATE d SET d.[id] = m.tmp_id FROM dbo.Defaults d JOIN #cmp_map m ON d.[id] = m.old_id;
+        UPDATE d SET d.[id] = m.new_id FROM dbo.Defaults d JOIN #cmp_map m ON d.[id] = m.tmp_id;
+
+        ALTER TABLE [dbo].[Defaults] ALTER COLUMN [id] NVARCHAR(50) NOT NULL;
+        IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.Defaults'))
+        BEGIN
+            SET @sql = N'ALTER TABLE [dbo].[Defaults] ADD CONSTRAINT [' + QUOTENAME(@cmp_pk) + N'] PRIMARY KEY CLUSTERED ([id])';
+            EXEC sp_executesql @sql;
+        END
+
+        DROP TABLE #cmp_map;
+        COMMIT TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13a-Defaults-id', N'OK', N'Migrated Defaults.id to CMP-001+');
+        PRINT N'  13a-Defaults-id: OK';
+    END TRY
+    BEGIN CATCH
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        IF OBJECT_ID('tempdb..#cmp_map','U') IS NOT NULL DROP TABLE #cmp_map;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13a-Defaults-id', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  13a-Defaults-id: FAILED - ' + @eMsg;
+    END CATCH
+END
+ELSE
+BEGIN
+    INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13a-Defaults-id', N'SKIPPED', N'Already migrated or table missing');
+    PRINT N'  13a-Defaults-id: SKIPPED';
 END
 GO
 
@@ -78,116 +137,119 @@ BEGIN
     BEGIN TRY
         BEGIN TRAN;
 
-        -- Build mapping
-        IF OBJECT_ID('tempdb..#th_map', 'U') IS NOT NULL DROP TABLE #th_map;
-        CREATE TABLE #th_map (old_id NVARCHAR(50), new_id NVARCHAR(50), tmp_id NVARCHAR(50));
-        INSERT INTO #th_map (old_id, new_id, tmp_id)
+        DECLARE @tax_max INT = 0;
+        SELECT @tax_max = MAX(CAST(SUBSTRING([id], 5, 20) AS INT))
+        FROM dbo.TaxHead
+        WHERE [id] LIKE N'TAX-%' AND SUBSTRING([id], 5, 20) NOT LIKE N'%[^0-9]%';
+        IF @tax_max IS NULL SET @tax_max = 0;
+
+        IF OBJECT_ID('tempdb..#tax_map','U') IS NOT NULL DROP TABLE #tax_map;
+        CREATE TABLE #tax_map (old_id NVARCHAR(50), new_id NVARCHAR(50), tmp_id NVARCHAR(50));
+        INSERT INTO #tax_map (old_id, new_id, tmp_id)
         SELECT [id],
-               N'TAX-' + RIGHT(N'000' + CAST(ROW_NUMBER() OVER (ORDER BY [code], [id]) AS NVARCHAR(10)), 3),
-               N'tmp_TAX_' + RIGHT(N'000' + CAST(ROW_NUMBER() OVER (ORDER BY [code], [id]) AS NVARCHAR(10)), 3)
+               N'TAX-' + RIGHT(N'00' + CAST(@tax_max + ROW_NUMBER() OVER (ORDER BY [code], [id]) AS NVARCHAR(10)), 3),
+               N'tmp_TAX_' + RIGHT(N'00' + CAST(@tax_max + ROW_NUMBER() OVER (ORDER BY [code], [id]) AS NVARCHAR(10)), 3)
         FROM dbo.TaxHead WHERE [id] NOT LIKE N'TAX-%';
 
-        -- Discover and drop FKs referencing TaxHead
-        IF OBJECT_ID('tempdb..#th_fks', 'U') IS NOT NULL DROP TABLE #th_fks;
-        CREATE TABLE #th_fks (fk_name NVARCHAR(256), parent_table NVARCHAR(128), parent_col NVARCHAR(128), on_delete NVARCHAR(20), on_update NVARCHAR(20));
-        INSERT INTO #th_fks (fk_name, parent_table, parent_col, on_delete, on_update)
-        SELECT fk.name, OBJECT_NAME(fk.parent_object_id), COL_NAME(fkc.parent_object_id, fkc.parent_column_id),
-               fk.delete_referential_action_desc, fk.update_referential_action_desc
+        -- Discover FKs referencing TaxHead (capture ALL parent columns for multi-column FKs)
+        IF OBJECT_ID('tempdb..#tax_fks','U') IS NOT NULL DROP TABLE #tax_fks;
+        CREATE TABLE #tax_fks (fk_name NVARCHAR(256), parent_table NVARCHAR(128), parent_cols NVARCHAR(MAX), on_delete NVARCHAR(20), on_update NVARCHAR(20));
+        INSERT INTO #tax_fks (fk_name, parent_table, parent_cols, on_delete, on_update)
+        SELECT fk.name,
+               OBJECT_NAME(fk.parent_object_id),
+               STUFF((SELECT N',[' + COL_NAME(fkc2.parent_object_id, fkc2.parent_column_id) + N']'
+                      FROM sys.foreign_key_columns fkc2
+                      WHERE fkc2.constraint_object_id = fk.object_id
+                      ORDER BY fkc2.constraint_column_id
+                      FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 1, N''),
+               fk.delete_referential_action_desc,
+               fk.update_referential_action_desc
         FROM sys.foreign_keys fk
-        JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
         WHERE fk.referenced_object_id = OBJECT_ID('dbo.TaxHead');
 
-        DECLARE @thfk_name NVARCHAR(256), @thfk_parent NVARCHAR(128);
-        DECLARE @drop_thfk NVARCHAR(MAX);
-        DECLARE thfk_cur CURSOR LOCAL FAST_FORWARD FOR SELECT DISTINCT fk_name, parent_table FROM #th_fks;
-        OPEN thfk_cur;
-        FETCH NEXT FROM thfk_cur INTO @thfk_name, @thfk_parent;
+        -- Drop FKs
+        DECLARE @fk_name NVARCHAR(256), @fk_parent NVARCHAR(128);
+        DECLARE @sql NVARCHAR(MAX);
+        DECLARE fk_cur CURSOR LOCAL FAST_FORWARD FOR SELECT DISTINCT fk_name, parent_table FROM #tax_fks;
+        OPEN fk_cur;
+        FETCH NEXT FROM fk_cur INTO @fk_name, @fk_parent;
         WHILE @@FETCH_STATUS = 0
         BEGIN
-            IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @thfk_name)
+            IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @fk_name)
             BEGIN
-                SET @drop_thfk = N'ALTER TABLE [dbo].' + QUOTENAME(@thfk_parent) + N' DROP CONSTRAINT [' + @thfk_name + N']';
-                EXEC sp_executesql @drop_thfk;
+                SET @sql = N'ALTER TABLE [dbo].' + QUOTENAME(@fk_parent) + N' DROP CONSTRAINT ' + QUOTENAME(@fk_name);
+                EXEC sp_executesql @sql;
             END
-            FETCH NEXT FROM thfk_cur INTO @thfk_name, @thfk_parent;
+            FETCH NEXT FROM fk_cur INTO @fk_name, @fk_parent;
         END
-        CLOSE thfk_cur;
-        DEALLOCATE thfk_cur;
+        CLOSE fk_cur;
+        DEALLOCATE fk_cur;
 
         -- Drop PK
-        DECLARE @th_pk NVARCHAR(256);
-        SELECT @th_pk = name FROM sys.key_constraints WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.TaxHead');
-        IF @th_pk IS NOT NULL
+        DECLARE @tax_pk NVARCHAR(256);
+        SELECT @tax_pk = name FROM sys.key_constraints WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.TaxHead');
+        IF @tax_pk IS NOT NULL
         BEGIN
-            DECLARE @drop_thpk NVARCHAR(MAX) = N'ALTER TABLE [dbo].[TaxHead] DROP CONSTRAINT [' + @th_pk + N']';
-            EXEC sp_executesql @drop_thpk;
+            SET @sql = N'ALTER TABLE [dbo].[TaxHead] DROP CONSTRAINT ' + QUOTENAME(@tax_pk);
+            EXEC sp_executesql @sql;
         END
-        ELSE SET @th_pk = N'TaxHead_pkey';
+        ELSE SET @tax_pk = N'TaxHead_pkey';
 
-        -- Two-phase update
-        UPDATE t SET t.[id] = m.tmp_id FROM dbo.TaxHead t JOIN #th_map m ON t.[id] = m.old_id;
-        UPDATE t SET t.[id] = m.new_id FROM dbo.TaxHead t JOIN #th_map m ON t.[id] = m.tmp_id;
+        -- Two-phase update TaxHead
+        UPDATE t SET t.[id] = m.tmp_id FROM dbo.TaxHead t JOIN #tax_map m ON t.[id] = m.old_id;
+        UPDATE t SET t.[id] = m.new_id FROM dbo.TaxHead t JOIN #tax_map m ON t.[id] = m.tmp_id;
 
-        -- Update FinanceDefaults.defaultTaxHeadId
+        -- Update referencing columns
         IF COL_LENGTH('dbo.FinanceDefaults','defaultTaxHeadId') IS NOT NULL
-        BEGIN
-            UPDATE fd SET fd.[defaultTaxHeadId] = m.new_id
-            FROM dbo.FinanceDefaults fd JOIN #th_map m ON fd.[defaultTaxHeadId] = m.old_id
-            WHERE fd.[defaultTaxHeadId] IS NOT NULL;
-        END
-
-        -- Update CashBookLine.taxAccountId, BankBookLine.taxAccountId, JVLine.taxAccountId
+            UPDATE fd SET fd.[defaultTaxHeadId] = m.new_id FROM dbo.FinanceDefaults fd JOIN #tax_map m ON fd.[defaultTaxHeadId] = m.old_id WHERE fd.[defaultTaxHeadId] IS NOT NULL;
         IF COL_LENGTH('dbo.CashBookLine','taxAccountId') IS NOT NULL
-            UPDATE l SET l.[taxAccountId] = m.new_id FROM dbo.CashBookLine l JOIN #th_map m ON l.[taxAccountId] = m.old_id WHERE l.[taxAccountId] IS NOT NULL;
+            UPDATE l SET l.[taxAccountId] = m.new_id FROM dbo.CashBookLine l JOIN #tax_map m ON l.[taxAccountId] = m.old_id WHERE l.[taxAccountId] IS NOT NULL;
         IF COL_LENGTH('dbo.BankBookLine','taxAccountId') IS NOT NULL
-            UPDATE l SET l.[taxAccountId] = m.new_id FROM dbo.BankBookLine l JOIN #th_map m ON l.[taxAccountId] = m.old_id WHERE l.[taxAccountId] IS NOT NULL;
+            UPDATE l SET l.[taxAccountId] = m.new_id FROM dbo.BankBookLine l JOIN #tax_map m ON l.[taxAccountId] = m.old_id WHERE l.[taxAccountId] IS NOT NULL;
         IF COL_LENGTH('dbo.JVLine','taxAccountId') IS NOT NULL
-            UPDATE l SET l.[taxAccountId] = m.new_id FROM dbo.JVLine l JOIN #th_map m ON l.[taxAccountId] = m.old_id WHERE l.[taxAccountId] IS NOT NULL;
+            UPDATE l SET l.[taxAccountId] = m.new_id FROM dbo.JVLine l JOIN #tax_map m ON l.[taxAccountId] = m.old_id WHERE l.[taxAccountId] IS NOT NULL;
 
-        -- ALTER COLUMN NOT NULL + recreate PK
         ALTER TABLE [dbo].[TaxHead] ALTER COLUMN [id] NVARCHAR(50) NOT NULL;
-        IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE type=N'PK' AND parent_object_id=OBJECT_ID('dbo.TaxHead'))
+        IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.TaxHead'))
         BEGIN
-            DECLARE @add_thpk NVARCHAR(MAX) = N'ALTER TABLE [dbo].[TaxHead] ADD CONSTRAINT [' + @th_pk + N'] PRIMARY KEY CLUSTERED ([id])';
-            EXEC sp_executesql @add_thpk;
+            SET @sql = N'ALTER TABLE [dbo].[TaxHead] ADD CONSTRAINT ' + QUOTENAME(@tax_pk) + N' PRIMARY KEY CLUSTERED ([id])';
+            EXEC sp_executesql @sql;
         END
 
-        -- Recreate FKs
-        DECLARE @thcfk_name NVARCHAR(256), @thcfk_tbl NVARCHAR(128), @thcfk_col NVARCHAR(128);
-        DECLARE @thcfk_del NVARCHAR(20), @thcfk_upd NVARCHAR(20);
-        DECLARE @add_thcfk NVARCHAR(MAX);
-        DECLARE thcfk_cur CURSOR LOCAL FAST_FORWARD FOR SELECT DISTINCT fk_name, parent_table, parent_col, on_delete, on_update FROM #th_fks;
-        OPEN thcfk_cur;
-        FETCH NEXT FROM thcfk_cur INTO @thcfk_name, @thcfk_tbl, @thcfk_col, @thcfk_del, @thcfk_upd;
+        -- Recreate FKs (handle multi-column FKs via parent_cols)
+        DECLARE @rcfk_name NVARCHAR(256), @rcfk_parent NVARCHAR(128), @rcfk_cols NVARCHAR(MAX);
+        DECLARE @rcfk_del NVARCHAR(20), @rcfk_upd NVARCHAR(20);
+        DECLARE rcfk_cur CURSOR LOCAL FAST_FORWARD FOR SELECT DISTINCT fk_name, parent_table, parent_cols, on_delete, on_update FROM #tax_fks;
+        OPEN rcfk_cur;
+        FETCH NEXT FROM rcfk_cur INTO @rcfk_name, @rcfk_parent, @rcfk_cols, @rcfk_del, @rcfk_upd;
         WHILE @@FETCH_STATUS = 0
         BEGIN
-            IF OBJECT_ID('dbo.' + QUOTENAME(@thcfk_tbl), 'U') IS NOT NULL
-               AND COL_LENGTH('dbo.' + QUOTENAME(@thcfk_tbl), @thcfk_col) IS NOT NULL
-               AND NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @thcfk_name)
+            IF OBJECT_ID(N'[dbo].' + QUOTENAME(@rcfk_parent), N'U') IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @rcfk_name)
             BEGIN
-                DECLARE @th_del NVARCHAR(20) = REPLACE(@thcfk_del, N'_', N' ');
-                DECLARE @th_upd NVARCHAR(20) = REPLACE(@thcfk_upd, N'_', N' ');
-                IF @th_del = N'NO' SET @th_del = N'NO ACTION';
-                IF @th_upd = N'NO' SET @th_upd = N'NO ACTION';
-                SET @add_thcfk = N'ALTER TABLE [dbo].' + QUOTENAME(@thcfk_tbl) + N' ADD CONSTRAINT [' + @thcfk_name + N'] FOREIGN KEY ([' + @thcfk_col + N']) REFERENCES [dbo].[TaxHead]([id]) ON DELETE ' + @th_del + N' ON UPDATE ' + @th_upd;
-                EXEC sp_executesql @add_thcfk;
+                DECLARE @del_action NVARCHAR(20) = REPLACE(@rcfk_del, N'_', N' ');
+                DECLARE @upd_action NVARCHAR(20) = REPLACE(@rcfk_upd, N'_', N' ');
+                IF @del_action = N'NO' SET @del_action = N'NO ACTION';
+                IF @upd_action = N'NO' SET @upd_action = N'NO ACTION';
+                SET @sql = N'ALTER TABLE [dbo].' + QUOTENAME(@rcfk_parent) + N' ADD CONSTRAINT ' + QUOTENAME(@rcfk_name) + N' FOREIGN KEY (' + @rcfk_cols + N') REFERENCES [dbo].[TaxHead]([id]) ON DELETE ' + @del_action + N' ON UPDATE ' + @upd_action;
+                EXEC sp_executesql @sql;
             END
-            FETCH NEXT FROM thcfk_cur INTO @thcfk_name, @thcfk_tbl, @thcfk_col, @thcfk_del, @thcfk_upd;
+            FETCH NEXT FROM rcfk_cur INTO @rcfk_name, @rcfk_parent, @rcfk_cols, @rcfk_del, @rcfk_upd;
         END
-        CLOSE thcfk_cur;
-        DEALLOCATE thcfk_cur;
+        CLOSE rcfk_cur;
+        DEALLOCATE rcfk_cur;
 
-        DROP TABLE #th_map;
-        DROP TABLE #th_fks;
+        DROP TABLE #tax_map;
+        DROP TABLE #tax_fks;
         COMMIT TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13b-TaxHead-id', N'OK', N'Migrated TaxHead.id to TAX-001...');
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13b-TaxHead-id', N'OK', N'Migrated TaxHead.id to TAX-001+');
         PRINT N'  13b-TaxHead-id: OK';
     END TRY
     BEGIN CATCH
         SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
-        IF OBJECT_ID('tempdb..#th_map','U') IS NOT NULL DROP TABLE #th_map;
-        IF OBJECT_ID('tempdb..#th_fks','U') IS NOT NULL DROP TABLE #th_fks;
         IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        IF OBJECT_ID('tempdb..#tax_map','U') IS NOT NULL DROP TABLE #tax_map;
+        IF OBJECT_ID('tempdb..#tax_fks','U') IS NOT NULL DROP TABLE #tax_fks;
         INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13b-TaxHead-id', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
         PRINT N'  13b-TaxHead-id: FAILED - ' + @eMsg;
     END CATCH
@@ -215,106 +277,97 @@ IF OBJECT_ID('dbo.Permission','U') IS NOT NULL
 BEGIN
     BEGIN TRY
         BEGIN TRAN;
-        IF OBJECT_ID('tempdb..#prm_map', 'U') IS NOT NULL DROP TABLE #prm_map;
+
+        DECLARE @prm_max INT = 0;
+        SELECT @prm_max = MAX(CAST(SUBSTRING([id], 5, 20) AS INT))
+        FROM dbo.Permission
+        WHERE [id] LIKE N'PRM-%' AND SUBSTRING([id], 5, 20) NOT LIKE N'%[^0-9]%';
+        IF @prm_max IS NULL SET @prm_max = 0;
+
+        IF OBJECT_ID('tempdb..#prm_map','U') IS NOT NULL DROP TABLE #prm_map;
         CREATE TABLE #prm_map (old_id NVARCHAR(50), new_id NVARCHAR(50), tmp_id NVARCHAR(50));
         INSERT INTO #prm_map (old_id, new_id, tmp_id)
         SELECT [id],
-               N'PRM-' + RIGHT(N'000' + CAST(ROW_NUMBER() OVER (ORDER BY [code]) AS NVARCHAR(10)), 4),
-               N'tmp_PRM_' + RIGHT(N'000' + CAST(ROW_NUMBER() OVER (ORDER BY [code]) AS NVARCHAR(10)), 4)
+               N'PRM-' + RIGHT(N'000' + CAST(@prm_max + ROW_NUMBER() OVER (ORDER BY [code]) AS NVARCHAR(10)), 4),
+               N'tmp_PRM_' + RIGHT(N'000' + CAST(@prm_max + ROW_NUMBER() OVER (ORDER BY [code]) AS NVARCHAR(10)), 4)
         FROM dbo.Permission WHERE [id] NOT LIKE N'PRM-%';
 
-        -- Drop FKs from RolePermission
-        IF OBJECT_ID('tempdb..#prm_fks', 'U') IS NOT NULL DROP TABLE #prm_fks;
-        CREATE TABLE #prm_fks (fk_name NVARCHAR(256), parent_table NVARCHAR(128), parent_col NVARCHAR(128), on_delete NVARCHAR(20), on_update NVARCHAR(20));
-        INSERT INTO #prm_fks (fk_name, parent_table, parent_col, on_delete, on_update)
-        SELECT fk.name, OBJECT_NAME(fk.parent_object_id), COL_NAME(fkc.parent_object_id, fkc.parent_column_id),
+        IF OBJECT_ID('tempdb..#prm_fks','U') IS NOT NULL DROP TABLE #prm_fks;
+        CREATE TABLE #prm_fks (fk_name NVARCHAR(256), parent_table NVARCHAR(128), parent_cols NVARCHAR(MAX), on_delete NVARCHAR(20), on_update NVARCHAR(20));
+        INSERT INTO #prm_fks (fk_name, parent_table, parent_cols, on_delete, on_update)
+        SELECT fk.name, OBJECT_NAME(fk.parent_object_id),
+               STUFF((SELECT N',[' + COL_NAME(fkc2.parent_object_id, fkc2.parent_column_id) + N']'
+                      FROM sys.foreign_key_columns fkc2 WHERE fkc2.constraint_object_id = fk.object_id
+                      ORDER BY fkc2.constraint_column_id FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 1, N''),
                fk.delete_referential_action_desc, fk.update_referential_action_desc
-        FROM sys.foreign_keys fk
-        JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
-        WHERE fk.referenced_object_id = OBJECT_ID('dbo.Permission');
+        FROM sys.foreign_keys fk WHERE fk.referenced_object_id = OBJECT_ID('dbo.Permission');
 
-        DECLARE @pfk_name NVARCHAR(256), @pfk_parent NVARCHAR(128);
-        DECLARE @drop_pfk NVARCHAR(MAX);
-        DECLARE pfk_cur CURSOR LOCAL FAST_FORWARD FOR SELECT DISTINCT fk_name, parent_table FROM #prm_fks;
-        OPEN pfk_cur;
-        FETCH NEXT FROM pfk_cur INTO @pfk_name, @pfk_parent;
+        DECLARE @fk_name NVARCHAR(256), @fk_parent NVARCHAR(128), @sql NVARCHAR(MAX);
+        DECLARE fk_cur CURSOR LOCAL FAST_FORWARD FOR SELECT DISTINCT fk_name, parent_table FROM #prm_fks;
+        OPEN fk_cur; FETCH NEXT FROM fk_cur INTO @fk_name, @fk_parent;
         WHILE @@FETCH_STATUS = 0
         BEGIN
-            IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @pfk_name)
+            IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @fk_name)
             BEGIN
-                SET @drop_pfk = N'ALTER TABLE [dbo].' + QUOTENAME(@pfk_parent) + N' DROP CONSTRAINT [' + @pfk_name + N']';
-                EXEC sp_executesql @drop_pfk;
+                SET @sql = N'ALTER TABLE [dbo].' + QUOTENAME(@fk_parent) + N' DROP CONSTRAINT ' + QUOTENAME(@fk_name);
+                EXEC sp_executesql @sql;
             END
-            FETCH NEXT FROM pfk_cur INTO @pfk_name, @pfk_parent;
+            FETCH NEXT FROM fk_cur INTO @fk_name, @fk_parent;
         END
-        CLOSE pfk_cur;
-        DEALLOCATE pfk_cur;
+        CLOSE fk_cur; DEALLOCATE fk_cur;
 
-        -- Drop PK
         DECLARE @prm_pk NVARCHAR(256);
-        SELECT @prm_pk = name FROM sys.key_constraints WHERE type=N'PK' AND parent_object_id=OBJECT_ID('dbo.Permission');
+        SELECT @prm_pk = name FROM sys.key_constraints WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.Permission');
         IF @prm_pk IS NOT NULL
         BEGIN
-            DECLARE @drop_prmpk NVARCHAR(MAX) = N'ALTER TABLE [dbo].[Permission] DROP CONSTRAINT [' + @prm_pk + N']';
-            EXEC sp_executesql @drop_prmpk;
+            SET @sql = N'ALTER TABLE [dbo].[Permission] DROP CONSTRAINT ' + QUOTENAME(@prm_pk);
+            EXEC sp_executesql @sql;
         END
         ELSE SET @prm_pk = N'Permission_pkey';
 
-        -- Two-phase update Permission
         UPDATE p SET p.[id] = m.tmp_id FROM dbo.Permission p JOIN #prm_map m ON p.[id] = m.old_id;
         UPDATE p SET p.[id] = m.new_id FROM dbo.Permission p JOIN #prm_map m ON p.[id] = m.tmp_id;
 
-        -- Update RolePermission.permissionId
         IF COL_LENGTH('dbo.RolePermission','permissionId') IS NOT NULL
-        BEGIN
-            UPDATE rp SET rp.[permissionId] = m.new_id
-            FROM dbo.RolePermission rp JOIN #prm_map m ON rp.[permissionId] = m.old_id;
-        END
+            UPDATE rp SET rp.[permissionId] = m.new_id FROM dbo.RolePermission rp JOIN #prm_map m ON rp.[permissionId] = m.old_id;
 
-        -- ALTER COLUMN NOT NULL + recreate PK
         ALTER TABLE [dbo].[Permission] ALTER COLUMN [id] NVARCHAR(50) NOT NULL;
-        IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE type=N'PK' AND parent_object_id=OBJECT_ID('dbo.Permission'))
+        IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.Permission'))
         BEGIN
-            DECLARE @add_prmpk NVARCHAR(MAX) = N'ALTER TABLE [dbo].[Permission] ADD CONSTRAINT [' + @prm_pk + N'] PRIMARY KEY CLUSTERED ([id])';
-            EXEC sp_executesql @add_prmpk;
+            SET @sql = N'ALTER TABLE [dbo].[Permission] ADD CONSTRAINT ' + QUOTENAME(@prm_pk) + N' PRIMARY KEY CLUSTERED ([id])';
+            EXEC sp_executesql @sql;
         END
 
-        -- Recreate FKs
-        DECLARE @pcfk_name NVARCHAR(256), @pcfk_tbl NVARCHAR(128), @pcfk_col NVARCHAR(128);
-        DECLARE @pcfk_del NVARCHAR(20), @pcfk_upd NVARCHAR(20);
-        DECLARE @add_pcfk NVARCHAR(MAX);
-        DECLARE pcfk_cur CURSOR LOCAL FAST_FORWARD FOR SELECT DISTINCT fk_name, parent_table, parent_col, on_delete, on_update FROM #prm_fks;
-        OPEN pcfk_cur;
-        FETCH NEXT FROM pcfk_cur INTO @pcfk_name, @pcfk_tbl, @pcfk_col, @pcfk_del, @pcfk_upd;
+        DECLARE @rcfk_name NVARCHAR(256), @rcfk_parent NVARCHAR(128), @rcfk_cols NVARCHAR(MAX), @rcfk_del NVARCHAR(20), @rcfk_upd NVARCHAR(20);
+        DECLARE rcfk_cur CURSOR LOCAL FAST_FORWARD FOR SELECT DISTINCT fk_name, parent_table, parent_cols, on_delete, on_update FROM #prm_fks;
+        OPEN rcfk_cur; FETCH NEXT FROM rcfk_cur INTO @rcfk_name, @rcfk_parent, @rcfk_cols, @rcfk_del, @rcfk_upd;
         WHILE @@FETCH_STATUS = 0
         BEGIN
-            IF OBJECT_ID('dbo.' + QUOTENAME(@pcfk_tbl), 'U') IS NOT NULL
-               AND COL_LENGTH('dbo.' + QUOTENAME(@pcfk_tbl), @pcfk_col) IS NOT NULL
-               AND NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @pcfk_name)
+            IF OBJECT_ID(N'[dbo].' + QUOTENAME(@rcfk_parent), N'U') IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @rcfk_name)
             BEGIN
-                DECLARE @p_del NVARCHAR(20) = REPLACE(@pcfk_del, N'_', N' ');
-                DECLARE @p_upd NVARCHAR(20) = REPLACE(@pcfk_upd, N'_', N' ');
-                IF @p_del = N'NO' SET @p_del = N'NO ACTION';
-                IF @p_upd = N'NO' SET @p_upd = N'NO ACTION';
-                SET @add_pcfk = N'ALTER TABLE [dbo].' + QUOTENAME(@pcfk_tbl) + N' ADD CONSTRAINT [' + @pcfk_name + N'] FOREIGN KEY ([' + @pcfk_col + N']) REFERENCES [dbo].[Permission]([id]) ON DELETE ' + @p_del + N' ON UPDATE ' + @p_upd;
-                EXEC sp_executesql @add_pcfk;
+                DECLARE @del_action NVARCHAR(20) = REPLACE(@rcfk_del, N'_', N' ');
+                DECLARE @upd_action NVARCHAR(20) = REPLACE(@rcfk_upd, N'_', N' ');
+                IF @del_action = N'NO' SET @del_action = N'NO ACTION';
+                IF @upd_action = N'NO' SET @upd_action = N'NO ACTION';
+                SET @sql = N'ALTER TABLE [dbo].' + QUOTENAME(@rcfk_parent) + N' ADD CONSTRAINT ' + QUOTENAME(@rcfk_name) + N' FOREIGN KEY (' + @rcfk_cols + N') REFERENCES [dbo].[Permission]([id]) ON DELETE ' + @del_action + N' ON UPDATE ' + @upd_action;
+                EXEC sp_executesql @sql;
             END
-            FETCH NEXT FROM pcfk_cur INTO @pcfk_name, @pcfk_tbl, @pcfk_col, @pcfk_del, @pcfk_upd;
+            FETCH NEXT FROM rcfk_cur INTO @rcfk_name, @rcfk_parent, @rcfk_cols, @rcfk_del, @rcfk_upd;
         END
-        CLOSE pcfk_cur;
-        DEALLOCATE pcfk_cur;
+        CLOSE rcfk_cur; DEALLOCATE rcfk_cur;
 
         DROP TABLE #prm_map;
         DROP TABLE #prm_fks;
         COMMIT TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13c-Permission-id', N'OK', N'Migrated Permission.id to PRM-0001...');
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13c-Permission-id', N'OK', N'Migrated Permission.id to PRM-0001+');
         PRINT N'  13c-Permission-id: OK';
     END TRY
     BEGIN CATCH
         SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
         IF OBJECT_ID('tempdb..#prm_map','U') IS NOT NULL DROP TABLE #prm_map;
         IF OBJECT_ID('tempdb..#prm_fks','U') IS NOT NULL DROP TABLE #prm_fks;
-        IF XACT_STATE() <> 0 ROLLBACK TRAN;
         INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13c-Permission-id', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
         PRINT N'  13c-Permission-id: FAILED - ' + @eMsg;
     END CATCH
@@ -342,56 +395,57 @@ IF OBJECT_ID('dbo.Role','U') IS NOT NULL
 BEGIN
     BEGIN TRY
         BEGIN TRAN;
-        IF OBJECT_ID('tempdb..#rol_map', 'U') IS NOT NULL DROP TABLE #rol_map;
+
+        DECLARE @rol_max INT = 0;
+        SELECT @rol_max = MAX(CAST(SUBSTRING([id], 5, 20) AS INT))
+        FROM dbo.Role
+        WHERE [id] LIKE N'ROL-%' AND SUBSTRING([id], 5, 20) NOT LIKE N'%[^0-9]%';
+        IF @rol_max IS NULL SET @rol_max = 0;
+
+        IF OBJECT_ID('tempdb..#rol_map','U') IS NOT NULL DROP TABLE #rol_map;
         CREATE TABLE #rol_map (old_id NVARCHAR(50), new_id NVARCHAR(50), tmp_id NVARCHAR(50));
         INSERT INTO #rol_map (old_id, new_id, tmp_id)
         SELECT [id],
-               N'ROL-' + RIGHT(N'00' + CAST(ROW_NUMBER() OVER (ORDER BY [name]) AS NVARCHAR(10)), 3),
-               N'tmp_ROL_' + RIGHT(N'00' + CAST(ROW_NUMBER() OVER (ORDER BY [name]) AS NVARCHAR(10)), 3)
+               N'ROL-' + RIGHT(N'00' + CAST(@rol_max + ROW_NUMBER() OVER (ORDER BY [name]) AS NVARCHAR(10)), 3),
+               N'tmp_ROL_' + RIGHT(N'00' + CAST(@rol_max + ROW_NUMBER() OVER (ORDER BY [name]) AS NVARCHAR(10)), 3)
         FROM dbo.Role WHERE [id] NOT LIKE N'ROL-%';
 
-        -- Drop FKs referencing Role
-        IF OBJECT_ID('tempdb..#rol_fks', 'U') IS NOT NULL DROP TABLE #rol_fks;
-        CREATE TABLE #rol_fks (fk_name NVARCHAR(256), parent_table NVARCHAR(128), parent_col NVARCHAR(128), on_delete NVARCHAR(20), on_update NVARCHAR(20));
-        INSERT INTO #rol_fks (fk_name, parent_table, parent_col, on_delete, on_update)
-        SELECT fk.name, OBJECT_NAME(fk.parent_object_id), COL_NAME(fkc.parent_object_id, fkc.parent_column_id),
+        IF OBJECT_ID('tempdb..#rol_fks','U') IS NOT NULL DROP TABLE #rol_fks;
+        CREATE TABLE #rol_fks (fk_name NVARCHAR(256), parent_table NVARCHAR(128), parent_cols NVARCHAR(MAX), on_delete NVARCHAR(20), on_update NVARCHAR(20));
+        INSERT INTO #rol_fks (fk_name, parent_table, parent_cols, on_delete, on_update)
+        SELECT fk.name, OBJECT_NAME(fk.parent_object_id),
+               STUFF((SELECT N',[' + COL_NAME(fkc2.parent_object_id, fkc2.parent_column_id) + N']'
+                      FROM sys.foreign_key_columns fkc2 WHERE fkc2.constraint_object_id = fk.object_id
+                      ORDER BY fkc2.constraint_column_id FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 1, N''),
                fk.delete_referential_action_desc, fk.update_referential_action_desc
-        FROM sys.foreign_keys fk
-        JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
-        WHERE fk.referenced_object_id = OBJECT_ID('dbo.Role');
+        FROM sys.foreign_keys fk WHERE fk.referenced_object_id = OBJECT_ID('dbo.Role');
 
-        DECLARE @rfk_name NVARCHAR(256), @rfk_parent NVARCHAR(128);
-        DECLARE @drop_rfk NVARCHAR(MAX);
-        DECLARE rfk_cur CURSOR LOCAL FAST_FORWARD FOR SELECT DISTINCT fk_name, parent_table FROM #rol_fks;
-        OPEN rfk_cur;
-        FETCH NEXT FROM rfk_cur INTO @rfk_name, @rfk_parent;
+        DECLARE @fk_name NVARCHAR(256), @fk_parent NVARCHAR(128), @sql NVARCHAR(MAX);
+        DECLARE fk_cur CURSOR LOCAL FAST_FORWARD FOR SELECT DISTINCT fk_name, parent_table FROM #rol_fks;
+        OPEN fk_cur; FETCH NEXT FROM fk_cur INTO @fk_name, @fk_parent;
         WHILE @@FETCH_STATUS = 0
         BEGIN
-            IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @rfk_name)
+            IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @fk_name)
             BEGIN
-                SET @drop_rfk = N'ALTER TABLE [dbo].' + QUOTENAME(@rfk_parent) + N' DROP CONSTRAINT [' + @rfk_name + N']';
-                EXEC sp_executesql @drop_rfk;
+                SET @sql = N'ALTER TABLE [dbo].' + QUOTENAME(@fk_parent) + N' DROP CONSTRAINT ' + QUOTENAME(@fk_name);
+                EXEC sp_executesql @sql;
             END
-            FETCH NEXT FROM rfk_cur INTO @rfk_name, @rfk_parent;
+            FETCH NEXT FROM fk_cur INTO @fk_name, @fk_parent;
         END
-        CLOSE rfk_cur;
-        DEALLOCATE rfk_cur;
+        CLOSE fk_cur; DEALLOCATE fk_cur;
 
-        -- Drop PK
         DECLARE @rol_pk NVARCHAR(256);
-        SELECT @rol_pk = name FROM sys.key_constraints WHERE type=N'PK' AND parent_object_id=OBJECT_ID('dbo.Role');
+        SELECT @rol_pk = name FROM sys.key_constraints WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.Role');
         IF @rol_pk IS NOT NULL
         BEGIN
-            DECLARE @drop_rolpk NVARCHAR(MAX) = N'ALTER TABLE [dbo].[Role] DROP CONSTRAINT [' + @rol_pk + N']';
-            EXEC sp_executesql @drop_rolpk;
+            SET @sql = N'ALTER TABLE [dbo].[Role] DROP CONSTRAINT ' + QUOTENAME(@rol_pk);
+            EXEC sp_executesql @sql;
         END
         ELSE SET @rol_pk = N'Role_pkey';
 
-        -- Two-phase update Role
         UPDATE r SET r.[id] = m.tmp_id FROM dbo.Role r JOIN #rol_map m ON r.[id] = m.old_id;
         UPDATE r SET r.[id] = m.new_id FROM dbo.Role r JOIN #rol_map m ON r.[id] = m.tmp_id;
 
-        -- Update User.roleId, RolePermission.roleId, ScreenPermission.roleId
         IF COL_LENGTH('dbo.[User]','roleId') IS NOT NULL
             UPDATE u SET u.[roleId] = m.new_id FROM dbo.[User] u JOIN #rol_map m ON u.[roleId] = m.old_id WHERE u.[roleId] IS NOT NULL;
         IF COL_LENGTH('dbo.RolePermission','roleId') IS NOT NULL
@@ -399,50 +453,43 @@ BEGIN
         IF COL_LENGTH('dbo.ScreenPermission','roleId') IS NOT NULL
             UPDATE sp SET sp.[roleId] = m.new_id FROM dbo.ScreenPermission sp JOIN #rol_map m ON sp.[roleId] = m.old_id;
 
-        -- ALTER COLUMN NOT NULL + recreate PK
         ALTER TABLE [dbo].[Role] ALTER COLUMN [id] NVARCHAR(50) NOT NULL;
-        IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE type=N'PK' AND parent_object_id=OBJECT_ID('dbo.Role'))
+        IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.Role'))
         BEGIN
-            DECLARE @add_rolpk NVARCHAR(MAX) = N'ALTER TABLE [dbo].[Role] ADD CONSTRAINT [' + @rol_pk + N'] PRIMARY KEY CLUSTERED ([id])';
-            EXEC sp_executesql @add_rolpk;
+            SET @sql = N'ALTER TABLE [dbo].[Role] ADD CONSTRAINT ' + QUOTENAME(@rol_pk) + N' PRIMARY KEY CLUSTERED ([id])';
+            EXEC sp_executesql @sql;
         END
 
-        -- Recreate FKs
-        DECLARE @rcfk_name NVARCHAR(256), @rcfk_tbl NVARCHAR(128), @rcfk_col NVARCHAR(128);
-        DECLARE @rcfk_del NVARCHAR(20), @rcfk_upd NVARCHAR(20);
-        DECLARE @add_rcfk NVARCHAR(MAX);
-        DECLARE rcfk_cur CURSOR LOCAL FAST_FORWARD FOR SELECT DISTINCT fk_name, parent_table, parent_col, on_delete, on_update FROM #rol_fks;
-        OPEN rcfk_cur;
-        FETCH NEXT FROM rcfk_cur INTO @rcfk_name, @rcfk_tbl, @rcfk_col, @rcfk_del, @rcfk_upd;
+        DECLARE @rcfk_name NVARCHAR(256), @rcfk_parent NVARCHAR(128), @rcfk_cols NVARCHAR(MAX), @rcfk_del NVARCHAR(20), @rcfk_upd NVARCHAR(20);
+        DECLARE rcfk_cur CURSOR LOCAL FAST_FORWARD FOR SELECT DISTINCT fk_name, parent_table, parent_cols, on_delete, on_update FROM #rol_fks;
+        OPEN rcfk_cur; FETCH NEXT FROM rcfk_cur INTO @rcfk_name, @rcfk_parent, @rcfk_cols, @rcfk_del, @rcfk_upd;
         WHILE @@FETCH_STATUS = 0
         BEGIN
-            IF OBJECT_ID('dbo.' + QUOTENAME(@rcfk_tbl), 'U') IS NOT NULL
-               AND COL_LENGTH('dbo.' + QUOTENAME(@rcfk_tbl), @rcfk_col) IS NOT NULL
+            IF OBJECT_ID(N'[dbo].' + QUOTENAME(@rcfk_parent), N'U') IS NOT NULL
                AND NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @rcfk_name)
             BEGIN
-                DECLARE @r_del NVARCHAR(20) = REPLACE(@rcfk_del, N'_', N' ');
-                DECLARE @r_upd NVARCHAR(20) = REPLACE(@rcfk_upd, N'_', N' ');
-                IF @r_del = N'NO' SET @r_del = N'NO ACTION';
-                IF @r_upd = N'NO' SET @r_upd = N'NO ACTION';
-                SET @add_rcfk = N'ALTER TABLE [dbo].' + QUOTENAME(@rcfk_tbl) + N' ADD CONSTRAINT [' + @rcfk_name + N'] FOREIGN KEY ([' + @rcfk_col + N']) REFERENCES [dbo].[Role]([id]) ON DELETE ' + @r_del + N' ON UPDATE ' + @r_upd;
-                EXEC sp_executesql @add_rcfk;
+                DECLARE @del_action NVARCHAR(20) = REPLACE(@rcfk_del, N'_', N' ');
+                DECLARE @upd_action NVARCHAR(20) = REPLACE(@rcfk_upd, N'_', N' ');
+                IF @del_action = N'NO' SET @del_action = N'NO ACTION';
+                IF @upd_action = N'NO' SET @upd_action = N'NO ACTION';
+                SET @sql = N'ALTER TABLE [dbo].' + QUOTENAME(@rcfk_parent) + N' ADD CONSTRAINT ' + QUOTENAME(@rcfk_name) + N' FOREIGN KEY (' + @rcfk_cols + N') REFERENCES [dbo].[Role]([id]) ON DELETE ' + @del_action + N' ON UPDATE ' + @upd_action;
+                EXEC sp_executesql @sql;
             END
-            FETCH NEXT FROM rcfk_cur INTO @rcfk_name, @rcfk_tbl, @rcfk_col, @rcfk_del, @rcfk_upd;
+            FETCH NEXT FROM rcfk_cur INTO @rcfk_name, @rcfk_parent, @rcfk_cols, @rcfk_del, @rcfk_upd;
         END
-        CLOSE rcfk_cur;
-        DEALLOCATE rcfk_cur;
+        CLOSE rcfk_cur; DEALLOCATE rcfk_cur;
 
         DROP TABLE #rol_map;
         DROP TABLE #rol_fks;
         COMMIT TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13d-Role-id', N'OK', N'Migrated Role.id to ROL-001...');
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13d-Role-id', N'OK', N'Migrated Role.id to ROL-001+');
         PRINT N'  13d-Role-id: OK';
     END TRY
     BEGIN CATCH
         SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
         IF OBJECT_ID('tempdb..#rol_map','U') IS NOT NULL DROP TABLE #rol_map;
         IF OBJECT_ID('tempdb..#rol_fks','U') IS NOT NULL DROP TABLE #rol_fks;
-        IF XACT_STATE() <> 0 ROLLBACK TRAN;
         INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13d-Role-id', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
         PRINT N'  13d-Role-id: FAILED - ' + @eMsg;
     END CATCH
@@ -456,6 +503,10 @@ GO
 
 -- ============================================================================
 -- STEP 13e: User.id -> USR-0001
+-- P1: Dynamic scan of EVERY NVARCHAR column in every table. Updates all
+-- columns that hold old User ids (userId, postedById, deletedById,
+-- reversedById, approvedBy, createdById, assignedTo, etc.).
+-- Final check: no column still holds an old User id (RAISERROR on failure).
 -- ============================================================================
 USE GymDB;
 GO
@@ -470,147 +521,176 @@ IF OBJECT_ID('dbo.[User]','U') IS NOT NULL
 BEGIN
     BEGIN TRY
         BEGIN TRAN;
-        IF OBJECT_ID('tempdb..#usr_map', 'U') IS NOT NULL DROP TABLE #usr_map;
+
+        DECLARE @usr_max INT = 0;
+        SELECT @usr_max = MAX(CAST(SUBSTRING([id], 5, 20) AS INT))
+        FROM dbo.[User]
+        WHERE [id] LIKE N'USR-%' AND SUBSTRING([id], 5, 20) NOT LIKE N'%[^0-9]%';
+        IF @usr_max IS NULL SET @usr_max = 0;
+
+        -- Build User id mapping in a temp table (visible inside sp_executesql)
+        IF OBJECT_ID('tempdb..#usr_map','U') IS NOT NULL DROP TABLE #usr_map;
         CREATE TABLE #usr_map (old_id NVARCHAR(50), new_id NVARCHAR(50), tmp_id NVARCHAR(50));
         INSERT INTO #usr_map (old_id, new_id, tmp_id)
         SELECT [id],
-               N'USR-' + RIGHT(N'000' + CAST(ROW_NUMBER() OVER (ORDER BY [createdAt], [username]) AS NVARCHAR(10)), 4),
-               N'tmp_USR_' + RIGHT(N'000' + CAST(ROW_NUMBER() OVER (ORDER BY [createdAt], [username]) AS NVARCHAR(10)), 4)
+               N'USR-' + RIGHT(N'000' + CAST(@usr_max + ROW_NUMBER() OVER (ORDER BY [createdAt], [username]) AS NVARCHAR(10)), 4),
+               N'tmp_USR_' + RIGHT(N'000' + CAST(@usr_max + ROW_NUMBER() OVER (ORDER BY [createdAt], [username]) AS NVARCHAR(10)), 4)
         FROM dbo.[User] WHERE [id] NOT LIKE N'USR-%';
 
-        -- Drop FKs referencing User
-        IF OBJECT_ID('tempdb..#usr_fks', 'U') IS NOT NULL DROP TABLE #usr_fks;
-        CREATE TABLE #usr_fks (fk_name NVARCHAR(256), parent_table NVARCHAR(128), parent_col NVARCHAR(128), on_delete NVARCHAR(20), on_update NVARCHAR(20));
-        INSERT INTO #usr_fks (fk_name, parent_table, parent_col, on_delete, on_update)
-        SELECT fk.name, OBJECT_NAME(fk.parent_object_id), COL_NAME(fkc.parent_object_id, fkc.parent_column_id),
+        -- Discover FKs referencing [User]
+        IF OBJECT_ID('tempdb..#usr_fks','U') IS NOT NULL DROP TABLE #usr_fks;
+        CREATE TABLE #usr_fks (fk_name NVARCHAR(256), parent_table NVARCHAR(128), parent_cols NVARCHAR(MAX), on_delete NVARCHAR(20), on_update NVARCHAR(20));
+        INSERT INTO #usr_fks (fk_name, parent_table, parent_cols, on_delete, on_update)
+        SELECT fk.name, OBJECT_NAME(fk.parent_object_id),
+               STUFF((SELECT N',[' + COL_NAME(fkc2.parent_object_id, fkc2.parent_column_id) + N']'
+                      FROM sys.foreign_key_columns fkc2 WHERE fkc2.constraint_object_id = fk.object_id
+                      ORDER BY fkc2.constraint_column_id FOR XML PATH(''), TYPE).value('.', 'NVARCHAR(MAX)'), 1, 1, N''),
                fk.delete_referential_action_desc, fk.update_referential_action_desc
-        FROM sys.foreign_keys fk
-        JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
-        WHERE fk.referenced_object_id = OBJECT_ID('dbo.[User]');
+        FROM sys.foreign_keys fk WHERE fk.referenced_object_id = OBJECT_ID('dbo.[User]');
 
-        DECLARE @ufk_name NVARCHAR(256), @ufk_parent NVARCHAR(128);
-        DECLARE @drop_ufk NVARCHAR(MAX);
-        DECLARE ufk_cur CURSOR LOCAL FAST_FORWARD FOR SELECT DISTINCT fk_name, parent_table FROM #usr_fks;
-        OPEN ufk_cur;
-        FETCH NEXT FROM ufk_cur INTO @ufk_name, @ufk_parent;
+        -- Drop FKs
+        DECLARE @fk_name NVARCHAR(256), @fk_parent NVARCHAR(128), @sql NVARCHAR(MAX);
+        DECLARE fk_cur CURSOR LOCAL FAST_FORWARD FOR SELECT DISTINCT fk_name, parent_table FROM #usr_fks;
+        OPEN fk_cur; FETCH NEXT FROM fk_cur INTO @fk_name, @fk_parent;
         WHILE @@FETCH_STATUS = 0
         BEGIN
-            IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @ufk_name)
+            IF EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @fk_name)
             BEGIN
-                SET @drop_ufk = N'ALTER TABLE [dbo].' + QUOTENAME(@ufk_parent) + N' DROP CONSTRAINT [' + @ufk_name + N']';
-                EXEC sp_executesql @drop_ufk;
+                SET @sql = N'ALTER TABLE [dbo].' + QUOTENAME(@fk_parent) + N' DROP CONSTRAINT ' + QUOTENAME(@fk_name);
+                EXEC sp_executesql @sql;
             END
-            FETCH NEXT FROM ufk_cur INTO @ufk_name, @ufk_parent;
+            FETCH NEXT FROM fk_cur INTO @fk_name, @fk_parent;
         END
-        CLOSE ufk_cur;
-        DEALLOCATE ufk_cur;
+        CLOSE fk_cur; DEALLOCATE fk_cur;
 
         -- Drop PK
         DECLARE @usr_pk NVARCHAR(256);
-        SELECT @usr_pk = name FROM sys.key_constraints WHERE type=N'PK' AND parent_object_id=OBJECT_ID('dbo.[User]');
+        SELECT @usr_pk = name FROM sys.key_constraints WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.[User]');
         IF @usr_pk IS NOT NULL
         BEGIN
-            DECLARE @drop_usrpk NVARCHAR(MAX) = N'ALTER TABLE [dbo].[User] DROP CONSTRAINT [' + @usr_pk + N']';
-            EXEC sp_executesql @drop_usrpk;
+            SET @sql = N'ALTER TABLE [dbo].[User] DROP CONSTRAINT ' + QUOTENAME(@usr_pk);
+            EXEC sp_executesql @sql;
         END
         ELSE SET @usr_pk = N'User_pkey';
 
-        -- Two-phase update User
+        -- Two-phase update [User].id
         UPDATE u SET u.[id] = m.tmp_id FROM dbo.[User] u JOIN #usr_map m ON u.[id] = m.old_id;
         UPDATE u SET u.[id] = m.new_id FROM dbo.[User] u JOIN #usr_map m ON u.[id] = m.tmp_id;
 
-        -- Update all referencing columns
-        IF COL_LENGTH('dbo.AuditLog','userId') IS NOT NULL
-            UPDATE a SET a.[userId] = m.new_id FROM dbo.AuditLog a JOIN #usr_map m ON a.[userId] = m.old_id WHERE a.[userId] IS NOT NULL;
-        IF COL_LENGTH('dbo.Session','userId') IS NOT NULL
-            UPDATE s SET s.[userId] = m.new_id FROM dbo.Session s JOIN #usr_map m ON s.[userId] = m.old_id;
-        IF COL_LENGTH('dbo.UserPermission','userId') IS NOT NULL
-            UPDATE up SET up.[userId] = m.new_id FROM dbo.UserPermission up JOIN #usr_map m ON up.[userId] = m.old_id;
-        -- Voucher postedById columns (no FK, just string reference)
-        IF COL_LENGTH('dbo.CashBook','postedById') IS NOT NULL
-            UPDATE v SET v.[postedById] = m.new_id FROM dbo.CashBook v JOIN #usr_map m ON v.[postedById] = m.old_id WHERE v.[postedById] IS NOT NULL;
-        IF COL_LENGTH('dbo.BankBook','postedById') IS NOT NULL
-            UPDATE v SET v.[postedById] = m.new_id FROM dbo.BankBook v JOIN #usr_map m ON v.[postedById] = m.old_id WHERE v.[postedById] IS NOT NULL;
-        IF COL_LENGTH('dbo.JV','postedById') IS NOT NULL
-            UPDATE v SET v.[postedById] = m.new_id FROM dbo.JV v JOIN #usr_map m ON v.[postedById] = m.old_id WHERE v.[postedById] IS NOT NULL;
-        IF COL_LENGTH('dbo.OpenTB','postedById') IS NOT NULL
-            UPDATE v SET v.[postedById] = m.new_id FROM dbo.OpenTB v JOIN #usr_map m ON v.[postedById] = m.old_id WHERE v.[postedById] IS NOT NULL;
-        -- Voucher deletedById
-        IF COL_LENGTH('dbo.CashBook','deletedById') IS NOT NULL
-            UPDATE v SET v.[deletedById] = m.new_id FROM dbo.CashBook v JOIN #usr_map m ON v.[deletedById] = m.old_id WHERE v.[deletedById] IS NOT NULL;
-        IF COL_LENGTH('dbo.BankBook','deletedById') IS NOT NULL
-            UPDATE v SET v.[deletedById] = m.new_id FROM dbo.BankBook v JOIN #usr_map m ON v.[deletedById] = m.old_id WHERE v.[deletedById] IS NOT NULL;
-        IF COL_LENGTH('dbo.JV','deletedById') IS NOT NULL
-            UPDATE v SET v.[deletedById] = m.new_id FROM dbo.JV v JOIN #usr_map m ON v.[deletedById] = m.old_id WHERE v.[deletedById] IS NOT NULL;
-        IF COL_LENGTH('dbo.OpenTB','deletedById') IS NOT NULL
-            UPDATE v SET v.[deletedById] = m.new_id FROM dbo.OpenTB v JOIN #usr_map m ON v.[deletedById] = m.old_id WHERE v.[deletedById] IS NOT NULL;
-        -- Voucher reversedById
-        IF COL_LENGTH('dbo.CashBook','reversedById') IS NOT NULL
-            UPDATE v SET v.[reversedById] = m.new_id FROM dbo.CashBook v JOIN #usr_map m ON v.[reversedById] = m.old_id WHERE v.[reversedById] IS NOT NULL;
-        IF COL_LENGTH('dbo.BankBook','reversedById') IS NOT NULL
-            UPDATE v SET v.[reversedById] = m.new_id FROM dbo.BankBook v JOIN #usr_map m ON v.[reversedById] = m.old_id WHERE v.[reversedById] IS NOT NULL;
-        IF COL_LENGTH('dbo.JV','reversedById') IS NOT NULL
-            UPDATE v SET v.[reversedById] = m.new_id FROM dbo.JV v JOIN #usr_map m ON v.[reversedById] = m.old_id WHERE v.[reversedById] IS NOT NULL;
-        IF COL_LENGTH('dbo.OpenTB','reversedById') IS NOT NULL
-            UPDATE v SET v.[reversedById] = m.new_id FROM dbo.OpenTB v JOIN #usr_map m ON v.[reversedById] = m.old_id WHERE v.[reversedById] IS NOT NULL;
-        -- Leave.approvedBy (string, no FK)
-        IF COL_LENGTH('dbo.Leave','approvedBy') IS NOT NULL
-            UPDATE l SET l.[approvedBy] = m.new_id FROM dbo.Leave l JOIN #usr_map m ON l.[approvedBy] = m.old_id WHERE l.[approvedBy] IS NOT NULL;
-        -- Overtime.approvedBy
-        IF COL_LENGTH('dbo.Overtime','approvedBy') IS NOT NULL
-            UPDATE o SET o.[approvedBy] = m.new_id FROM dbo.Overtime o JOIN #usr_map m ON o.[approvedBy] = m.old_id WHERE o.[approvedBy] IS NOT NULL;
-        -- KnockOff.createdById
-        IF COL_LENGTH('dbo.KnockOff','createdById') IS NOT NULL
-            UPDATE k SET k.[createdById] = m.new_id FROM dbo.KnockOff k JOIN #usr_map m ON k.[createdById] = m.old_id WHERE k.[createdById] IS NOT NULL;
+        -- P1: Dynamic scan — update EVERY NVARCHAR/VARCHAR/NCHAR/CHAR column
+        -- in every dbo table (except [User] and _UpgradeLog) that holds old User ids.
+        -- This catches userId, postedById, deletedById, reversedById, approvedBy,
+        -- createdById, assignedTo, and any other column referencing User.id.
+        IF OBJECT_ID('tempdb..#usr_cols','U') IS NOT NULL DROP TABLE #usr_cols;
+        CREATE TABLE #usr_cols (table_name NVARCHAR(128), column_name NVARCHAR(128), row_count INT);
+
+        DECLARE @col_table NVARCHAR(128), @col_column NVARCHAR(128);
+        DECLARE @check_sql NVARCHAR(MAX), @affected INT;
+        DECLARE col_cur CURSOR LOCAL FAST_FORWARD FOR
+            SELECT t.name, c.name
+            FROM sys.columns c
+            JOIN sys.tables t ON c.object_id = t.object_id
+            WHERE c.user_type_id IN (TYPE_ID(N'nvarchar'), TYPE_ID(N'varchar'), TYPE_ID(N'nchar'), TYPE_ID(N'char'))
+              AND c.is_computed = 0
+              AND t.schema_id = SCHEMA_ID(N'dbo')
+              AND t.name NOT IN (N'User', N'_UpgradeLog');
+        OPEN col_cur;
+        FETCH NEXT FROM col_cur INTO @col_table, @col_column;
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+            -- Check if any value in this column matches an old User id in #usr_map
+            SET @check_sql = N'SELECT @aff = COUNT(*) FROM [dbo].' + QUOTENAME(@col_table) + N' t INNER JOIN #usr_map m ON t.' + QUOTENAME(@col_column) + N' = m.old_id';
+            SET @affected = 0;
+            EXEC sp_executesql @check_sql, N'@aff INT OUTPUT', @aff = @affected OUTPUT;
+            IF @affected > 0
+            BEGIN
+                INSERT INTO #usr_cols VALUES (@col_table, @col_column, @affected);
+                -- Update this column
+                SET @check_sql = N'UPDATE t SET t.' + QUOTENAME(@col_column) + N' = m.new_id FROM [dbo].' + QUOTENAME(@col_table) + N' t INNER JOIN #usr_map m ON t.' + QUOTENAME(@col_column) + N' = m.old_id WHERE t.' + QUOTENAME(@col_column) + N' IS NOT NULL';
+                EXEC sp_executesql @check_sql;
+            END
+            FETCH NEXT FROM col_cur INTO @col_table, @col_column;
+        END
+        CLOSE col_cur;
+        DEALLOCATE col_cur;
+
+        -- Log which columns were updated
+        DECLARE @col_list NVARCHAR(MAX) = N'';
+        SELECT @col_list = @col_list + table_name + N'.' + column_name + N' (' + CAST(row_count AS NVARCHAR(10)) + N'); ' FROM #usr_cols ORDER BY table_name, column_name;
 
         -- ALTER COLUMN NOT NULL + recreate PK
         ALTER TABLE [dbo].[User] ALTER COLUMN [id] NVARCHAR(50) NOT NULL;
-        IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE type=N'PK' AND parent_object_id=OBJECT_ID('dbo.[User]'))
+        IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.[User]'))
         BEGIN
-            DECLARE @add_usrpk NVARCHAR(MAX) = N'ALTER TABLE [dbo].[User] ADD CONSTRAINT [' + @usr_pk + N'] PRIMARY KEY CLUSTERED ([id])';
-            EXEC sp_executesql @add_usrpk;
+            SET @sql = N'ALTER TABLE [dbo].[User] ADD CONSTRAINT ' + QUOTENAME(@usr_pk) + N' PRIMARY KEY CLUSTERED ([id])';
+            EXEC sp_executesql @sql;
         END
 
-        -- Recreate FKs
-        DECLARE @ucfk_name NVARCHAR(256), @ucfk_tbl NVARCHAR(128), @ucfk_col NVARCHAR(128);
-        DECLARE @ucfk_del NVARCHAR(20), @ucfk_upd NVARCHAR(20);
-        DECLARE @add_ucfk NVARCHAR(MAX);
-        DECLARE ucfk_cur CURSOR LOCAL FAST_FORWARD FOR SELECT DISTINCT fk_name, parent_table, parent_col, on_delete, on_update FROM #usr_fks;
-        OPEN ucfk_cur;
-        FETCH NEXT FROM ucfk_cur INTO @ucfk_name, @ucfk_tbl, @ucfk_col, @ucfk_del, @ucfk_upd;
+        -- Recreate FKs (handle multi-column FKs)
+        DECLARE @rcfk_name NVARCHAR(256), @rcfk_parent NVARCHAR(128), @rcfk_cols NVARCHAR(MAX), @rcfk_del NVARCHAR(20), @rcfk_upd NVARCHAR(20);
+        DECLARE rcfk_cur CURSOR LOCAL FAST_FORWARD FOR SELECT DISTINCT fk_name, parent_table, parent_cols, on_delete, on_update FROM #usr_fks;
+        OPEN rcfk_cur; FETCH NEXT FROM rcfk_cur INTO @rcfk_name, @rcfk_parent, @rcfk_cols, @rcfk_del, @rcfk_upd;
         WHILE @@FETCH_STATUS = 0
         BEGIN
-            IF OBJECT_ID('dbo.' + QUOTENAME(@ucfk_tbl), 'U') IS NOT NULL
-               AND COL_LENGTH('dbo.' + QUOTENAME(@ucfk_tbl), @ucfk_col) IS NOT NULL
-               AND NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @ucfk_name)
+            IF OBJECT_ID(N'[dbo].' + QUOTENAME(@rcfk_parent), N'U') IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @rcfk_name)
             BEGIN
-                DECLARE @u_del NVARCHAR(20) = REPLACE(@ucfk_del, N'_', N' ');
-                DECLARE @u_upd NVARCHAR(20) = REPLACE(@ucfk_upd, N'_', N' ');
-                IF @u_del = N'NO' SET @u_del = N'NO ACTION';
-                IF @u_upd = N'NO' SET @u_upd = N'NO ACTION';
-                SET @add_ucfk = N'ALTER TABLE [dbo].' + QUOTENAME(@ucfk_tbl) + N' ADD CONSTRAINT [' + @ucfk_name + N'] FOREIGN KEY ([' + @ucfk_col + N']) REFERENCES [dbo].[User]([id]) ON DELETE ' + @u_del + N' ON UPDATE ' + @u_upd;
-                EXEC sp_executesql @add_ucfk;
+                DECLARE @del_action NVARCHAR(20) = REPLACE(@rcfk_del, N'_', N' ');
+                DECLARE @upd_action NVARCHAR(20) = REPLACE(@rcfk_upd, N'_', N' ');
+                IF @del_action = N'NO' SET @del_action = N'NO ACTION';
+                IF @upd_action = N'NO' SET @upd_action = N'NO ACTION';
+                SET @sql = N'ALTER TABLE [dbo].' + QUOTENAME(@rcfk_parent) + N' ADD CONSTRAINT ' + QUOTENAME(@rcfk_name) + N' FOREIGN KEY (' + @rcfk_cols + N') REFERENCES [dbo].[User]([id]) ON DELETE ' + @del_action + N' ON UPDATE ' + @upd_action;
+                EXEC sp_executesql @sql;
             END
-            FETCH NEXT FROM ucfk_cur INTO @ucfk_name, @ucfk_tbl, @ucfk_col, @ucfk_del, @ucfk_upd;
+            FETCH NEXT FROM rcfk_cur INTO @rcfk_name, @rcfk_parent, @rcfk_cols, @rcfk_del, @rcfk_upd;
         END
-        CLOSE ucfk_cur;
-        DEALLOCATE ucfk_cur;
+        CLOSE rcfk_cur; DEALLOCATE rcfk_cur;
 
         -- Delete all sessions (force re-login with new ids)
         IF OBJECT_ID('dbo.Session','U') IS NOT NULL
             DELETE FROM dbo.Session;
 
+        -- P1 final check: no column still holds an old User id
+        IF OBJECT_ID('tempdb..#usr_remaining','U') IS NOT NULL DROP TABLE #usr_remaining;
+        CREATE TABLE #usr_remaining (table_name NVARCHAR(128), column_name NVARCHAR(128));
+        DECLARE @rem_table NVARCHAR(128), @rem_column NVARCHAR(128), @rem_sql NVARCHAR(MAX);
+        DECLARE rem_cur CURSOR LOCAL FAST_FORWARD FOR
+            SELECT t.name, c.name FROM sys.columns c JOIN sys.tables t ON c.object_id = t.object_id
+            WHERE c.user_type_id IN (TYPE_ID(N'nvarchar'), TYPE_ID(N'varchar'), TYPE_ID(N'nchar'), TYPE_ID(N'char'))
+              AND c.is_computed = 0 AND t.schema_id = SCHEMA_ID(N'dbo')
+              AND t.name NOT IN (N'User', N'_UpgradeLog');
+        OPEN rem_cur; FETCH NEXT FROM rem_cur INTO @rem_table, @rem_column;
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+            SET @rem_sql = N'IF EXISTS (SELECT 1 FROM [dbo].' + QUOTENAME(@rem_table) + N' t INNER JOIN #usr_map m ON t.' + QUOTENAME(@rem_column) + N' = m.old_id) INSERT INTO #usr_remaining VALUES (@t, @c)';
+            EXEC sp_executesql @rem_sql, N'@t NVARCHAR(128), @c NVARCHAR(128)', @rem_table, @rem_column;
+            FETCH NEXT FROM rem_cur INTO @rem_table, @rem_column;
+        END
+        CLOSE rem_cur; DEALLOCATE rem_cur;
+
+        DECLARE @remaining_count INT = (SELECT COUNT(*) FROM #usr_remaining);
+        IF @remaining_count > 0
+        BEGIN
+            DECLARE @remaining_list NVARCHAR(MAX) = N'';
+            SELECT @remaining_list = @remaining_list + table_name + N'.' + column_name + N'; ' FROM #usr_remaining;
+            RAISERROR(N'Columns still holding old User ids: %s', 16, 1, @remaining_list);
+        END
+
         DROP TABLE #usr_map;
         DROP TABLE #usr_fks;
+        DROP TABLE #usr_cols;
+        DROP TABLE #usr_remaining;
         COMMIT TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13e-User-id', N'OK', N'Migrated User.id to USR-0001...; sessions cleared (force re-login)');
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13e-User-id', N'OK', N'Migrated User.id to USR-0001+; updated columns: ' + @col_list + N'; sessions cleared');
         PRINT N'  13e-User-id: OK - sessions cleared, all users must re-login';
     END TRY
     BEGIN CATCH
         SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
         IF OBJECT_ID('tempdb..#usr_map','U') IS NOT NULL DROP TABLE #usr_map;
         IF OBJECT_ID('tempdb..#usr_fks','U') IS NOT NULL DROP TABLE #usr_fks;
-        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        IF OBJECT_ID('tempdb..#usr_cols','U') IS NOT NULL DROP TABLE #usr_cols;
+        IF OBJECT_ID('tempdb..#usr_remaining','U') IS NOT NULL DROP TABLE #usr_remaining;
         INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13e-User-id', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
         PRINT N'  13e-User-id: FAILED - ' + @eMsg;
     END CATCH
@@ -641,34 +721,47 @@ IF OBJECT_ID('dbo.ScreenPermission','U') IS NOT NULL
 BEGIN
     BEGIN TRY
         BEGIN TRAN;
-        IF OBJECT_ID('tempdb..#scp_map', 'U') IS NOT NULL DROP TABLE #scp_map;
+        DECLARE @scp_max INT = 0;
+        SELECT @scp_max = MAX(CAST(SUBSTRING([id], 5, 20) AS INT))
+        FROM dbo.ScreenPermission WHERE [id] LIKE N'SCP-%' AND SUBSTRING([id], 5, 20) NOT LIKE N'%[^0-9]%';
+        IF @scp_max IS NULL SET @scp_max = 0;
+
+        IF OBJECT_ID('tempdb..#scp_map','U') IS NOT NULL DROP TABLE #scp_map;
         CREATE TABLE #scp_map (old_id NVARCHAR(50), new_id NVARCHAR(50), tmp_id NVARCHAR(50));
         INSERT INTO #scp_map (old_id, new_id, tmp_id)
-        SELECT [id], N'SCP-' + RIGHT(N'000' + CAST(ROW_NUMBER() OVER (ORDER BY [id]) AS NVARCHAR(10)), 4),
-               N'tmp_SCP_' + RIGHT(N'000' + CAST(ROW_NUMBER() OVER (ORDER BY [id]) AS NVARCHAR(10)), 4)
+        SELECT [id],
+               N'SCP-' + RIGHT(N'000' + CAST(@scp_max + ROW_NUMBER() OVER (ORDER BY [id]) AS NVARCHAR(10)), 4),
+               N'tmp_SCP_' + RIGHT(N'000' + CAST(@scp_max + ROW_NUMBER() OVER (ORDER BY [id]) AS NVARCHAR(10)), 4)
         FROM dbo.ScreenPermission WHERE [id] NOT LIKE N'SCP-%';
 
-        DECLARE @scp_pk NVARCHAR(256);
-        SELECT @scp_pk = name FROM sys.key_constraints WHERE type=N'PK' AND parent_object_id=OBJECT_ID('dbo.ScreenPermission');
-        IF @scp_pk IS NOT NULL EXEC sp_executesql N'ALTER TABLE [dbo].[ScreenPermission] DROP CONSTRAINT [' + @scp_pk + N']';
+        DECLARE @scp_pk NVARCHAR(256), @sql NVARCHAR(MAX);
+        SELECT @scp_pk = name FROM sys.key_constraints WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.ScreenPermission');
+        IF @scp_pk IS NOT NULL
+        BEGIN
+            SET @sql = N'ALTER TABLE [dbo].[ScreenPermission] DROP CONSTRAINT ' + QUOTENAME(@scp_pk);
+            EXEC sp_executesql @sql;
+        END
         ELSE SET @scp_pk = N'ScreenPermission_pkey';
 
         UPDATE sp SET sp.[id] = m.tmp_id FROM dbo.ScreenPermission sp JOIN #scp_map m ON sp.[id] = m.old_id;
         UPDATE sp SET sp.[id] = m.new_id FROM dbo.ScreenPermission sp JOIN #scp_map m ON sp.[id] = m.tmp_id;
 
         ALTER TABLE [dbo].[ScreenPermission] ALTER COLUMN [id] NVARCHAR(50) NOT NULL;
-        IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE type=N'PK' AND parent_object_id=OBJECT_ID('dbo.ScreenPermission'))
-            EXEC sp_executesql N'ALTER TABLE [dbo].[ScreenPermission] ADD CONSTRAINT [' + @scp_pk + N'] PRIMARY KEY CLUSTERED ([id])';
+        IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.ScreenPermission'))
+        BEGIN
+            SET @sql = N'ALTER TABLE [dbo].[ScreenPermission] ADD CONSTRAINT ' + QUOTENAME(@scp_pk) + N' PRIMARY KEY CLUSTERED ([id])';
+            EXEC sp_executesql @sql;
+        END
 
         DROP TABLE #scp_map;
         COMMIT TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-ScreenPermission-id', N'OK', N'Migrated to SCP-0001...');
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-ScreenPermission-id', N'OK', N'Migrated to SCP-0001+');
         PRINT N'  13f-ScreenPermission-id: OK';
     END TRY
     BEGIN CATCH
         SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
-        IF OBJECT_ID('tempdb..#scp_map','U') IS NOT NULL DROP TABLE #scp_map;
         IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        IF OBJECT_ID('tempdb..#scp_map','U') IS NOT NULL DROP TABLE #scp_map;
         INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-ScreenPermission-id', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
         PRINT N'  13f-ScreenPermission-id: FAILED - ' + @eMsg;
     END CATCH
@@ -694,34 +787,47 @@ IF OBJECT_ID('dbo.UserPermission','U') IS NOT NULL
 BEGIN
     BEGIN TRY
         BEGIN TRAN;
-        IF OBJECT_ID('tempdb..#upm_map', 'U') IS NOT NULL DROP TABLE #upm_map;
+        DECLARE @upm_max INT = 0;
+        SELECT @upm_max = MAX(CAST(SUBSTRING([id], 5, 20) AS INT))
+        FROM dbo.UserPermission WHERE [id] LIKE N'UPM-%' AND SUBSTRING([id], 5, 20) NOT LIKE N'%[^0-9]%';
+        IF @upm_max IS NULL SET @upm_max = 0;
+
+        IF OBJECT_ID('tempdb..#upm_map','U') IS NOT NULL DROP TABLE #upm_map;
         CREATE TABLE #upm_map (old_id NVARCHAR(50), new_id NVARCHAR(50), tmp_id NVARCHAR(50));
         INSERT INTO #upm_map (old_id, new_id, tmp_id)
-        SELECT [id], N'UPM-' + RIGHT(N'000' + CAST(ROW_NUMBER() OVER (ORDER BY [id]) AS NVARCHAR(10)), 4),
-               N'tmp_UPM_' + RIGHT(N'000' + CAST(ROW_NUMBER() OVER (ORDER BY [id]) AS NVARCHAR(10)), 4)
+        SELECT [id],
+               N'UPM-' + RIGHT(N'000' + CAST(@upm_max + ROW_NUMBER() OVER (ORDER BY [id]) AS NVARCHAR(10)), 4),
+               N'tmp_UPM_' + RIGHT(N'000' + CAST(@upm_max + ROW_NUMBER() OVER (ORDER BY [id]) AS NVARCHAR(10)), 4)
         FROM dbo.UserPermission WHERE [id] NOT LIKE N'UPM-%';
 
-        DECLARE @upm_pk NVARCHAR(256);
-        SELECT @upm_pk = name FROM sys.key_constraints WHERE type=N'PK' AND parent_object_id=OBJECT_ID('dbo.UserPermission');
-        IF @upm_pk IS NOT NULL EXEC sp_executesql N'ALTER TABLE [dbo].[UserPermission] DROP CONSTRAINT [' + @upm_pk + N']';
+        DECLARE @upm_pk NVARCHAR(256), @sql NVARCHAR(MAX);
+        SELECT @upm_pk = name FROM sys.key_constraints WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.UserPermission');
+        IF @upm_pk IS NOT NULL
+        BEGIN
+            SET @sql = N'ALTER TABLE [dbo].[UserPermission] DROP CONSTRAINT ' + QUOTENAME(@upm_pk);
+            EXEC sp_executesql @sql;
+        END
         ELSE SET @upm_pk = N'UserPermission_pkey';
 
         UPDATE up SET up.[id] = m.tmp_id FROM dbo.UserPermission up JOIN #upm_map m ON up.[id] = m.old_id;
         UPDATE up SET up.[id] = m.new_id FROM dbo.UserPermission up JOIN #upm_map m ON up.[id] = m.tmp_id;
 
         ALTER TABLE [dbo].[UserPermission] ALTER COLUMN [id] NVARCHAR(50) NOT NULL;
-        IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE type=N'PK' AND parent_object_id=OBJECT_ID('dbo.UserPermission'))
-            EXEC sp_executesql N'ALTER TABLE [dbo].[UserPermission] ADD CONSTRAINT [' + @upm_pk + N'] PRIMARY KEY CLUSTERED ([id])';
+        IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.UserPermission'))
+        BEGIN
+            SET @sql = N'ALTER TABLE [dbo].[UserPermission] ADD CONSTRAINT ' + QUOTENAME(@upm_pk) + N' PRIMARY KEY CLUSTERED ([id])';
+            EXEC sp_executesql @sql;
+        END
 
         DROP TABLE #upm_map;
         COMMIT TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-UserPermission-id', N'OK', N'Migrated to UPM-0001...');
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-UserPermission-id', N'OK', N'Migrated to UPM-0001+');
         PRINT N'  13f-UserPermission-id: OK';
     END TRY
     BEGIN CATCH
         SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
-        IF OBJECT_ID('tempdb..#upm_map','U') IS NOT NULL DROP TABLE #upm_map;
         IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        IF OBJECT_ID('tempdb..#upm_map','U') IS NOT NULL DROP TABLE #upm_map;
         INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-UserPermission-id', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
         PRINT N'  13f-UserPermission-id: FAILED - ' + @eMsg;
     END CATCH
@@ -747,34 +853,47 @@ IF OBJECT_ID('dbo.AccountMapping','U') IS NOT NULL
 BEGIN
     BEGIN TRY
         BEGIN TRAN;
-        IF OBJECT_ID('tempdb..#acm_map', 'U') IS NOT NULL DROP TABLE #acm_map;
+        DECLARE @acm_max INT = 0;
+        SELECT @acm_max = MAX(CAST(SUBSTRING([id], 5, 20) AS INT))
+        FROM dbo.AccountMapping WHERE [id] LIKE N'ACM-%' AND SUBSTRING([id], 5, 20) NOT LIKE N'%[^0-9]%';
+        IF @acm_max IS NULL SET @acm_max = 0;
+
+        IF OBJECT_ID('tempdb..#acm_map','U') IS NOT NULL DROP TABLE #acm_map;
         CREATE TABLE #acm_map (old_id NVARCHAR(50), new_id NVARCHAR(50), tmp_id NVARCHAR(50));
         INSERT INTO #acm_map (old_id, new_id, tmp_id)
-        SELECT [id], N'ACM-' + RIGHT(N'00' + CAST(ROW_NUMBER() OVER (ORDER BY [id]) AS NVARCHAR(10)), 3),
-               N'tmp_ACM_' + RIGHT(N'00' + CAST(ROW_NUMBER() OVER (ORDER BY [id]) AS NVARCHAR(10)), 3)
+        SELECT [id],
+               N'ACM-' + RIGHT(N'00' + CAST(@acm_max + ROW_NUMBER() OVER (ORDER BY [id]) AS NVARCHAR(10)), 3),
+               N'tmp_ACM_' + RIGHT(N'00' + CAST(@acm_max + ROW_NUMBER() OVER (ORDER BY [id]) AS NVARCHAR(10)), 3)
         FROM dbo.AccountMapping WHERE [id] NOT LIKE N'ACM-%';
 
-        DECLARE @acm_pk NVARCHAR(256);
-        SELECT @acm_pk = name FROM sys.key_constraints WHERE type=N'PK' AND parent_object_id=OBJECT_ID('dbo.AccountMapping');
-        IF @acm_pk IS NOT NULL EXEC sp_executesql N'ALTER TABLE [dbo].[AccountMapping] DROP CONSTRAINT [' + @acm_pk + N']';
+        DECLARE @acm_pk NVARCHAR(256), @sql NVARCHAR(MAX);
+        SELECT @acm_pk = name FROM sys.key_constraints WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.AccountMapping');
+        IF @acm_pk IS NOT NULL
+        BEGIN
+            SET @sql = N'ALTER TABLE [dbo].[AccountMapping] DROP CONSTRAINT ' + QUOTENAME(@acm_pk);
+            EXEC sp_executesql @sql;
+        END
         ELSE SET @acm_pk = N'AccountMapping_pkey';
 
         UPDATE am SET am.[id] = m.tmp_id FROM dbo.AccountMapping am JOIN #acm_map m ON am.[id] = m.old_id;
         UPDATE am SET am.[id] = m.new_id FROM dbo.AccountMapping am JOIN #acm_map m ON am.[id] = m.tmp_id;
 
         ALTER TABLE [dbo].[AccountMapping] ALTER COLUMN [id] NVARCHAR(50) NOT NULL;
-        IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE type=N'PK' AND parent_object_id=OBJECT_ID('dbo.AccountMapping'))
-            EXEC sp_executesql N'ALTER TABLE [dbo].[AccountMapping] ADD CONSTRAINT [' + @acm_pk + N'] PRIMARY KEY CLUSTERED ([id])';
+        IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.AccountMapping'))
+        BEGIN
+            SET @sql = N'ALTER TABLE [dbo].[AccountMapping] ADD CONSTRAINT ' + QUOTENAME(@acm_pk) + N' PRIMARY KEY CLUSTERED ([id])';
+            EXEC sp_executesql @sql;
+        END
 
         DROP TABLE #acm_map;
         COMMIT TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-AccountMapping-id', N'OK', N'Migrated to ACM-001...');
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-AccountMapping-id', N'OK', N'Migrated to ACM-001+');
         PRINT N'  13f-AccountMapping-id: OK';
     END TRY
     BEGIN CATCH
         SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
-        IF OBJECT_ID('tempdb..#acm_map','U') IS NOT NULL DROP TABLE #acm_map;
         IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        IF OBJECT_ID('tempdb..#acm_map','U') IS NOT NULL DROP TABLE #acm_map;
         INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-AccountMapping-id', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
         PRINT N'  13f-AccountMapping-id: FAILED - ' + @eMsg;
     END CATCH
@@ -800,34 +919,47 @@ IF OBJECT_ID('dbo.FinanceDefaults','U') IS NOT NULL
 BEGIN
     BEGIN TRY
         BEGIN TRAN;
-        IF OBJECT_ID('tempdb..#fdf_map', 'U') IS NOT NULL DROP TABLE #fdf_map;
+        DECLARE @fdf_max INT = 0;
+        SELECT @fdf_max = MAX(CAST(SUBSTRING([id], 5, 20) AS INT))
+        FROM dbo.FinanceDefaults WHERE [id] LIKE N'FDF-%' AND SUBSTRING([id], 5, 20) NOT LIKE N'%[^0-9]%';
+        IF @fdf_max IS NULL SET @fdf_max = 0;
+
+        IF OBJECT_ID('tempdb..#fdf_map','U') IS NOT NULL DROP TABLE #fdf_map;
         CREATE TABLE #fdf_map (old_id NVARCHAR(50), new_id NVARCHAR(50), tmp_id NVARCHAR(50));
         INSERT INTO #fdf_map (old_id, new_id, tmp_id)
-        SELECT [id], N'FDF-' + RIGHT(N'00' + CAST(ROW_NUMBER() OVER (ORDER BY [id]) AS NVARCHAR(10)), 3),
-               N'tmp_FDF_' + RIGHT(N'00' + CAST(ROW_NUMBER() OVER (ORDER BY [id]) AS NVARCHAR(10)), 3)
+        SELECT [id],
+               N'FDF-' + RIGHT(N'00' + CAST(@fdf_max + ROW_NUMBER() OVER (ORDER BY [id]) AS NVARCHAR(10)), 3),
+               N'tmp_FDF_' + RIGHT(N'00' + CAST(@fdf_max + ROW_NUMBER() OVER (ORDER BY [id]) AS NVARCHAR(10)), 3)
         FROM dbo.FinanceDefaults WHERE [id] NOT LIKE N'FDF-%';
 
-        DECLARE @fdf_pk NVARCHAR(256);
-        SELECT @fdf_pk = name FROM sys.key_constraints WHERE type=N'PK' AND parent_object_id=OBJECT_ID('dbo.FinanceDefaults');
-        IF @fdf_pk IS NOT NULL EXEC sp_executesql N'ALTER TABLE [dbo].[FinanceDefaults] DROP CONSTRAINT [' + @fdf_pk + N']';
+        DECLARE @fdf_pk NVARCHAR(256), @sql NVARCHAR(MAX);
+        SELECT @fdf_pk = name FROM sys.key_constraints WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.FinanceDefaults');
+        IF @fdf_pk IS NOT NULL
+        BEGIN
+            SET @sql = N'ALTER TABLE [dbo].[FinanceDefaults] DROP CONSTRAINT ' + QUOTENAME(@fdf_pk);
+            EXEC sp_executesql @sql;
+        END
         ELSE SET @fdf_pk = N'FinanceDefaults_pkey';
 
         UPDATE fd SET fd.[id] = m.tmp_id FROM dbo.FinanceDefaults fd JOIN #fdf_map m ON fd.[id] = m.old_id;
         UPDATE fd SET fd.[id] = m.new_id FROM dbo.FinanceDefaults fd JOIN #fdf_map m ON fd.[id] = m.tmp_id;
 
         ALTER TABLE [dbo].[FinanceDefaults] ALTER COLUMN [id] NVARCHAR(50) NOT NULL;
-        IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE type=N'PK' AND parent_object_id=OBJECT_ID('dbo.FinanceDefaults'))
-            EXEC sp_executesql N'ALTER TABLE [dbo].[FinanceDefaults] ADD CONSTRAINT [' + @fdf_pk + N'] PRIMARY KEY CLUSTERED ([id])';
+        IF NOT EXISTS (SELECT 1 FROM sys.key_constraints WHERE type = N'PK' AND parent_object_id = OBJECT_ID('dbo.FinanceDefaults'))
+        BEGIN
+            SET @sql = N'ALTER TABLE [dbo].[FinanceDefaults] ADD CONSTRAINT ' + QUOTENAME(@fdf_pk) + N' PRIMARY KEY CLUSTERED ([id])';
+            EXEC sp_executesql @sql;
+        END
 
         DROP TABLE #fdf_map;
         COMMIT TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-FinanceDefaults-id', N'OK', N'Migrated to FDF-001...');
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-FinanceDefaults-id', N'OK', N'Migrated to FDF-001+');
         PRINT N'  13f-FinanceDefaults-id: OK';
     END TRY
     BEGIN CATCH
         SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
-        IF OBJECT_ID('tempdb..#fdf_map','U') IS NOT NULL DROP TABLE #fdf_map;
         IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        IF OBJECT_ID('tempdb..#fdf_map','U') IS NOT NULL DROP TABLE #fdf_map;
         INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-FinanceDefaults-id', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
         PRINT N'  13f-FinanceDefaults-id: FAILED - ' + @eMsg;
     END CATCH
@@ -855,97 +987,35 @@ BEGIN
     BEGIN TRY
         BEGIN TRAN;
 
-        -- Allow unbalanced OTB (default 1 = ON, current behaviour)
         IF COL_LENGTH('dbo.FinanceDefaults','allowUnbalancedOTB') IS NULL
-        BEGIN
             ALTER TABLE dbo.FinanceDefaults ADD [allowUnbalancedOTB] BIT NOT NULL CONSTRAINT [FinanceDefaults_allowUnbalancedOTB_df] DEFAULT 1;
-            PRINT N'  13g: added allowUnbalancedOTB';
-        END
-
-        -- Allow back-dated voucher entry (default 1 = ON)
         IF COL_LENGTH('dbo.FinanceDefaults','allowBackDatedVouchers') IS NULL
-        BEGIN
             ALTER TABLE dbo.FinanceDefaults ADD [allowBackDatedVouchers] BIT NOT NULL CONSTRAINT [FinanceDefaults_allowBackDatedVouchers_df] DEFAULT 1;
-            PRINT N'  13g: added allowBackDatedVouchers';
-        END
-
-        -- Lock-before date (nullable; if set, vouchers before this date cannot be posted)
         IF COL_LENGTH('dbo.FinanceDefaults','lockBeforeDate') IS NULL
-        BEGIN
             ALTER TABLE dbo.FinanceDefaults ADD [lockBeforeDate] DATETIME2;
-            PRINT N'  13g: added lockBeforeDate';
-        END
-
-        -- Voucher approval required (default 0 = OFF, current behaviour)
         IF COL_LENGTH('dbo.FinanceDefaults','voucherApprovalRequired') IS NULL
-        BEGIN
             ALTER TABLE dbo.FinanceDefaults ADD [voucherApprovalRequired] BIT NOT NULL CONSTRAINT [FinanceDefaults_voucherApprovalRequired_df] DEFAULT 0;
-            PRINT N'  13g: added voucherApprovalRequired';
-        END
-
-        -- Allow editing posted vouchers (default 1 = ON, current behaviour)
         IF COL_LENGTH('dbo.FinanceDefaults','allowEditPostedVouchers') IS NULL
-        BEGIN
             ALTER TABLE dbo.FinanceDefaults ADD [allowEditPostedVouchers] BIT NOT NULL CONSTRAINT [FinanceDefaults_allowEditPostedVouchers_df] DEFAULT 1;
-            PRINT N'  13g: added allowEditPostedVouchers';
-        END
-
-        -- Default currency (nullable)
         IF COL_LENGTH('dbo.FinanceDefaults','defaultCurrency') IS NULL
-        BEGIN
             ALTER TABLE dbo.FinanceDefaults ADD [defaultCurrency] NVARCHAR(50);
-            PRINT N'  13g: added defaultCurrency';
-        END
-
-        -- Decimal places (default 2)
         IF COL_LENGTH('dbo.FinanceDefaults','decimalPlaces') IS NULL
-        BEGIN
             ALTER TABLE dbo.FinanceDefaults ADD [decimalPlaces] INT NOT NULL CONSTRAINT [FinanceDefaults_decimalPlaces_df] DEFAULT 2;
-            PRINT N'  13g: added decimalPlaces';
-        END
-
-        -- Default payment mode for cash vouchers (nullable)
         IF COL_LENGTH('dbo.FinanceDefaults','defaultCashPaymentMode') IS NULL
-        BEGIN
             ALTER TABLE dbo.FinanceDefaults ADD [defaultCashPaymentMode] NVARCHAR(50);
-            PRINT N'  13g: added defaultCashPaymentMode';
-        END
-
-        -- Default payment mode for bank vouchers (nullable)
         IF COL_LENGTH('dbo.FinanceDefaults','defaultBankPaymentMode') IS NULL
-        BEGIN
             ALTER TABLE dbo.FinanceDefaults ADD [defaultBankPaymentMode] NVARCHAR(50);
-            PRINT N'  13g: added defaultBankPaymentMode';
-        END
-
-        -- Allow negative cash balance (default 0 = OFF)
         IF COL_LENGTH('dbo.FinanceDefaults','allowNegativeCash') IS NULL
-        BEGIN
             ALTER TABLE dbo.FinanceDefaults ADD [allowNegativeCash] BIT NOT NULL CONSTRAINT [FinanceDefaults_allowNegativeCash_df] DEFAULT 0;
-            PRINT N'  13g: added allowNegativeCash';
-        END
-
-        -- Auto-post fee/POS receipts (default 1 = ON, current behaviour)
         IF COL_LENGTH('dbo.FinanceDefaults','autoPostReceipts') IS NULL
-        BEGIN
             ALTER TABLE dbo.FinanceDefaults ADD [autoPostReceipts] BIT NOT NULL CONSTRAINT [FinanceDefaults_autoPostReceipts_df] DEFAULT 1;
-            PRINT N'  13g: added autoPostReceipts';
-        END
-
-        -- Fiscal year start/end (nullable; for display purposes)
         IF COL_LENGTH('dbo.FinanceDefaults','fiscalYearStart') IS NULL
-        BEGIN
             ALTER TABLE dbo.FinanceDefaults ADD [fiscalYearStart] DATETIME2;
-            PRINT N'  13g: added fiscalYearStart';
-        END
         IF COL_LENGTH('dbo.FinanceDefaults','fiscalYearEnd') IS NULL
-        BEGIN
             ALTER TABLE dbo.FinanceDefaults ADD [fiscalYearEnd] DATETIME2;
-            PRINT N'  13g: added fiscalYearEnd';
-        END
 
         COMMIT TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13g-FinanceDefaults-columns', N'OK', N'Added expanded finance settings columns');
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13g-FinanceDefaults-columns', N'OK', N'All 12 expanded finance columns present');
         PRINT N'  13g-FinanceDefaults-columns: OK';
     END TRY
     BEGIN CATCH
@@ -958,7 +1028,53 @@ END
 GO
 
 -- ============================================================================
--- STEP 13h: Update IdSequence for migrated ids
+-- STEP 13h: Seed a company-wide FinanceDefaults row (branchId NULL) if none exists
+-- ============================================================================
+USE GymDB;
+GO
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+SET QUOTED_IDENTIFIER ON;
+
+DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
+
+IF OBJECT_ID('dbo.FinanceDefaults','U') IS NOT NULL
+BEGIN
+    BEGIN TRY
+        BEGIN TRAN;
+        IF NOT EXISTS (SELECT 1 FROM dbo.FinanceDefaults WHERE [branchId] IS NULL)
+        BEGIN
+            DECLARE @fdf_new_id NVARCHAR(50) = N'FDF-001';
+            -- Ensure FDF-001 is not already taken
+            IF EXISTS (SELECT 1 FROM dbo.FinanceDefaults WHERE [id] = N'FDF-001')
+            BEGIN
+                DECLARE @fdf_next INT = 0;
+                SELECT @fdf_next = MAX(CAST(SUBSTRING([id], 5, 20) AS INT))
+                FROM dbo.FinanceDefaults WHERE [id] LIKE N'FDF-%' AND SUBSTRING([id], 5, 20) NOT LIKE N'%[^0-9]%';
+                SET @fdf_new_id = N'FDF-' + RIGHT(N'00' + CAST(@fdf_next + 1 AS NVARCHAR(10)), 3);
+            END
+            INSERT INTO dbo.FinanceDefaults ([id], [branchId], [allowUnbalancedOTB], [allowBackDatedVouchers],
+                [voucherApprovalRequired], [allowEditPostedVouchers], [decimalPlaces], [allowNegativeCash],
+                [autoPostReceipts], [createdAt], [updatedAt])
+            VALUES (@fdf_new_id, NULL, 1, 1, 0, 1, 2, 0, 1, SYSDATETIME(), SYSDATETIME());
+            PRINT N'  13h: created company-wide FinanceDefaults row (' + @fdf_new_id + N')';
+        END
+        COMMIT TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13h-FinanceDefaults-seed', N'OK', N'Company-wide FinanceDefaults row exists');
+        PRINT N'  13h-FinanceDefaults-seed: OK';
+    END TRY
+    BEGIN CATCH
+        SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+        IF XACT_STATE() <> 0 ROLLBACK TRAN;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13h-FinanceDefaults-seed', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  13h-FinanceDefaults-seed: FAILED - ' + @eMsg;
+    END CATCH
+END
+GO
+
+-- ============================================================================
+-- STEP 13i: Sync IdSequence rows — next = max(numeric suffix) + 1
+-- P3: for ALL keys, both INSERT and UPDATE branches. Never decreases.
 -- ============================================================================
 USE GymDB;
 GO
@@ -973,59 +1089,61 @@ BEGIN
     BEGIN TRY
         BEGIN TRAN;
 
-        -- USER sequence
-        IF NOT EXISTS (SELECT 1 FROM dbo.IdSequence WHERE [key] = N'USER')
-            INSERT INTO dbo.IdSequence ([key], [next], [updatedAt]) VALUES (N'USER', 2, SYSDATETIME());
-        ELSE
-            UPDATE dbo.IdSequence SET [next] = (SELECT COUNT(*) FROM dbo.[User]) + 1, [updatedAt] = SYSDATETIME() WHERE [key] = N'USER' AND [next] <= (SELECT COUNT(*) FROM dbo.[User]);
+        -- Helper: for each (key, table, prefix), compute max suffix and sync
+        DECLARE @key NVARCHAR(50), @tbl NVARCHAR(128), @prefix NVARCHAR(20), @width INT;
+        DECLARE @maxSuffix INT, @desired INT, @cur INT;
 
-        -- PERMISSION sequence
-        IF NOT EXISTS (SELECT 1 FROM dbo.IdSequence WHERE [key] = N'PERMISSION')
-            INSERT INTO dbo.IdSequence ([key], [next], [updatedAt]) VALUES (N'PERMISSION', 2, SYSDATETIME());
-        ELSE
-            UPDATE dbo.IdSequence SET [next] = (SELECT COUNT(*) FROM dbo.Permission) + 1, [updatedAt] = SYSDATETIME() WHERE [key] = N'PERMISSION' AND [next] <= (SELECT COUNT(*) FROM dbo.Permission);
+        -- We use a table variable to drive the loop
+        DECLARE @keys TABLE ([key] NVARCHAR(50), tbl NVARCHAR(128), prefix NVARCHAR(20), width INT);
+        INSERT INTO @keys VALUES
+            (N'USER',            N'[User]',            N'USR-', 4),
+            (N'PERMISSION',      N'[Permission]',      N'PRM-', 4),
+            (N'ROLE',            N'[Role]',            N'ROL-', 3),
+            (N'TAXHEAD',         N'[TaxHead]',         N'TAX-', 3),
+            (N'SCREENPERMISSION',N'[ScreenPermission]',N'SCP-', 4),
+            (N'USERPERMISSION',  N'[UserPermission]',  N'UPM-', 4),
+            (N'ACCOUNTMAPPING',  N'[AccountMapping]',  N'ACM-', 3),
+            (N'FINANCEDEFAULTS', N'[FinanceDefaults]', N'FDF-', 3),
+            (N'DEFAULTS',        N'[Defaults]',        N'CMP-', 3);
 
-        -- ROLE sequence
-        IF NOT EXISTS (SELECT 1 FROM dbo.IdSequence WHERE [key] = N'ROLE')
-            INSERT INTO dbo.IdSequence ([key], [next], [updatedAt]) VALUES (N'ROLE', 2, SYSDATETIME());
-        ELSE
-            UPDATE dbo.IdSequence SET [next] = (SELECT COUNT(*) FROM dbo.Role) + 1, [updatedAt] = SYSDATETIME() WHERE [key] = N'ROLE' AND [next] <= (SELECT COUNT(*) FROM dbo.Role);
+        DECLARE k_cur CURSOR LOCAL FAST_FORWARD FOR SELECT [key], tbl, prefix, width FROM @keys;
+        OPEN k_cur;
+        FETCH NEXT FROM k_cur INTO @key, @tbl, @prefix, @width;
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+            -- Compute max numeric suffix from the actual table rows
+            DECLARE @dyn NVARCHAR(MAX) = N'SELECT @ms = MAX(CAST(SUBSTRING([id], ' + CAST(LEN(@prefix) + 1 AS NVARCHAR(10)) + N', 20) AS INT)) FROM dbo.' + @tbl + N' WHERE [id] LIKE @pfx AND SUBSTRING([id], ' + CAST(LEN(@prefix) + 1 AS NVARCHAR(10)) + N', 20) NOT LIKE N''%[^0-9]%''';
+            SET @maxSuffix = 0;
+            EXEC sp_executesql @dyn, N'@ms INT OUTPUT, @pfx NVARCHAR(20)', @ms = @maxSuffix OUTPUT, @pfx = @prefix + N'%';
+            IF @maxSuffix IS NULL SET @maxSuffix = 0;
+            SET @desired = @maxSuffix + 1;
 
-        -- TAXHEAD sequence
-        IF NOT EXISTS (SELECT 1 FROM dbo.IdSequence WHERE [key] = N'TAXHEAD')
-            INSERT INTO dbo.IdSequence ([key], [next], [updatedAt]) VALUES (N'TAXHEAD', 2, SYSDATETIME());
-        ELSE
-            UPDATE dbo.IdSequence SET [next] = (SELECT COUNT(*) FROM dbo.TaxHead) + 1, [updatedAt] = SYSDATETIME() WHERE [key] = N'TAXHEAD' AND [next] <= (SELECT COUNT(*) FROM dbo.TaxHead);
+            IF NOT EXISTS (SELECT 1 FROM dbo.IdSequence WHERE [key] = @key)
+            BEGIN
+                INSERT INTO dbo.IdSequence ([key], [next], [updatedAt]) VALUES (@key, @desired, SYSDATETIME());
+            END
+            ELSE
+            BEGIN
+                SELECT @cur = [next] FROM dbo.IdSequence WHERE [key] = @key;
+                -- P3: next = max + 1, but never decrease (avoid re-issuing reserved ids)
+                IF @cur < @desired
+                    UPDATE dbo.IdSequence SET [next] = @desired, [updatedAt] = SYSDATETIME() WHERE [key] = @key;
+            END
 
-        -- SCREENPERMISSION sequence
-        IF NOT EXISTS (SELECT 1 FROM dbo.IdSequence WHERE [key] = N'SCREENPERMISSION')
-            INSERT INTO dbo.IdSequence ([key], [next], [updatedAt]) VALUES (N'SCREENPERMISSION', 2, SYSDATETIME());
-
-        -- USERPERMISSION sequence
-        IF NOT EXISTS (SELECT 1 FROM dbo.IdSequence WHERE [key] = N'USERPERMISSION')
-            INSERT INTO dbo.IdSequence ([key], [next], [updatedAt]) VALUES (N'USERPERMISSION', 2, SYSDATETIME());
-
-        -- ACCOUNTMAPPING sequence
-        IF NOT EXISTS (SELECT 1 FROM dbo.IdSequence WHERE [key] = N'ACCOUNTMAPPING')
-            INSERT INTO dbo.IdSequence ([key], [next], [updatedAt]) VALUES (N'ACCOUNTMAPPING', 2, SYSDATETIME());
-
-        -- FINANCEDEFAULTS sequence
-        IF NOT EXISTS (SELECT 1 FROM dbo.IdSequence WHERE [key] = N'FINANCEDEFAULTS')
-            INSERT INTO dbo.IdSequence ([key], [next], [updatedAt]) VALUES (N'FINANCEDEFAULTS', 2, SYSDATETIME());
-
-        -- DEFAULTS sequence
-        IF NOT EXISTS (SELECT 1 FROM dbo.IdSequence WHERE [key] = N'DEFAULTS')
-            INSERT INTO dbo.IdSequence ([key], [next], [updatedAt]) VALUES (N'DEFAULTS', 2, SYSDATETIME());
+            FETCH NEXT FROM k_cur INTO @key, @tbl, @prefix, @width;
+        END
+        CLOSE k_cur;
+        DEALLOCATE k_cur;
 
         COMMIT TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13h-IdSequence', N'OK', N'Updated IdSequence for all migrated id formats');
-        PRINT N'  13h-IdSequence: OK';
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13i-IdSequence', N'OK', N'Synced all IdSequence rows with max numeric suffix + 1');
+        PRINT N'  13i-IdSequence: OK';
     END TRY
     BEGIN CATCH
         SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
         IF XACT_STATE() <> 0 ROLLBACK TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13h-IdSequence', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
-        PRINT N'  13h-IdSequence: FAILED - ' + @eMsg;
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13i-IdSequence', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        PRINT N'  13i-IdSequence: FAILED - ' + @eMsg;
     END CATCH
 END
 GO
@@ -1052,7 +1170,8 @@ INSERT INTO @expected13 (step) VALUES
     (N'13f-AccountMapping-id'),
     (N'13f-FinanceDefaults-id'),
     (N'13g-FinanceDefaults-columns'),
-    (N'13h-IdSequence');
+    (N'13h-FinanceDefaults-seed'),
+    (N'13i-IdSequence');
 
 DECLARE @missing13 INT = 0, @failed13 INT = 0;
 SELECT @missing13 = COUNT(*) FROM @expected13 e WHERE NOT EXISTS (SELECT 1 FROM dbo._UpgradeLog l WHERE l.step = e.step);
