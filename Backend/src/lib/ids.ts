@@ -204,6 +204,20 @@ export async function makeLeaveId(): Promise<string> {
 }
 
 /**
+ * USR-0001 (users). Reconciles with existing User rows so legacy ids
+ * without a sequence row never collide (same pattern as makeEmployeeId).
+ */
+export async function makeUserId(): Promise<string> {
+  const rows = await db.user.findMany({ where: { id: { startsWith: 'USR-' } }, select: { id: true } })
+  const maxSeq = rows.reduce((m, r) => {
+    const n = Number(r.id.slice('USR-'.length))
+    return Number.isFinite(n) && n > m ? n : m
+  }, 0)
+  const seq = await reserve('USER', maxSeq + 1)
+  return `USR-${pad(seq, 4)}`
+}
+
+/**
  * EMP-00001 (staff). Since the HR DB upgrade the staff id IS the employee id,
  * so callers use this value as the Prisma `id` of the Staff row.
  * Reconciles with existing Staff rows so legacy EMP ids without a sequence

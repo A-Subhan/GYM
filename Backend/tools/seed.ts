@@ -60,6 +60,7 @@ async function main() {
   if (!existing) {
     await db.user.create({
       data: {
+        id: 'USR-0001',
         username: 'admin',
         fullName: 'System Administrator',
         email: 'admin@contouragym.com',

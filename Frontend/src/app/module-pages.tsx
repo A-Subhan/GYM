@@ -17,7 +17,7 @@ import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { Plus, Search, Edit, Trash2, Eye, X, Save, ChevronDown, ChevronRight, Download, Printer, Banknote, AlertCircle, CheckCircle2, CalendarCheck, Snowflake, HandHeart, Copy, ImagePlus, Lock, ShieldCheck, Target, ClipboardList, Calendar, UserCheck, Dumbbell } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Eye, EyeOff, X, Save, ChevronDown, ChevronRight, Download, Printer, Banknote, AlertCircle, CheckCircle2, CalendarCheck, Snowflake, HandHeart, Copy, ImagePlus, Lock, ShieldCheck, Target, ClipboardList, Calendar, UserCheck, Dumbbell } from 'lucide-react'
 import { SCREENS } from '@/lib/screens'
 import {
   useApp, useFetch, apiPost, apiPatch, apiDelete,
@@ -5376,6 +5376,7 @@ export function UsersModule() {
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<any>(null)
   const [form, setForm] = useState<any>({})
+  const [showPwd, setShowPwd] = useState(false)
   const [selectedUser, setSelectedUser] = useState<any>(null)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const { data, reload } = useFetch<any>('/api/users')
@@ -5487,7 +5488,12 @@ export function UsersModule() {
           <FormRow label="Email"><Input type="email" value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
           <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
           <FormRow label={editing ? 'Password' : 'Password'} required={!editing}>
-            <Input type="password" value={form.password || ''} onChange={e => setForm({ ...form, password: e.target.value })} placeholder={editing ? 'Leave blank to keep current password' : ''} />
+            <div className="flex gap-1">
+              <Input type={showPwd ? 'text' : 'password'} value={form.password || ''} onChange={e => setForm({ ...form, password: e.target.value })} placeholder={editing ? 'Leave blank to keep current password' : ''} className="flex-1" />
+              <Button type="button" size="sm" variant="outline" onClick={() => setShowPwd(!showPwd)} title={showPwd ? 'Hide password' : 'Show password'}>
+                {showPwd ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </Button>
+            </div>
           </FormRow>
           <FormRow label="User Type" required>
             <Select value={form.userType || 'User'} onValueChange={v => setForm({ ...form, userType: v })}>

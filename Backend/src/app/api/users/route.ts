@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { hashPassword } from '@/lib/hash'
+import { makeUserId } from '@/lib/ids'
 
 export async function GET() {
   const session = await getSession()
@@ -47,6 +48,7 @@ export async function POST(req: NextRequest) {
 
   const user = await db.user.create({
     data: {
+      id: await makeUserId(),
       username: data.username,
       email: data.email || null,
       fullName: data.fullName,
