@@ -82,7 +82,7 @@ model Branch {
 }
 
 model Role {
-  id          String   @id @default(cuid()) @db.NVarChar(50)
+  id          String   @id @db.NVarChar(50) // ROL-001 (app-generated via IdSequence)
   name        String   @unique @db.NVarChar(191)
   description String?  @db.NVarChar(MAX)
   isSystem    Boolean  @default(false)
@@ -96,7 +96,7 @@ model Role {
 
 // Per-screen permissions: 52 screens x View/Add/Edit/Delete/Print, applied at session level
 model ScreenPermission {
-  id        String  @id @default(cuid()) @db.NVarChar(50)
+  id        String  @id @db.NVarChar(50) // SCP-0001 (app-generated via IdSequence)
   roleId    String  @db.NVarChar(50)
   role      Role    @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   screenKey String  @db.NVarChar(255)
@@ -112,7 +112,7 @@ model ScreenPermission {
 
 // Per-USER per-screen permission overrides (Admin Defaults → Security)
 model UserPermission {
-  id        String  @id @default(cuid()) @db.NVarChar(50)
+  id        String  @id @db.NVarChar(50) // UPM-0001 (app-generated via IdSequence)
   userId    String  @db.NVarChar(50)
   user      User    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   screenKey String  @db.NVarChar(255)
@@ -127,7 +127,7 @@ model UserPermission {
 }
 
 model Permission {
-  id          String  @id @default(cuid()) @db.NVarChar(50)
+  id          String  @id @db.NVarChar(50) // PRM-0001 (app-generated via IdSequence)
   module      String  @db.NVarChar(255)
   action      String  @db.NVarChar(255)
   code        String  @unique @db.NVarChar(191)
@@ -539,7 +539,7 @@ model IdSequence {
 // Admin Defaults — THE company/defaults table (replaces Company).
 // companyName is WRITE-ONCE (trigger trg_Defaults_CompanyNameLock).
 model Defaults {
-  id             String   @id @default(cuid()) @db.NVarChar(50)
+  id             String   @id @db.NVarChar(50) // CMP-001 (app-generated via IdSequence)
   companyName    String?  @db.NVarChar(255)
   address        String?  @db.NVarChar(MAX)
   phone          String?  @db.NVarChar(255)
@@ -584,7 +584,7 @@ model AccountingPeriod {
 }
 
 model TaxHead {
-  id        String   @id @default(cuid()) @db.NVarChar(50)
+  id        String   @id @db.NVarChar(50) // TAX-001 (app-generated via IdSequence)
   code      String   @db.NVarChar(255)
   shortName String   @db.NVarChar(255)
   name      String   @db.NVarChar(255)
@@ -600,7 +600,7 @@ model TaxHead {
 }
 
 model AccountMapping {
-  id          String   @id @default(cuid()) @db.NVarChar(50)
+  id          String   @id @db.NVarChar(50) // ACM-001 (app-generated via IdSequence)
   branchId    String?  @db.NVarChar(50)
   key         String   @db.NVarChar(255)
   accountId   String   @db.NVarChar(50) // charts.id (account code)
@@ -614,7 +614,7 @@ model AccountMapping {
 }
 
 model FinanceDefaults {
-  id                      String   @id @default(cuid()) @db.NVarChar(50)
+  id                      String   @id @db.NVarChar(50) // FDF-001 (app-generated via IdSequence)
   branchId                String?  @unique @db.NVarChar(50)
   defaultCashAccountId    String?  @db.NVarChar(50) // charts code
   defaultBankAccountId    String?  @db.NVarChar(50) // charts code

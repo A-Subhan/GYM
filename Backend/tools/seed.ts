@@ -1,28 +1,33 @@
 import { db } from '../src/lib/db'
 import { hashPassword } from '../src/lib/hash'
 import { PERMISSIONS, SYSTEM_ROLE_PERMISSIONS } from '../src/lib/permissions'
-import { mmmYY, pad } from '../src/lib/ids'
+import { mmmYY, pad, makePermissionId, makeRoleId, makeDefaultsId, makeTaxHeadId, makeAccountMappingId } from '../src/lib/ids'
 
 async function main() {
   console.log('Seeding database...')
 
   // 1. Permissions
   for (const p of PERMISSIONS) {
-    await db.permission.upsert({
-      where: { code: p.code },
-      update: { module: p.module, action: p.action, description: (p as any).description ?? null },
-      create: { code: p.code, module: p.module, action: p.action, description: (p as any).description ?? null },
-    })
+    const existing = await db.permission.findUnique({ where: { code: p.code } })
+    if (!existing) {
+      await db.permission.create({
+        data: { id: await makePermissionId(), code: p.code, module: p.module, action: p.action, description: (p as any).description ?? null },
+      })
+    } else if (existing.module !== p.module || existing.action !== p.action) {
+      await db.permission.update({
+        where: { code: p.code },
+        data: { module: p.module, action: p.action, description: (p as any).description ?? null },
+      })
+    }
   }
   console.log(`  ✓ ${PERMISSIONS.length} permissions`)
 
   // 2. System Roles + RolePermissions
   for (const [roleName, permCodes] of Object.entries(SYSTEM_ROLE_PERMISSIONS)) {
-    const role = await db.role.upsert({
-      where: { name: roleName },
-      update: { isSystem: true },
-      create: { name: roleName, isSystem: true, description: `${roleName} role (system)` },
-    })
+    const existing = await db.role.findUnique({ where: { name: roleName } })
+    const role = existing
+      ? await db.role.update({ where: { id: existing.id }, data: { isSystem: true } })
+      : await db.role.create({ data: { id: await makeRoleId(), name: roleName, isSystem: true, description: `${roleName} role (system)` } })
     const perms = await db.permission.findMany({ where: { code: { in: permCodes as string[] } } })
     await db.rolePermission.deleteMany({ where: { roleId: role.id } })
     for (const p of perms) {
@@ -37,6 +42,7 @@ async function main() {
   if (!existingDefaults) {
     await db.defaults.create({
       data: {
+        id: await makeDefaultsId(),
         address: 'Main Boulevard, Karachi',
         phone: '+92 21 0000000',
         email: 'info@contouragym.com',
@@ -143,6 +149,7 @@ async function main() {
     if (!exists) {
       await db.taxHead.create({
         data: {
+          id: await makeTaxHeadId(),
           code,
           shortName: code === '001' ? 'ST-00' : 'ST-18',
           name: code === '001' ? 'Sales Tax 0%' : 'Sales Tax 18%',
@@ -177,7 +184,7 @@ async function main() {
   for (const m of mappings) {
     if (!m.accountId) continue
     const existing = await db.accountMapping.findFirst({ where: { key: m.key, branchId: branch.id } })
-    if (!existing) await db.accountMapping.create({ data: { key: m.key, accountId: m.accountId, branchId: branch.id } })
+    if (!existing) await db.accountMapping.create({ data: { id: await makeAccountMappingId(), key: m.key, accountId: m.accountId, branchId: branch.id } })
     else await db.accountMapping.update({ where: { id: existing.id }, data: { accountId: m.accountId } })
   }
   console.log(`  ✓ ${mappings.length} account mappings`)

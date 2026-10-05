@@ -105,6 +105,26 @@ function buildWhere(bookType: BookApiBookType, url: URL, allowed: string[] | nul
 export function bookVoucherApi(bookType: BookApiBookType) {
   const delegate = DELEGATES[bookType].voucher
 
+  /**
+   * For OTB only: enforce FinanceDefaults.allowUnbalancedOTB. If the
+   * company-wide or branch-specific FinanceDefaults row has the flag OFF,
+   * the request's `allowUnbalanced=true` is overridden to `false` so the
+   * voucher must balance before it can be saved.
+   * Returns the effective allowUnbalanced value.
+   */
+  async function resolveAllowUnbalanced(branchId: string, requested: boolean): Promise<boolean> {
+    if (bookType !== 'OTB') return requested
+    if (!requested) return false
+    // Try branch-specific first, then fall back to company-wide (branchId NULL).
+    const fd = (await db.financeDefaults.findFirst({
+      where: { OR: [{ branchId }, { branchId: null }] },
+      orderBy: [{ branchId: 'desc' }], // branch-specific row wins if both exist
+      select: { allowUnbalancedOTB: true },
+    })) as { allowUnbalancedOTB: boolean } | null
+    // Default ON when no row exists yet (preserves historical behaviour).
+    return fd ? !!fd.allowUnbalancedOTB : true
+  }
+
   // GET list -----------------------------------------------------------
   async function list(req: NextRequest) {
     const session = await getSession()
@@ -157,6 +177,7 @@ export function bookVoucherApi(bookType: BookApiBookType) {
 
     try {
       await assertNoControlLines(data.lines)
+      const allowUnbalanced = await resolveAllowUnbalanced(data.branchId, data.allowUnbalanced === true)
       const voucher = await postBookVoucher({
         voucherType,
         voucherDate: new Date(data.voucherDate),
@@ -168,7 +189,7 @@ export function bookVoucherApi(bookType: BookApiBookType) {
         paymentMode: data.paymentMode,
         lines: (data.lines || []).map(normalizeLine),
         postedById: data.postedById || session.id,
-        allowUnbalanced: data.allowUnbalanced === true,
+        allowUnbalanced,
       })
       return NextResponse.json({ voucher, difference: (voucher as any).difference ?? null })
     } catch (e: any) {
@@ -197,6 +218,7 @@ export function bookVoucherApi(bookType: BookApiBookType) {
 
     try {
       await assertNoControlLines(data.lines)
+      const allowUnbalanced = await resolveAllowUnbalanced(existing.branchId, data.allowUnbalanced === true)
       const voucher = await postBookVoucher({
         voucherType,
         voucherDate: new Date(data.voucherDate || existing.voucherDate),
@@ -208,7 +230,7 @@ export function bookVoucherApi(bookType: BookApiBookType) {
         paymentMode: data.paymentMode ?? existing.paymentMode,
         lines: (data.lines || []).map(normalizeLine),
         postedById: session.id,
-        allowUnbalanced: data.allowUnbalanced === true,
+        allowUnbalanced,
         existingVoucherId: id,
       })
       return NextResponse.json({ voucher, difference: (voucher as any).difference ?? null })

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
+import { makeAccountMappingId } from '@/lib/ids'
 
 export async function GET(req: NextRequest) {
   const session = await getSession()
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ mapping: updated })
   }
   const mapping = await db.accountMapping.create({
-    data: { key: data.key, accountId: data.accountId, branchId: data.branchId || null, description: data.description },
+    data: { id: await makeAccountMappingId(), key: data.key, accountId: data.accountId, branchId: data.branchId || null, description: data.description },
   })
   await db.auditLog.create({ data: { userId: session.id, action: 'CREATE', module: 'accountMappings', details: JSON.stringify({ id: mapping.id }) } })
   return NextResponse.json({ mapping })

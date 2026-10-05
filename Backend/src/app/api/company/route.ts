@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
+import { makeDefaultsId } from '@/lib/ids'
 
 // Admin Defaults — backed by the dbo.Defaults table (the legacy Company table
 // was removed by the SQL Server migration). companyName is WRITE-ONCE:
@@ -23,8 +24,9 @@ export async function PATCH(req: NextRequest) {
 
   let defaults = await db.defaults.findFirst()
   if (!defaults) {
-    // single-row table — create on first save
-    defaults = await db.defaults.create({ data: {} })
+    // single-row table — create on first save with CMP-001-style id
+    const id = await makeDefaultsId()
+    defaults = await db.defaults.create({ data: { id } })
   }
 
   // Write-once company name: if a non-empty name is already stored and the

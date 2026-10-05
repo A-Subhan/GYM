@@ -61,11 +61,8 @@ export const SCREENS: ScreenDef[] = [
   // Inventory — Master (2)
   { key: 'inv-items', label: 'Items', module: 'Inventory' },
   { key: 'inv-suppliers', label: 'Suppliers', module: 'Inventory' },
-  // Admin & Security — Management (4)
-  { key: 'admin-company', label: 'Company Information', module: 'Admin & Security' },
-  { key: 'admin-finance-defaults', label: 'Finance Defaults', module: 'Admin & Security' },
-  { key: 'admin-account-mappings', label: 'Account Mapping', module: 'Admin & Security' },
-  { key: 'admin-accounting-defaults', label: 'Defaults', module: 'Admin & Security' },
+  // Admin & Security — Management (1 — consolidated)
+  { key: 'admin-management', label: 'Management', module: 'Admin & Security' },
   // Admin & Security — Reports (1)
   { key: 'admin-audit', label: 'Administrative Reports', module: 'Admin & Security' },
   // Admin & Security — Master (2)

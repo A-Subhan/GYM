@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
+import { makeScreenPermissionId, makeUserPermissionId } from '@/lib/ids'
 
 const ACTIONS = ['canView', 'canAdd', 'canEdit', 'canDelete', 'canPrint'] as const
 
@@ -72,13 +73,24 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
     const saved = await db.$transaction(async (tx) => {
+      // Pre-fetch existing rows for this user so we can branch on create vs update
+      // (the @default(cuid()) is gone — the create path needs an explicit UPM- id).
+      const existing = await tx.userPermission.findMany({
+        where: { userId: data.userId },
+        select: { id: true, screenKey: true },
+      })
+      const existingByKey = new Map(existing.map(r => [r.screenKey, r.id]))
       for (const p of incoming) {
         const screenKey = p.screenKey.trim()
-        await tx.userPermission.upsert({
-          where: { userId_screenKey: { userId: data.userId, screenKey } },
-          create: { userId: data.userId, screenKey, ...flagsFor(p) },
-          update: flagsFor(p),
-        })
+        const existingId = existingByKey.get(screenKey)
+        if (existingId) {
+          await tx.userPermission.update({ where: { id: existingId }, data: flagsFor(p) })
+        } else {
+          // Reserve on the global db (reserve() opens its own $transaction)
+          // so the IdSequence bump survives even if the outer tx rolls back.
+          const id = await makeUserPermissionId()
+          await tx.userPermission.create({ data: { id, userId: data.userId, screenKey, ...flagsFor(p) } })
+        }
       }
       await tx.userPermission.deleteMany({
         where: { userId: data.userId, ...(keys.length ? { screenKey: { notIn: keys } } : {}) },
@@ -97,13 +109,22 @@ export async function POST(req: NextRequest) {
   if (!role) return NextResponse.json({ error: 'Role not found' }, { status: 404 })
 
   const saved = await db.$transaction(async (tx) => {
+    // Pre-fetch existing rows for this role so we can branch on create vs update
+    // (the @default(cuid()) is gone — the create path needs an explicit SCP- id).
+    const existing = await tx.screenPermission.findMany({
+      where: { roleId: data.roleId },
+      select: { id: true, screenKey: true },
+    })
+    const existingByKey = new Map(existing.map(r => [r.screenKey, r.id]))
     for (const p of incoming) {
       const screenKey = p.screenKey.trim()
-      await tx.screenPermission.upsert({
-        where: { roleId_screenKey: { roleId: data.roleId, screenKey } },
-        create: { roleId: data.roleId, screenKey, ...flagsFor(p) },
-        update: flagsFor(p),
-      })
+      const existingId = existingByKey.get(screenKey)
+      if (existingId) {
+        await tx.screenPermission.update({ where: { id: existingId }, data: flagsFor(p) })
+      } else {
+        const id = await makeScreenPermissionId()
+        await tx.screenPermission.create({ data: { id, roleId: data.roleId, screenKey, ...flagsFor(p) } })
+      }
     }
     await tx.screenPermission.deleteMany({
       where: { roleId: data.roleId, ...(keys.length ? { screenKey: { notIn: keys } } : {}) },

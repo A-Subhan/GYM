@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import { toast } from 'sonner'
 import { Plus, Search, Edit, Trash2, Eye, EyeOff, X, Save, ChevronDown, ChevronRight, Download, Printer, Banknote, AlertCircle, CheckCircle2, CalendarCheck, Snowflake, HandHeart, Copy, ImagePlus, Lock, ShieldCheck, Target, ClipboardList, Calendar, UserCheck, Dumbbell } from 'lucide-react'
 import { SCREENS } from '@/lib/screens'
@@ -5038,27 +5039,39 @@ export function CompanyModule() {
 }
 
 // =================================================================
-// ADMIN DEFAULTS — single consolidated defaults screen (client-confirmed):
+// MANAGEMENT — single consolidated screen (replaces the old
+// Company / Finance Defaults / Account Mappings / Defaults screens):
 //   Tab 1: Company Information (name can only be set ONCE — nameLocked)
-//   Tab 2: Financial (FinanceDefaults per company-wide/branch)
-//   Tab 3: Per-branch Account Mapping (account-mappings grid + copy from company level)
+//   Tab 2: Account Mapping (company-level mapping keys)
+//   Tab 3: Per-branch Account Mapping (per-branch overrides + copy from company)
+//   Tab 4: Finance Defaults (cash/bank/tax/FY + accounting type + all
+//          extra finance toggles incl. Allow unbalanced OTB)
 // =================================================================
-export function AdminDefaultsModule() {
+export function ManagementModule() {
   return (
     <div>
-      <PageHeader title="Defaults" />
+      <PageHeader title="Management" />
       <Tabs defaultValue="company" className="space-y-4">
         <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="company">Company Information</TabsTrigger>
-          <TabsTrigger value="financial">Financial</TabsTrigger>
-          <TabsTrigger value="mappings">Per-branch Account Mapping</TabsTrigger>
+          <TabsTrigger value="mappings">Account Mapping</TabsTrigger>
+          <TabsTrigger value="branch-mappings">Per Branch Account Mapping</TabsTrigger>
+          <TabsTrigger value="finance">Finance Defaults</TabsTrigger>
         </TabsList>
-        <TabsContent value="company"><DefaultsCompanyTab /></TabsContent>
-        <TabsContent value="financial"><DefaultsFinancialTab /></TabsContent>
-        <TabsContent value="mappings"><DefaultsBranchMappingTab /></TabsContent>
+        <TabsContent value="company"><ManagementCompanyTab /></TabsContent>
+        <TabsContent value="mappings"><ManagementMappingsTab /></TabsContent>
+        <TabsContent value="branch-mappings"><ManagementBranchMappingsTab /></TabsContent>
+        <TabsContent value="finance"><ManagementFinanceTab /></TabsContent>
       </Tabs>
     </div>
   )
+}
+
+// Legacy wrapper kept for backward compatibility with old menu entries —
+// simply renders the new ManagementModule. Will be removed once all routes
+// are migrated.
+export function AdminDefaultsModule() {
+  return <ManagementModule />
 }
 
 // ---- Tab 1: Company Information -----------------------------------
@@ -5241,7 +5254,7 @@ const DEFAULTS_MAPPING_KEYS = [
   { key: 'posBank', label: 'POS Bank' },
 ]
 
-function DefaultsBranchMappingTab() {
+function DefaultsBranchMappingTab({ forceCompanyLevel = false }: { forceCompanyLevel?: boolean } = {}) {
   const { has, branches } = useApp()
   const [branchId, setBranchId] = useState<string>('') // '' = company-level
   const { data, reload } = useFetch<any>('/api/account-mappings')
@@ -5297,24 +5310,31 @@ function DefaultsBranchMappingTab() {
   return (
     <Card className="max-w-4xl">
       <CardContent className="p-6">
-        <div className="flex items-end gap-3 flex-wrap mb-4">
-          <div className="w-64">
-            <FormRow label="Branch">
-              <Select value={branchId || '__global__'} onValueChange={v => setBranchId(v === '__global__' ? '' : v)}>
-                <SelectTrigger><SelectValue placeholder="Company level" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__global__">Company level (default)</SelectItem>
-                  {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.code ? `${b.code} — ${b.name}` : b.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </FormRow>
+        {!forceCompanyLevel && (
+          <div className="flex items-end gap-3 flex-wrap mb-4">
+            <div className="w-64">
+              <FormRow label="Branch">
+                <Select value={branchId || '__global__'} onValueChange={v => setBranchId(v === '__global__' ? '' : v)}>
+                  <SelectTrigger><SelectValue placeholder="Company level" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__global__">Company level (default)</SelectItem>
+                    {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.code ? `${b.code} — ${b.name}` : b.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </FormRow>
+            </div>
+            {branchId && canEdit && (
+              <Button variant="outline" size="sm" onClick={copyFromCompany} className="mb-0.5">
+                <Copy className="h-4 w-4 mr-1" />Copy from company level
+              </Button>
+            )}
           </div>
-          {branchId && canEdit && (
-            <Button variant="outline" size="sm" onClick={copyFromCompany} className="mb-0.5">
-              <Copy className="h-4 w-4 mr-1" />Copy from company level
-            </Button>
-          )}
-        </div>
+        )}
+        {forceCompanyLevel && (
+          <div className="mb-4 text-xs text-muted-foreground">
+            Company-level mappings apply to every branch unless a branch defines its own.
+          </div>
+        )}
         <div className="space-y-1">
           {DEFAULTS_MAPPING_KEYS.map(({ key, label }) => {
             const saved = currentRows.find((m: any) => m.key === key)
@@ -5355,10 +5375,268 @@ function DefaultsBranchMappingTab() {
 }
 
 // =================================================================
-// USERS & PERMISSIONS — one screen: users list (left) + per-role screen
-// permission matrix (right) for the selected user's role.
-// Consolidates the former Users / Roles / Permissions screens.
+// MANAGEMENT — Tab helpers (alias the existing Defaults* tabs where the
+// behaviour is identical, and add two new ones for the consolidated
+// Management screen).
 // =================================================================
+function ManagementCompanyTab() { return <DefaultsCompanyTab /> }
+
+// ---- Tab 2: Account Mapping (company-level only) ------------------
+function ManagementMappingsTab() {
+  return <DefaultsBranchMappingTab forceCompanyLevel />
+}
+
+// ---- Tab 3: Per-branch Account Mapping ----------------------------
+function ManagementBranchMappingsTab() { return <DefaultsBranchMappingTab /> }
+
+// ---- Tab 4: Finance Defaults (rich, all expanded fields) ----------
+const MANAGEMENT_MAPPING_KEYS = DEFAULTS_MAPPING_KEYS
+
+function ManagementFinanceTab() {
+  const { has, branches } = useApp()
+  const [branchId, setBranchId] = useState<string>('') // '' = company-wide
+  const { data, reload } = useFetch<any>(`/api/finance-defaults${branchId ? `?branchId=${branchId}` : ''}`)
+  const { data: companyData, reload: reloadCompany } = useFetch<any>('/api/company')
+  const { data: chartsData } = useFetch<any>('/api/charts?isActive=true')
+  const { data: taxData } = useFetch<any>('/api/tax-heads')
+  const accounts = chartsData?.charts || []
+  const taxHeads = taxData?.taxHeads || []
+  const financialYears = data?.financialYears || []
+  const defaults = data?.defaults
+  const company = companyData?.company
+
+  const [form, setForm] = useState<any>({})
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    setForm({
+      defaultCashAccountId: defaults?.defaultCashAccountId || '',
+      defaultBankAccountId: defaults?.defaultBankAccountId || '',
+      defaultTaxHeadId: defaults?.defaultTaxHeadId || '',
+      financialYearId: defaults?.financialYearId || '',
+      fiscalYearStart: defaults?.fiscalYearStart ? String(defaults.fiscalYearStart).slice(0, 10) : '',
+      fiscalYearEnd: defaults?.fiscalYearEnd ? String(defaults.fiscalYearEnd).slice(0, 10) : '',
+      allowUnbalancedOTB: defaults?.allowUnbalancedOTB === undefined ? true : !!defaults.allowUnbalancedOTB,
+      allowBackDatedVouchers: defaults?.allowBackDatedVouchers === undefined ? true : !!defaults.allowBackDatedVouchers,
+      voucherApprovalRequired: !!defaults?.voucherApprovalRequired,
+      allowEditPostedVouchers: defaults?.allowEditPostedVouchers === undefined ? true : !!defaults.allowEditPostedVouchers,
+      allowNegativeCash: !!defaults?.allowNegativeCash,
+      autoPostReceipts: defaults?.autoPostReceipts === undefined ? true : !!defaults.autoPostReceipts,
+      defaultCurrency: defaults?.defaultCurrency || '',
+      decimalPlaces: defaults?.decimalPlaces ?? 2,
+      defaultCashPaymentMode: defaults?.defaultCashPaymentMode || '',
+      defaultBankPaymentMode: defaults?.defaultBankPaymentMode || '',
+      // Accounting type lives on Defaults.financeType — surfaced here for one-stop editing
+      accountingType: company?.financeType || company?.accountingType || 'FIFO',
+    })
+  }, [defaults, branchId, company])
+
+  const accountOptions = (a: any) => <SelectItem key={a.id} value={a.id}>{a.id} — {a.name}</SelectItem>
+  const withNone = (value: string, onChange: (v: string) => void, placeholder: string, children: ReactNode) => (
+    <Select value={value || '__none__'} onValueChange={v => onChange(v === '__none__' ? '' : v)}>
+      <SelectTrigger><SelectValue placeholder={placeholder} /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="__none__">— None —</SelectItem>
+        {children}
+      </SelectContent>
+    </Select>
+  )
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await apiPost('/api/finance-defaults', {
+        branchId: branchId || null,
+        defaultCashAccountId: form.defaultCashAccountId || null,
+        defaultBankAccountId: form.defaultBankAccountId || null,
+        defaultTaxHeadId: form.defaultTaxHeadId || null,
+        financialYearId: form.financialYearId || null,
+        fiscalYearStart: form.fiscalYearStart || null,
+        fiscalYearEnd: form.fiscalYearEnd || null,
+        allowUnbalancedOTB: !!form.allowUnbalancedOTB,
+        allowBackDatedVouchers: !!form.allowBackDatedVouchers,
+        voucherApprovalRequired: !!form.voucherApprovalRequired,
+        allowEditPostedVouchers: !!form.allowEditPostedVouchers,
+        allowNegativeCash: !!form.allowNegativeCash,
+        autoPostReceipts: !!form.autoPostReceipts,
+        defaultCurrency: form.defaultCurrency || null,
+        decimalPlaces: Number(form.decimalPlaces) || 0,
+        defaultCashPaymentMode: form.defaultCashPaymentMode || null,
+        defaultBankPaymentMode: form.defaultBankPaymentMode || null,
+      })
+      // Persist accounting type to /api/company (Defaults.financeType) if it changed
+      const newAcc = form.accountingType || 'FIFO'
+      const curAcc = company?.financeType || company?.accountingType || 'FIFO'
+      if (newAcc !== curAcc) {
+        await apiPatch('/api/company', { financeType: newAcc, accountingType: newAcc })
+        reloadCompany()
+      }
+      toast.success('Finance defaults saved')
+      reload()
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card className="max-w-4xl">
+        <CardContent className="p-6 space-y-5">
+          {/* Branch scope */}
+          <div>
+            <FormRow label="Apply to">
+              <Select value={branchId || '__global__'} onValueChange={v => setBranchId(v === '__global__' ? '' : v)}>
+                <SelectTrigger><SelectValue placeholder="Company-wide" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__global__">Company-wide (default)</SelectItem>
+                  {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.code ? `${b.code} — ${b.name}` : b.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FormRow>
+            <div className="text-xs text-muted-foreground mt-1">
+              Branch-specific defaults override the company-wide set.
+            </div>
+          </div>
+
+          {/* Defaults section */}
+          <div>
+            <div className="text-sm font-medium mb-2">Default Accounts & Tax Head</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <FormRow label="Default Cash Account">
+                {withNone(form.defaultCashAccountId, v => setForm({ ...form, defaultCashAccountId: v }), 'Select cash account', accounts.map(accountOptions))}
+              </FormRow>
+              <FormRow label="Default Bank Account">
+                {withNone(form.defaultBankAccountId, v => setForm({ ...form, defaultBankAccountId: v }), 'Select bank account', accounts.map(accountOptions))}
+              </FormRow>
+              <FormRow label="Default Tax Head">
+                {withNone(form.defaultTaxHeadId, v => setForm({ ...form, defaultTaxHeadId: v }), 'Select tax head',
+                  taxHeads.map((t: any) => <SelectItem key={t.id} value={t.id}>{t.code} — {t.name} ({t.rate}%)</SelectItem>))}
+              </FormRow>
+              <FormRow label="Accounting Type">
+                <Select value={form.accountingType || 'FIFO'} onValueChange={v => setForm({ ...form, accountingType: v })}>
+                  <SelectTrigger><SelectValue placeholder="FIFO" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="FIFO">FIFO</SelectItem>
+                    <SelectItem value="BillWise">Bill-wise</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormRow>
+            </div>
+          </div>
+
+          {/* Fiscal Year section */}
+          <div>
+            <div className="text-sm font-medium mb-2">Fiscal Year</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <FormRow label="Active Financial Year">
+                {withNone(form.financialYearId, v => setForm({ ...form, financialYearId: v }), 'Select financial year',
+                  financialYears.map((fy: any) => (
+                    <SelectItem key={fy.id} value={fy.id}>{fy.name}{fy.isClosed ? ' (closed)' : fy.isActive ? ' (active)' : ''}</SelectItem>
+                  )))}
+              </FormRow>
+              <div className="text-xs text-muted-foreground self-end">
+                Manage financial years on the Periods screen.
+              </div>
+              <FormRow label="Fiscal Year Start">
+                <Input type="date" value={form.fiscalYearStart || ''} onChange={e => setForm({ ...form, fiscalYearStart: e.target.value })} />
+              </FormRow>
+              <FormRow label="Fiscal Year End">
+                <Input type="date" value={form.fiscalYearEnd || ''} onChange={e => setForm({ ...form, fiscalYearEnd: e.target.value })} />
+              </FormRow>
+            </div>
+          </div>
+
+          {/* Toggles */}
+          <div>
+            <div className="text-sm font-medium mb-2">Voucher & Posting Rules</div>
+            <div className="space-y-2">
+              <ToggleRow
+                label="Allow saving unbalanced Opening Trial Balance"
+                hint="When ON, OTB vouchers can be saved even if debits do not equal credits. The difference is stored and can be knocked off later. When OFF, OTB vouchers must balance before they can be saved. Default: ON."
+                checked={!!form.allowUnbalancedOTB}
+                onChange={v => setForm({ ...form, allowUnbalancedOTB: v })}
+              />
+              <ToggleRow
+                label="Allow back-dated voucher entry"
+                hint="When ON, users can post vouchers dated earlier than today. When OFF, the voucher date must be today or later. Default: ON."
+                checked={!!form.allowBackDatedVouchers}
+                onChange={v => setForm({ ...form, allowBackDatedVouchers: v })}
+              />
+              <ToggleRow
+                label="Voucher approval required"
+                hint="When ON, vouchers are saved as 'Pending' and must be approved before they post to the ledger. When OFF, vouchers post immediately. Default: OFF."
+                checked={!!form.voucherApprovalRequired}
+                onChange={v => setForm({ ...form, voucherApprovalRequired: v })}
+              />
+              <ToggleRow
+                label="Allow editing posted vouchers"
+                hint="When ON, posted vouchers can be edited (re-posted). When OFF, posted vouchers must be reversed and re-entered. Default: ON."
+                checked={!!form.allowEditPostedVouchers}
+                onChange={v => setForm({ ...form, allowEditPostedVouchers: v })}
+              />
+              <ToggleRow
+                label="Allow negative cash balance"
+                hint="When ON, the Cash Book account may go negative (overdraft). When OFF, posting a cash payment that would make the balance negative is rejected. Default: OFF."
+                checked={!!form.allowNegativeCash}
+                onChange={v => setForm({ ...form, allowNegativeCash: v })}
+              />
+              <ToggleRow
+                label="Auto-post fee / POS receipts"
+                hint="When ON, fee and POS receipts automatically post a Cash Receipt Voucher to the ledger using the configured account mappings. When OFF, receipts are recorded but not posted. Default: ON."
+                checked={!!form.autoPostReceipts}
+                onChange={v => setForm({ ...form, autoPostReceipts: v })}
+              />
+            </div>
+          </div>
+
+          {/* Currency & formatting */}
+          <div>
+            <div className="text-sm font-medium mb-2">Currency & Formatting</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <FormRow label="Default Currency">
+                <Input value={form.defaultCurrency || ''} onChange={e => setForm({ ...form, defaultCurrency: e.target.value })} placeholder="e.g. PKR" />
+              </FormRow>
+              <FormRow label="Decimal Places">
+                <Input type="number" min={0} max={6} value={form.decimalPlaces ?? 2} onChange={e => setForm({ ...form, decimalPlaces: Number(e.target.value) || 0 })} />
+              </FormRow>
+              <FormRow label="Default Cash Payment Mode">
+                <Input value={form.defaultCashPaymentMode || ''} onChange={e => setForm({ ...form, defaultCashPaymentMode: e.target.value })} placeholder="e.g. Cash" />
+              </FormRow>
+              <FormRow label="Default Bank Payment Mode">
+                <Input value={form.defaultBankPaymentMode || ''} onChange={e => setForm({ ...form, defaultBankPaymentMode: e.target.value })} placeholder="e.g. Cheque" />
+              </FormRow>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 flex-wrap pt-2">
+            <div className="text-xs text-muted-foreground">
+              These defaults drive automatic voucher posting from fees, POS and payroll.
+            </div>
+            {has('finance.settings') && (
+              <Button onClick={save} disabled={saving}><Save className="h-4 w-4 mr-1" />{saving ? 'Saving…' : 'Save Finance Defaults'}</Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+/** A labeled switch row with a hint line. */
+function ToggleRow({ label, hint, checked, onChange }: { label: string, hint?: string, checked: boolean, onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-2 border-b last:border-0">
+      <div className="space-y-0.5 flex-1 min-w-0">
+        <div className="text-sm font-medium">{label}</div>
+        {hint && <div className="text-xs text-muted-foreground">{hint}</div>}
+      </div>
+      <Switch checked={checked} onCheckedChange={onChange} />
+    </div>
+  )
+}
+
+
 type PermFlags = { view: boolean; add: boolean; edit: boolean; delete: boolean; print: boolean }
 const PERM_ACTIONS: { key: keyof PermFlags; label: string }[] = [
   { key: 'view', label: 'View' },
@@ -5579,6 +5857,7 @@ function UserPermissionMatrix({ user, canSave }: { user: any | null, canSave: bo
   const [matrix, setMatrix] = useState<Record<string, PermFlags>>({})
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const rows = data?.permissions || []
@@ -5622,6 +5901,14 @@ function UserPermissionMatrix({ user, canSave }: { user: any | null, canSave: bo
     setMatrix(m => ({ ...m, [key]: { ...m[key], [action]: v } }))
     setDirty(true)
   }
+  const setGroupFlags = (groupScreens: typeof SCREENS, fn: (f: PermFlags) => PermFlags) => {
+    setMatrix(m => {
+      const n: Record<string, PermFlags> = { ...m }
+      for (const s of groupScreens) n[s.key] = fn(m[s.key])
+      return n
+    })
+    setDirty(true)
+  }
   const setAll = (fn: (f: PermFlags) => PermFlags) => {
     setMatrix(m => {
       const n: Record<string, PermFlags> = {}
@@ -5632,6 +5919,8 @@ function UserPermissionMatrix({ user, canSave }: { user: any | null, canSave: bo
   }
   const rowAll = (f?: PermFlags) => !!f && PERM_ACTIONS.every(a => f[a.key])
   const colAll = (a: keyof PermFlags) => SCREENS.every(s => matrix[s.key]?.[a])
+  const groupAll = (g: { module: string; screens: typeof SCREENS }) => g.screens.every(s => rowAll(matrix[s.key]))
+  const groupColAll = (g: { module: string; screens: typeof SCREENS }, a: keyof PermFlags) => g.screens.every(s => matrix[s.key]?.[a])
   const allChecked = SCREENS.every(s => rowAll(matrix[s.key]))
 
   const toggleRow = (key: string) => {
@@ -5643,10 +5932,27 @@ function UserPermissionMatrix({ user, canSave }: { user: any | null, canSave: bo
     const target = !colAll(a)
     setAll(f => ({ ...f, [a]: target }))
   }
+  const toggleGroup = (g: { module: string; screens: typeof SCREENS }) => {
+    const target = !groupAll(g)
+    setGroupFlags(g.screens, () => ({ view: target, add: target, edit: target, delete: target, print: target }))
+  }
+  const toggleGroupCol = (g: { module: string; screens: typeof SCREENS }, a: keyof PermFlags) => {
+    const target = !groupColAll(g, a)
+    setGroupFlags(g.screens, f => ({ ...f, [a]: target }))
+  }
   const toggleAll = () => {
     const target = !allChecked
     setAll(() => ({ view: target, add: target, edit: target, delete: target, print: target }))
   }
+  const toggleCollapse = (module: string) => {
+    setCollapsedGroups(prev => {
+      const n = new Set(prev)
+      if (n.has(module)) n.delete(module); else n.add(module)
+      return n
+    })
+  }
+  const collapseAll = () => setCollapsedGroups(new Set(groups.map(g => g.module)))
+  const expandAll = () => setCollapsedGroups(new Set())
 
   const save = async () => {
     if (!user) return
@@ -5680,17 +5986,27 @@ function UserPermissionMatrix({ user, canSave }: { user: any | null, canSave: bo
     if (g) g.screens.push(s)
     else groups.push({ module: s.module, screens: [s] })
   }
+  // count enabled (non-Admin) per group for the badge
+  const groupEnabledCount = (g: { module: string; screens: typeof SCREENS }) =>
+    g.screens.filter(s => rowAll(matrix[s.key])).length
 
   return (
     <Card>
       <CardContent className="p-4">
+        {/* Top toolbar */}
         <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
           <div className="flex items-center gap-2 flex-wrap">
             <div className="font-medium">Screen Permissions</div>
             <Badge variant="secondary">{SCREENS.length} screens</Badge>
             <span className="text-xs text-muted-foreground">for {user.fullName} (@{user.username})</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="ghost" size="sm" onClick={() => {
+              const anyCollapsed = groups.some(g => !collapsedGroups.has(g.module))
+              if (anyCollapsed) collapseAll(); else expandAll()
+            }}>
+              {groups.some(g => !collapsedGroups.has(g.module)) ? 'Collapse all' : 'Expand all'}
+            </Button>
             <Button variant="outline" size="sm" onClick={toggleAll} disabled={!canSave}>{allChecked ? 'Uncheck all' : 'Check all'}</Button>
             {canSave && (
               <Button size="sm" onClick={save} disabled={saving || !enabled}>
@@ -5705,62 +6021,126 @@ function UserPermissionMatrix({ user, canSave }: { user: any | null, canSave: bo
         {loading ? (
           <div className="text-sm text-muted-foreground py-6 text-center">Loading permissions…</div>
         ) : (
-          <div className="max-h-96 overflow-y-auto scroll-slim border rounded">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 border-b sticky top-0 z-10">
-                <tr>
-                  <th className="px-2 py-2 w-8">
-                    <Checkbox checked={allChecked} onCheckedChange={() => toggleAll()} aria-label="Check all screens and actions" />
-                  </th>
-                  <th className="text-left px-2 py-2 font-medium">Screen</th>
-                  {PERM_ACTIONS.map(a => (
-                    <th key={a.key} className="px-2 py-2 font-medium text-center w-16">
-                      <div className="flex flex-col items-center gap-1">
+          <div className="space-y-2">
+            {groups.map(g => {
+              const collapsed = collapsedGroups.has(g.module)
+              const groupAllChecked = groupAll(g)
+              const enabledCount = groupEnabledCount(g)
+              return (
+                <Collapsible key={g.module} open={!collapsed} onOpenChange={() => toggleCollapse(g.module)}>
+                  <div className="border rounded">
+                    <CollapsibleTrigger asChild>
+                      <button type="button" className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted/40 transition-colors">
+                        <ChevronRight className={`h-4 w-4 transition-transform ${collapsed ? '' : 'rotate-90'}`} />
                         <Checkbox
-                          checked={colAll(a.key)}
-                          onCheckedChange={() => toggleCol(a.key)}
-                          aria-label={`Select all — ${a.label}`}
+                          checked={groupAllChecked}
+                          onCheckedChange={(e: any) => { e.stopPropagation(); toggleGroup(g) }}
+                          aria-label={`Toggle all permissions in ${g.module}`}
+                          className="ml-1"
+                          onClick={(e: any) => e.stopPropagation()}
                         />
-                        <span className="text-[11px] font-normal text-muted-foreground">{a.label}</span>
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex-1 text-left">{g.module}</span>
+                        <Badge variant="outline" className="text-[10px]">{g.screens.length}</Badge>
+                        <span className="text-[10px] text-muted-foreground">{enabledCount}/{g.screens.length} enabled</span>
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      {/* Desktop: table */}
+                      <div className="hidden sm:block border-t">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/30 border-b">
+                            <tr>
+                              <th className="px-2 py-2 w-8">
+                                <Checkbox
+                                  checked={groupAllChecked}
+                                  onCheckedChange={() => toggleGroup(g)}
+                                  aria-label={`Select all screens and actions in ${g.module}`}
+                                />
+                              </th>
+                              <th className="text-left px-2 py-2 font-medium">Screen</th>
+                              {PERM_ACTIONS.map(a => (
+                                <th key={a.key} className="px-2 py-2 font-medium text-center w-16">
+                                  <div className="flex flex-col items-center gap-1">
+                                    <Checkbox
+                                      checked={groupColAll(g, a.key)}
+                                      onCheckedChange={() => toggleGroupCol(g, a.key)}
+                                      aria-label={`Select all ${a.label} in ${g.module}`}
+                                    />
+                                    <span className="text-[11px] font-normal text-muted-foreground">{a.label}</span>
+                                  </div>
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {g.screens.map(s => (
+                              <tr key={s.key} className="border-b last:border-0 hover:bg-muted/30">
+                                <td className="px-2 py-1.5">
+                                  <Checkbox
+                                    checked={rowAll(matrix[s.key])}
+                                    onCheckedChange={() => toggleRow(s.key)}
+                                    aria-label={`Select all actions — ${s.label}`}
+                                  />
+                                </td>
+                                <td className="px-2 py-1.5">
+                                  <div className="font-medium text-xs">{s.label}</div>
+                                  <div className="font-mono text-[10px] text-muted-foreground">{s.key}</div>
+                                </td>
+                                {PERM_ACTIONS.map(a => (
+                                  <td key={a.key} className="px-2 py-1.5 text-center">
+                                    <Checkbox
+                                      checked={!!matrix[s.key]?.[a.key]}
+                                      onCheckedChange={(v: boolean) => setFlag(s.key, a.key, !!v)}
+                                      aria-label={`${s.label} — ${a.label}`}
+                                    />
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {groups.map(g => (
-                  <Fragment key={g.module}>
-                    <tr className="bg-muted/30">
-                      <td colSpan={7} className="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{g.module}</td>
-                    </tr>
-                    {g.screens.map(s => (
-                      <tr key={s.key} className="border-b last:border-0 hover:bg-muted/30">
-                        <td className="px-2 py-1.5">
-                          <Checkbox checked={rowAll(matrix[s.key])} onCheckedChange={() => toggleRow(s.key)} aria-label={`Select all actions — ${s.label}`} />
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <div className="font-medium text-xs">{s.label}</div>
-                          <div className="font-mono text-[10px] text-muted-foreground">{s.key}</div>
-                        </td>
-                        {PERM_ACTIONS.map(a => (
-                          <td key={a.key} className="px-2 py-1.5 text-center">
-                            <Checkbox
-                              checked={!!matrix[s.key]?.[a.key]}
-                              onCheckedChange={(v: boolean) => setFlag(s.key, a.key, !!v)}
-                              aria-label={`${s.label} — ${a.label}`}
-                            />
-                          </td>
+                      {/* Mobile: stacked cards */}
+                      <div className="sm:hidden border-t divide-y">
+                        {g.screens.map(s => (
+                          <div key={s.key} className="p-3">
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <div className="min-w-0">
+                                <div className="font-medium text-xs truncate">{s.label}</div>
+                                <div className="font-mono text-[10px] text-muted-foreground truncate">{s.key}</div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => toggleRow(s.key)}
+                                className="text-[10px] text-muted-foreground underline shrink-0"
+                              >
+                                {rowAll(matrix[s.key]) ? 'Uncheck all' : 'Check all'}
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-5 gap-1">
+                              {PERM_ACTIONS.map(a => (
+                                <label key={a.key} className="flex flex-col items-center gap-1 cursor-pointer">
+                                  <Checkbox
+                                    checked={!!matrix[s.key]?.[a.key]}
+                                    onCheckedChange={(v: boolean) => setFlag(s.key, a.key, !!v)}
+                                    aria-label={`${s.label} — ${a.label}`}
+                                  />
+                                  <span className="text-[10px] text-muted-foreground capitalize">{a.label}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
                         ))}
-                      </tr>
-                    ))}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
+                      </div>
+                    </CollapsibleContent>
+                  </div>
+                </Collapsible>
+              )
+            })}
           </div>
         )}
-        <div className="text-xs text-muted-foreground mt-2">
-          Rights are assigned per user, per screen. Changes take effect for the current session immediately after saving (no re-login required).
+        <div className="text-xs text-muted-foreground mt-3">
+          Rights are assigned per user, per screen. Changes take effect for the current session immediately after saving (no re-login required). Tap a module header to expand/collapse.
         </div>
       </CardContent>
     </Card>

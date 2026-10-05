@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { hashPassword } from '@/lib/hash'
+import { makeRoleId } from '@/lib/ids'
 
 export async function GET() {
   const session = await getSession()
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest) {
   if (!data.name) return NextResponse.json({ error: 'Role name required' }, { status: 400 })
   const existing = await db.role.findUnique({ where: { name: data.name } })
   if (existing) return NextResponse.json({ error: 'Role already exists' }, { status: 400 })
-  const role = await db.role.create({ data: { name: data.name, description: data.description, isSystem: false } })
+  const role = await db.role.create({ data: { id: await makeRoleId(), name: data.name, description: data.description, isSystem: false } })
   await db.auditLog.create({ data: { userId: session.id, action: 'CREATE', module: 'roles', details: JSON.stringify({ id: role.id, name: role.name }) } })
   return NextResponse.json({ role })
 }

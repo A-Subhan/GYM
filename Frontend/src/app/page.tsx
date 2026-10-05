@@ -40,6 +40,7 @@ import {
   FinanceReportsModule as FinanceReportsModuleImpl,
   AccountMappingsModule as AccountMappingsModuleImpl,
   FinanceDefaultsModule as FinanceDefaultsModuleImpl,
+  ManagementModule as ManagementModuleImpl,
   MembersModule as MembersModuleImpl,
   MembershipsModule as MembershipsModuleImpl,
   AttendanceModule as AttendanceModuleImpl,
@@ -112,9 +113,10 @@ type ModuleKey =
   | 'payroll-reports'
   // Payroll → Master Files
   | 'payroll-shifts' | 'payroll-calendar' | 'payroll-master-files'
-  // Admin → Defaults
-  | 'admin-company' | 'admin-finance-defaults' | 'admin-account-mappings'
-  | 'admin-coa-config' | 'admin-accounting-defaults'
+  // Admin → Defaults (consolidated into admin-management; legacy keys kept for redirects)
+  | 'admin-management'
+  | 'admin-company' | 'admin-finance-defaults' | 'admin-account-mappings' | 'admin-accounting-defaults'
+  | 'admin-coa-config'
   // Admin → Reports
   | 'admin-audit'
   // Admin → Master Files
@@ -252,10 +254,7 @@ const NAV: NavModule[] = [
     label: 'Admin & Security', icon: Settings, sections: [
       {
         label: 'Management', perm: 'company.view', screens: [
-          { key: 'admin-company', label: 'Company Information', perm: 'company.view' },
-          { key: 'admin-finance-defaults', label: 'Finance Defaults', perm: 'finance.settings' },
-          { key: 'admin-account-mappings', label: 'Account Mapping', perm: 'accountMappings.view' },
-          { key: 'admin-accounting-defaults', label: 'Defaults', perm: 'company.view' },
+          { key: 'admin-management', label: 'Management', perm: 'company.view' },
         ],
       },
       {
@@ -883,12 +882,14 @@ function ModuleRouter({ active, setActive }: { active: ModuleKey, setActive: (m:
     case 'payroll-shifts': return <ShiftsModule />
     case 'payroll-calendar': return <CalendarModule />
     case 'payroll-master-files': return <PayrollMasterFilesModule />
-    // Admin → Defaults
-    case 'admin-company': return <CompanyModule />
-    case 'admin-finance-defaults': return <FinanceDefaultsModule />
-    case 'admin-account-mappings': return <AccountMappingsModule />
+    // Admin → Management (consolidated)
+    case 'admin-management': return <ManagementModule />
+    // Compat redirects for the old separate admin screens (now consolidated into Management)
+    case 'admin-company': return <RedirectToModule target="admin-management" setActive={setActive} />
+    case 'admin-finance-defaults': return <RedirectToModule target="admin-management" setActive={setActive} />
+    case 'admin-account-mappings': return <RedirectToModule target="admin-management" setActive={setActive} />
     case 'admin-coa-config': return <CoaConfigStub />
-    case 'admin-accounting-defaults': return <AccountingDefaultsModule />
+    case 'admin-accounting-defaults': return <RedirectToModule target="admin-management" setActive={setActive} />
     // Admin → Reports
     case 'admin-audit': return <AuditModule />
     // Admin → Master Files
@@ -1003,6 +1004,7 @@ function StaffAttendanceStub() { return <NotImplemented name="Staff Attendance" 
 function PayrollReportsModule() { return <NotImplemented name="Payroll Reports" /> }
 function CoaConfigStub() { return <NotImplemented name="COA Configuration" /> }
 function AccountingDefaultsModule() { return <AdminDefaultsModuleImpl /> }
+function ManagementModule() { return <ManagementModuleImpl /> }
 function PTSessionsModule() { return <PTSessionsModuleImpl /> }
 
 // =================================================================

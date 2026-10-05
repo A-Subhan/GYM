@@ -294,3 +294,106 @@ export async function makeFeePaymentId(branchCode: string, date: Date): Promise<
   const seq = await reserve(key)
   return `FP/${branchCode}/${mmmYY(date)}/${pad(seq, 6)}`
 }
+
+// =================================================================
+// Admin & Security id formats (post-13_admin_security_upgrade.sql):
+//   Defaults         : CMP-001   key DEFAULTS
+//   TaxHead          : TAX-001   key TAXHEAD
+//   Permission       : PRM-0001 key PERMISSION
+//   Role             : ROL-001   key ROLE
+//   ScreenPermission : SCP-0001 key SCREENPERMISSION
+//   UserPermission   : UPM-0001 key USERPERMISSION
+//   AccountMapping   : ACM-001  key ACCOUNTMAPPING
+//   FinanceDefaults  : FDF-001  key FINANCEDEFAULTS
+//
+// Each generator reconciles with existing rows so a stale IdSequence
+// row never causes a collision (same pattern as makeUserId/makeEmployeeId).
+// =================================================================
+
+/** CMP-001 (company defaults, single-row), key DEFAULTS */
+export async function makeDefaultsId(): Promise<string> {
+  const rows = await db.defaults.findMany({ where: { id: { startsWith: 'CMP-' } }, select: { id: true } })
+  const maxSeq = rows.reduce((m, r) => {
+    const n = Number(r.id.slice('CMP-'.length))
+    return Number.isFinite(n) && n > m ? n : m
+  }, 0)
+  const seq = await reserve('DEFAULTS', maxSeq + 1)
+  return `CMP-${pad(seq, 3)}`
+}
+
+/** TAX-001 (tax heads), key TAXHEAD */
+export async function makeTaxHeadId(): Promise<string> {
+  const rows = await db.taxHead.findMany({ where: { id: { startsWith: 'TAX-' } }, select: { id: true } })
+  const maxSeq = rows.reduce((m, r) => {
+    const n = Number(r.id.slice('TAX-'.length))
+    return Number.isFinite(n) && n > m ? n : m
+  }, 0)
+  const seq = await reserve('TAXHEAD', maxSeq + 1)
+  return `TAX-${pad(seq, 3)}`
+}
+
+/** PRM-0001 (permissions), key PERMISSION */
+export async function makePermissionId(): Promise<string> {
+  const rows = await db.permission.findMany({ where: { id: { startsWith: 'PRM-' } }, select: { id: true } })
+  const maxSeq = rows.reduce((m, r) => {
+    const n = Number(r.id.slice('PRM-'.length))
+    return Number.isFinite(n) && n > m ? n : m
+  }, 0)
+  const seq = await reserve('PERMISSION', maxSeq + 1)
+  return `PRM-${pad(seq, 4)}`
+}
+
+/** ROL-001 (roles), key ROLE */
+export async function makeRoleId(): Promise<string> {
+  const rows = await db.role.findMany({ where: { id: { startsWith: 'ROL-' } }, select: { id: true } })
+  const maxSeq = rows.reduce((m, r) => {
+    const n = Number(r.id.slice('ROL-'.length))
+    return Number.isFinite(n) && n > m ? n : m
+  }, 0)
+  const seq = await reserve('ROLE', maxSeq + 1)
+  return `ROL-${pad(seq, 3)}`
+}
+
+/** SCP-0001 (per-role screen permissions), key SCREENPERMISSION */
+export async function makeScreenPermissionId(): Promise<string> {
+  const rows = await db.screenPermission.findMany({ where: { id: { startsWith: 'SCP-' } }, select: { id: true } })
+  const maxSeq = rows.reduce((m, r) => {
+    const n = Number(r.id.slice('SCP-'.length))
+    return Number.isFinite(n) && n > m ? n : m
+  }, 0)
+  const seq = await reserve('SCREENPERMISSION', maxSeq + 1)
+  return `SCP-${pad(seq, 4)}`
+}
+
+/** UPM-0001 (per-user screen permission overrides), key USERPERMISSION */
+export async function makeUserPermissionId(): Promise<string> {
+  const rows = await db.userPermission.findMany({ where: { id: { startsWith: 'UPM-' } }, select: { id: true } })
+  const maxSeq = rows.reduce((m, r) => {
+    const n = Number(r.id.slice('UPM-'.length))
+    return Number.isFinite(n) && n > m ? n : m
+  }, 0)
+  const seq = await reserve('USERPERMISSION', maxSeq + 1)
+  return `UPM-${pad(seq, 4)}`
+}
+
+/** ACM-001 (account mappings), key ACCOUNTMAPPING */
+export async function makeAccountMappingId(): Promise<string> {
+  const rows = await db.accountMapping.findMany({ where: { id: { startsWith: 'ACM-' } }, select: { id: true } })
+  const maxSeq = rows.reduce((m, r) => {
+    const n = Number(r.id.slice('ACM-'.length))
+    return Number.isFinite(n) && n > m ? n : m
+  }, 0)
+  const seq = await reserve('ACCOUNTMAPPING', maxSeq + 1)
+  return `ACM-${pad(seq, 3)}`
+}
+
+/** FDF-001 (finance defaults per branch / company-wide), key FINANCEDEFAULTS */
+export async function makeFinanceDefaultsId(): Promise<string> {
+  const rows = await db.financeDefaults.findMany({ where: { id: { startsWith: 'FDF-' } }, select: { id: true } })
+  const maxSeq = rows.reduce((m, r) => {
+    const n = Number(r.id.slice('FDF-'.length))
+    return Number.isFinite(n) && n > m ? n : m
+  }, 0)
+  const seq = await reserve('FINANCEDEFAULTS', maxSeq + 1)
+  return `FDF-${pad(seq, 3)}`
+}
