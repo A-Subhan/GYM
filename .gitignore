@@ -28,3 +28,4 @@ Changes*.txt
 Querries*.txt
 Backend/public/uploads/
 /package-lock.json
+bun.lock

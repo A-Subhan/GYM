@@ -1,0 +1,3 @@
+- **Frontend/** — Next.js UI (`npm run dev` inside the folder; dev port 4000)
+- **Backend/** — Node/Express API (`npm run dev` inside the folder)
+- **Database/** — SQL Server schema + stored procedures, apply scripts in filename order
