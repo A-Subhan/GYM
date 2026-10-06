@@ -127,6 +127,53 @@ export function EmptyState({ message }: { message: string }) {
   return <div className="text-center py-8 text-muted-foreground text-sm">{message}</div>
 }
 
+// ============================================================================
+// Gym-themed loading animation — cycles through 4 exercises (bench press,
+// squat, push-up, pull-up) using lightweight inline SVG + CSS keyframes.
+// Respects prefers-reduced-motion (shows a static dumbbell icon).
+// ============================================================================
+export function GymLoader({ size = 48, label = 'Loading…' }: { size?: number; label?: string }) {
+  const exercises = ['Bench Press', 'Squat', 'Push-Up', 'Pull-Up']
+  return (
+    <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: size * 2 }}>
+      <style>{`
+        @keyframes gym-bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-${size * 0.15}px); } }
+        @keyframes gym-rotate { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes gym-fade { 0%, 30% { opacity: 1; } 33%, 63% { opacity: 0; } 66%, 100% { opacity: 0; } }
+        .gym-icon-wrap { animation: gym-bounce 0.8s ease-in-out infinite; }
+        .gym-spinner { animation: gym-rotate 1.2s linear infinite; }
+        .gym-label-0 { animation: gym-fade 3.2s infinite; }
+        .gym-label-1 { animation: gym-fade 3.2s infinite; animation-delay: 0.8s; }
+        .gym-label-2 { animation: gym-fade 3.2s infinite; animation-delay: 1.6s; }
+        .gym-label-3 { animation: gym-fade 3.2s infinite; animation-delay: 2.4s; }
+        @media (prefers-reduced-motion: reduce) {
+          .gym-icon-wrap, .gym-spinner, .gym-label-0, .gym-label-1, .gym-label-2, .gym-label-3 { animation: none; }
+          .gym-label-0 { opacity: 1; }
+          .gym-label-1, .gym-label-2, .gym-label-3 { opacity: 0; }
+        }
+      `}</style>
+      <div className="gym-icon-wrap" style={{ width: size, height: size }}>
+        <svg width={size} height={size} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          {/* Dumbbell */}
+          <rect x="4" y="20" width="4" height="8" rx="1" fill="currentColor" opacity="0.8"/>
+          <rect x="8" y="18" width="3" height="12" rx="1" fill="currentColor"/>
+          <rect x="11" y="23" width="26" height="2" rx="1" fill="currentColor"/>
+          <rect x="37" y="18" width="3" height="12" rx="1" fill="currentColor"/>
+          <rect x="40" y="20" width="4" height="8" rx="1" fill="currentColor" opacity="0.8"/>
+        </svg>
+      </div>
+      <div className="relative h-5">
+        {exercises.map((ex, i) => (
+          <span key={ex} className={`text-xs text-muted-foreground absolute gym-label-${i}`} style={{ left: '50%', transform: 'translateX(-50%)', whiteSpace: 'nowrap' }}>
+            {ex}
+          </span>
+        ))}
+      </div>
+      {label && <span className="text-xs text-muted-foreground">{label}</span>}
+    </div>
+  )
+}
+
 export function StatusBadge({ status }: { status: string }) {
   const map: Record<string, any> = {
     Active: 'default', Posted: 'default', Completed: 'default', Cleared: 'default', Paid: 'default', Approved: 'default', Converted: 'default',

@@ -75,7 +75,7 @@ import {
 import { BranchesModule as BranchesModuleImpl } from './modules'
 import { AppContext, type AppCtx, type SessionUser, type Branch, useApp, canScreen, type ScreenPermRow } from './app-context'
 import {
-  Toolbar, DataTable, StatusBadge, Modal, FormRow, EmptyState, SearchInput, ConfirmModal,
+  Toolbar, DataTable, StatusBadge, Modal, FormRow, EmptyState, SearchInput, ConfirmModal, GymLoader,
 } from './modules'
 
 // =================================================================
@@ -483,7 +483,7 @@ export default function Home() {
   if (loadingSession) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-muted-foreground">Loading…</div>
+        <GymLoader size={48} label="Loading…" />
       </div>
     )
   }
