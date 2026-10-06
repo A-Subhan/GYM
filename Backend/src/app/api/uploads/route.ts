@@ -12,17 +12,23 @@ export async function POST(req: NextRequest) {
   const file = formData.get('file') as File | null
   if (!file) return NextResponse.json({ error: 'No file uploaded' }, { status: 400 })
 
-  // Validate file type
-  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+  // Validate file type (SVG added for company logos / icons)
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml']
   if (!allowedTypes.includes(file.type)) {
-    return NextResponse.json({ error: 'Only JPG, PNG, WebP, GIF images allowed' }, { status: 400 })
+    return NextResponse.json({ error: 'Only JPG, PNG, WebP, GIF, SVG images allowed' }, { status: 400 })
   }
-  // Max 5MB
+  // Max 5MB (company logo enforces 2MB in the company PATCH route)
   if (file.size > 5 * 1024 * 1024) {
     return NextResponse.json({ error: 'File too large (max 5MB)' }, { status: 400 })
   }
 
-  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+  // For SVG, use .svg extension; otherwise use the original extension
+  let ext: string
+  if (file.type === 'image/svg+xml') {
+    ext = 'svg'
+  } else {
+    ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+  }
   const filename = `${randomUUID()}.${ext}`
   const uploadDir = path.join(process.cwd(), 'public', 'uploads')
   await mkdir(uploadDir, { recursive: true })

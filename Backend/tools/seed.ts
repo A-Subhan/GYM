@@ -37,7 +37,7 @@ async function main() {
   console.log(`  ✓ ${Object.keys(SYSTEM_ROLE_PERMISSIONS).length} system roles`)
 
   // 3. Admin Defaults — single-row dbo.Defaults table (Company table removed).
-  //    companyName is write-once: left unset here so the Defaults page performs the one-time set.
+  //    companyName is freely editable (the old write-once trigger was removed).
   const existingDefaults = await db.defaults.findFirst()
   if (!existingDefaults) {
     await db.defaults.create({

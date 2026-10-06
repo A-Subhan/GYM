@@ -64,6 +64,7 @@ export const PERMISSIONS = [
   { code: 'vouchers.post', module: 'vouchers', action: 'post' },
   { code: 'vouchers.reverse', module: 'vouchers', action: 'reverse' },
   { code: 'vouchers.export', module: 'vouchers', action: 'export' },
+  { code: 'vouchers.approve', module: 'vouchers', action: 'approve', description: 'Approve pending vouchers' },
 
   // Cheques
   { code: 'cheques.view', module: 'cheques', action: 'view' },
@@ -239,7 +240,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<string, string[]> = {
     'attendance.view', 'attendance.add', 'attendance.edit', 'attendance.export',
     'fees.view', 'fees.add', 'fees.edit', 'fees.print', 'fees.export', 'fees.post',
     'finance.view', 'finance.add', 'finance.edit', 'finance.export', 'finance.reports',
-    'vouchers.view', 'vouchers.add', 'vouchers.edit', 'vouchers.print', 'vouchers.post', 'vouchers.export',
+    'vouchers.view', 'vouchers.add', 'vouchers.edit', 'vouchers.print', 'vouchers.post', 'vouchers.approve', 'vouchers.export',
     'cheques.view', 'cheques.status', 'cheques.export',
     'tax.view',
     'prospects.view', 'prospects.add', 'prospects.edit', 'prospects.convert', 'prospects.export',
@@ -264,7 +265,7 @@ export const SYSTEM_ROLE_PERMISSIONS: Record<string, string[]> = {
   Accountant: [
     'dashboard.view',
     'finance.view', 'finance.add', 'finance.edit', 'finance.export', 'finance.reports', 'finance.post', 'finance.reverse', 'finance.periods', 'finance.reconcile', 'finance.settings', 'finance.coa',
-    'vouchers.view', 'vouchers.add', 'vouchers.edit', 'vouchers.print', 'vouchers.post', 'vouchers.reverse', 'vouchers.export',
+    'vouchers.view', 'vouchers.add', 'vouchers.edit', 'vouchers.print', 'vouchers.post', 'vouchers.approve', 'vouchers.reverse', 'vouchers.export',
     'cheques.view', 'cheques.status', 'cheques.export',
     'tax.view', 'tax.add', 'tax.edit',
     'fees.view', 'fees.post', 'fees.export', 'fees.print',

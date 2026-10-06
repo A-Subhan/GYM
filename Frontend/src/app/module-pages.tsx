@@ -500,6 +500,7 @@ export function BookVoucherScreen({ voucherType, title }: { voucherType: string,
   const [printTarget, setPrintTarget] = useState<any>(null)
   const [reverseTarget, setReverseTarget] = useState<any>(null)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const [approveTarget, setApproveTarget] = useState<any>(null)
   const [lastPosted, setLastPosted] = useState<any>(null)
 
   const qs = [
@@ -558,6 +559,7 @@ export function BookVoucherScreen({ voucherType, title }: { voucherType: string,
           <SelectContent>
             <SelectItem value="all">All</SelectItem>
             <SelectItem value="Posted">Posted</SelectItem>
+            <SelectItem value="Pending">Pending</SelectItem>
             <SelectItem value="Reversed">Reversed</SelectItem>
           </SelectContent>
         </Select>
@@ -573,6 +575,9 @@ export function BookVoucherScreen({ voucherType, title }: { voucherType: string,
                 <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditing(r); setFormOpen(true) }} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>
               )}
               <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setPrintTarget(r) }} title="Print"><Printer className="h-3.5 w-3.5" /></Button>
+              {r.status === 'Pending' && has('vouchers.approve') && (
+                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setApproveTarget(r) }} title="Approve"><CheckCircle2 className="h-3.5 w-3.5 text-green-600" /></Button>
+              )}
               {r.status === 'Posted' && has('vouchers.reverse') && (
                 <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setReverseTarget(r) }} title="Reverse"><X className="h-3.5 w-3.5 text-amber-600" /></Button>
               )}
@@ -605,6 +610,7 @@ export function BookVoucherScreen({ voucherType, title }: { voucherType: string,
       <VoucherPrintModal open={!!printTarget} voucher={printTarget} onClose={() => setPrintTarget(null)} />
       <ReverseModal open={!!reverseTarget} voucher={reverseTarget} onClose={() => setReverseTarget(null)} onDone={() => { setReverseTarget(null); reload() }} />
       <DeleteVoucherModal open={!!deleteTarget} voucher={deleteTarget} onClose={() => setDeleteTarget(null)} onDone={() => { setDeleteTarget(null); reload() }} />
+      <ApproveVoucherModal open={!!approveTarget} voucher={approveTarget} onClose={() => setApproveTarget(null)} onDone={() => { setApproveTarget(null); reload() }} />
     </div>
   )
 }
@@ -639,6 +645,14 @@ function BookVoucherFormModal({ open, onClose, voucherType, editing, onSaved }: 
 
   const { data: chartsData } = useFetch<any>(form.branchId ? `/api/charts?branchId=${form.branchId}` : '/api/charts')
   const { data: taxHeadsData } = useFetch<any>('/api/tax-heads')
+  // Fetch effective FinanceDefaults for the selected branch (branch-specific wins over company-wide)
+  const { data: fdData } = useFetch<any>(form.branchId ? `/api/finance-defaults/effective?branchId=${form.branchId}` : '/api/finance-defaults/effective')
+  const fd = fdData?.defaults
+  const fdDefaultBookId = isBank ? fd?.defaultBankAccountId : isCash ? fd?.defaultCashAccountId : null
+  const fdDefaultPaymentMode = isBank ? fd?.defaultBankPaymentMode : isCash ? fd?.defaultCashPaymentMode : null
+  const fdAllowBackDated = fd?.allowBackDatedVouchers
+  const fdLockBefore = fd?.lockBeforeDate ? String(fd.lockBeforeDate).slice(0, 10) : null
+  const fdApprovalRequired = fd?.voucherApprovalRequired
   const charts = chartsData?.charts || []
   const detailAccounts = charts.filter((a: any) => a.isDetail && a.isActive)
   const bookAccounts = charts.filter((a: any) => a.isActive && (isCash
@@ -693,11 +707,15 @@ function BookVoucherFormModal({ open, onClose, voucherType, editing, onSaved }: 
         lines: detailLines.length ? detailLines : [emptyLine()],
       })
     } else {
+      // New voucher: preselect the default book account and payment mode from
+      // FinanceDefaults for the user's branch (branch-specific wins over
+      // company-wide). The user can still change them.
+      const initBranchId = session?.branchId || branches[0]?.id || ''
       setForm({
         voucherDate: new Date().toISOString().slice(0, 10),
-        branchId: session?.branchId || branches[0]?.id || '',
-        bookChartId: '',
-        paymentMode: defaultPaymentMode,
+        branchId: initBranchId,
+        bookChartId: '', // will be filled by the fdData effect below
+        paymentMode: defaultPaymentMode, // will be overridden by fdData effect if set
         chequeDate: '',
         description: '',
         reference: '',
@@ -705,6 +723,18 @@ function BookVoucherFormModal({ open, onClose, voucherType, editing, onSaved }: 
       })
     }
   }, [open, editing])
+
+  // When FinanceDefaults are loaded (or the branch changes) and the form is
+  // open for a NEW voucher (not editing), preselect the bookChartId and
+  // paymentMode from the effective defaults. The user can still change them.
+  useEffect(() => {
+    if (!open || editing || !fd) return
+    setForm((f: any) => ({
+      ...f,
+      bookChartId: f.bookChartId || fdDefaultBookId || '',
+      paymentMode: f.paymentMode || fdDefaultPaymentMode || defaultPaymentMode,
+    }))
+  }, [open, editing, fd, fdDefaultBookId, fdDefaultPaymentMode])
 
   const setLine = (i: number, patch: any) => {
     setForm((f: any) => ({ ...f, lines: f.lines.map((l: any, idx: number) => idx === i ? { ...l, ...patch } : l) }))
@@ -909,6 +939,31 @@ function BookVoucherFormModal({ open, onClose, voucherType, editing, onSaved }: 
           </>
         )}
       </div>
+
+      {/* Finance rules hints — show the active FinanceDefaults rules so the
+          user knows what constraints apply before saving. */}
+      {(fdLockBefore || fdAllowBackDated === false || fdApprovalRequired) && (
+        <div className="mt-2 flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
+          {fdLockBefore && (
+            <span className="flex items-center gap-1">
+              <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
+              Vouchers on or before <b className="font-medium">{fdLockBefore}</b> are locked
+            </span>
+          )}
+          {fdAllowBackDated === false && (
+            <span className="flex items-center gap-1">
+              <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
+              Back-dated vouchers are not allowed
+            </span>
+          )}
+          {fdApprovalRequired && (
+            <span className="flex items-center gap-1">
+              <AlertCircle className="h-3.5 w-3.5 text-blue-600" />
+              This voucher will be saved as Pending and must be approved before posting
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Detail lines */}
       <div className="mt-4 border rounded">
@@ -1261,6 +1316,38 @@ function DeleteVoucherModal({ open, voucher, onClose, onDone }: any) {
         Tip: use <b>Reverse</b> when you want the voucher replaced by a visible reversal entry instead.
       </p>
       <FormRow label="Reason (optional)"><Textarea value={reason} onChange={e => setReason(e.target.value)} rows={2} /></FormRow>
+    </Modal>
+  )
+}
+
+// ----------------------------------------------------------------
+// APPROVE a Pending voucher — sets status from Pending to Posted.
+// Requires vouchers.approve permission (checked on the backend too).
+// ----------------------------------------------------------------
+function ApproveVoucherModal({ open, voucher, onClose, onDone }: any) {
+  if (!voucher) return null
+  const endpoint = endpointForBook(voucher.voucherType)
+  return (
+    <Modal open={open} onClose={onClose} title={`Approve Voucher ${voucher.id}`} size="sm"
+      footer={<>
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button onClick={async () => {
+          try {
+            await apiPost(`${endpoint}/${encodeURIComponent(voucher.id)}`, { action: 'approve' })
+            toast.success(`Voucher ${voucher.id} approved — now Posted`)
+            onDone()
+          } catch (e: any) { toast.error(e.message) }
+        }}><CheckCircle2 className="h-4 w-4 mr-1" />Approve</Button>
+      </>}>
+      <p className="text-sm mb-2">
+        This voucher was saved as <b>Pending</b> because <b>Voucher Approval Required</b> is enabled in Finance Defaults.
+        Approving it sets its status to <b>Posted</b> so it appears in ledgers and reports.
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Voucher #: <span className="font-mono">{voucher.id}</span><br />
+        Date: {fmtDateStr(voucher.voucherDate)}<br />
+        Branch: {voucher.branch?.name || '—'}
+      </p>
     </Modal>
   )
 }
@@ -5076,29 +5163,21 @@ export function AdminDefaultsModule() {
 
 // ---- Tab 1: Company Information -----------------------------------
 function DefaultsCompanyTab() {
-  const { has, setCompanyName } = useApp()
+  const { has, setCompanyName, setCompanyLogo } = useApp()
   const { data, reload } = useFetch<any>('/api/company')
   const [form, setForm] = useState<any>({})
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const company = data?.company
   useEffect(() => { if (company) setForm(company) }, [company])
-
-  const nameLocked = !!company?.nameLocked
-  const serverName = String(company?.name || '').trim()
-  // the name is editable only while unlocked AND still empty — it can be set exactly once
-  const nameEditable = !nameLocked && !serverName
-  const lockHint = nameLocked
-    ? 'Company name is locked'
-    : nameEditable
-      ? 'The company name can only be set once — it locks automatically after the first successful save.'
-      : 'Company name can only be set once — it will lock on save.'
 
   const save = async () => {
     setSaving(true)
     try {
       const json = await apiPatch('/api/company', form)
-      toast.success(json?.company?.nameLocked && !nameLocked ? 'Company saved — the name is now locked' : 'Company updated')
+      toast.success('Company updated')
       if (json?.company?.name) setCompanyName(json.company.name)
+      if (json?.company?.logo !== undefined) setCompanyLogo(json.company.logo || null)
       reload()
     } catch (e: any) {
       toast.error(e.message)
@@ -5107,34 +5186,104 @@ function DefaultsCompanyTab() {
     }
   }
 
+  const uploadLogo = async (file: File) => {
+    // Client-side validation: png/jpg/webp/svg, max 2 MB
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml']
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Only PNG, JPG, WebP, SVG images allowed')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Logo too large (max 2 MB)')
+      return
+    }
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch('/api/uploads', { method: 'POST', body: formData })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || 'Upload failed')
+      setForm({ ...form, logo: json.url })
+      toast.success('Logo uploaded — click Save to apply')
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const removeLogo = () => {
+    setForm({ ...form, logo: '' })
+    toast.info('Logo removed — click Save to apply')
+  }
+
   return (
     <Card className="max-w-3xl">
       <CardContent className="p-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormRow label="Company ID"><Input value={company?.companyId || ''} disabled className="bg-muted/40" /></FormRow>
-          <FormRow label="Accounting Type"><Input value={company?.accountingType || ''} disabled className="bg-muted/40" /></FormRow>
+          <FormRow label="Accounting Type"><Input value={company?.accountingType || company?.financeType || ''} disabled className="bg-muted/40" /></FormRow>
           <FormRow label="Company Name">
-            <div className="flex items-center gap-2">
-              <Input
-                value={form.name || ''}
-                disabled={!nameEditable}
-                onChange={e => setForm({ ...form, name: e.target.value })}
-                className={!nameEditable ? 'bg-muted/40' : ''}
-                placeholder="Set the company name (one time only)"
-              />
-              {(nameLocked || !nameEditable) && <Lock className="h-4 w-4 text-muted-foreground shrink-0" />}
-            </div>
+            <Input
+              value={form.name || ''}
+              onChange={e => setForm({ ...form, name: e.target.value })}
+              placeholder="Company name"
+            />
           </FormRow>
           <div className="sm:col-span-1 flex items-end">
-            <div className="text-xs text-muted-foreground">{lockHint}</div>
+            <div className="text-xs text-muted-foreground">The company name is editable.</div>
           </div>
           <FormRow label="Phone"><Input value={form.phone || ''} onChange={e => setForm({ ...form, phone: e.target.value })} /></FormRow>
           <FormRow label="Email"><Input type="email" value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} /></FormRow>
           <FormRow label="Website"><Input value={form.website || ''} onChange={e => setForm({ ...form, website: e.target.value })} /></FormRow>
-          <FormRow label="Logo (path or URL)"><Input value={form.logo || ''} onChange={e => setForm({ ...form, logo: e.target.value })} /></FormRow>
           <FormRow label="STRN"><Input value={form.strn || ''} onChange={e => setForm({ ...form, strn: e.target.value })} /></FormRow>
           <FormRow label="NTN"><Input value={form.ntn || ''} onChange={e => setForm({ ...form, ntn: e.target.value })} /></FormRow>
           <div className="sm:col-span-2"><FormRow label="Address"><Textarea rows={2} value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></FormRow></div>
+        </div>
+        {/* Logo upload */}
+        <div className="mt-4 border rounded p-4">
+          <div className="text-sm font-medium mb-2">Company Logo / Trademark</div>
+          <div className="flex items-start gap-4">
+            <div className="w-28 h-28 border rounded flex items-center justify-center bg-muted/30 overflow-hidden shrink-0">
+              {form.logo ? (
+                <img src={form.logo} alt="Logo" className="w-full h-full object-contain" />
+              ) : (
+                <ImagePlus className="h-8 w-8 text-muted-foreground" />
+              )}
+            </div>
+            <div className="flex-1 space-y-2">
+              <div className="text-xs text-muted-foreground">PNG, JPG, WebP, or SVG. Max 2 MB. Shown in the app header/sidebar.</div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {has('company.edit') && (
+                  <>
+                    <label className="cursor-pointer">
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        className="hidden"
+                        onChange={e => { const f = e.target.files?.[0]; if (f) uploadLogo(f); e.currentTarget.value = '' }}
+                      />
+                      <Button type="button" variant="outline" size="sm" disabled={uploading} asChild>
+                        <span>
+                          <ImagePlus className="h-4 w-4 mr-1" />
+                          {uploading ? 'Uploading…' : form.logo ? 'Replace Logo' : 'Upload Logo'}
+                        </span>
+                      </Button>
+                    </label>
+                    {form.logo && (
+                      <Button type="button" variant="outline" size="sm" onClick={removeLogo}>
+                        <Trash2 className="h-4 w-4 mr-1" />Remove
+                      </Button>
+                    )}
+                  </>
+                )}
+                {form.logo && (
+                  <div className="text-xs text-muted-foreground font-mono truncate max-w-[200px]" title={form.logo}>{form.logo}</div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
         <div className="mt-4 flex items-center justify-between gap-2 flex-wrap">
           <div className="text-xs text-muted-foreground">

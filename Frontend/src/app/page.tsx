@@ -357,6 +357,7 @@ export default function Home() {
   const [activeModule, setActiveModule] = useState<ModuleKey>('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [companyName, setCompanyName] = useState<string | null>(null)
+  const [companyLogo, setCompanyLogo] = useState<string | null>(null)
 
   const refreshSession = useCallback(async () => {
     setLoadingSession(true)
@@ -383,13 +384,17 @@ export default function Home() {
     }
   }, [])
 
-  // Company name for the app shell brand (set once on the Defaults page, shown globally)
+  // Company name + logo for the app shell brand (fetched from /api/company)
   useEffect(() => {
-    if (!session) { setCompanyName(null); return }
+    if (!session) { setCompanyName(null); setCompanyLogo(null); return }
     let cancelled = false
     fetch('/api/company')
       .then(r => (r.ok ? r.json() : null))
-      .then(json => { if (!cancelled && json?.company?.name) setCompanyName(json.company.name) })
+      .then(json => {
+        if (cancelled) return
+        if (json?.company?.name) setCompanyName(json.company.name)
+        if (json?.company?.logo) setCompanyLogo(json.company.logo)
+      })
       .catch(() => {})
     return () => { cancelled = true }
   }, [session])
@@ -508,7 +513,7 @@ export default function Home() {
   return (
     <AppContext.Provider value={{
       session, branches, selectedBranchIds, setSelectedBranchIds,
-      has, can, screenPerms, companyName, setCompanyName, refreshSession, logout, login,
+      has, can, screenPerms, companyName, setCompanyName, companyLogo, setCompanyLogo, refreshSession, logout, login,
     }}>
       <div className="min-h-screen bg-muted/30">
         {/* Topbar */}
@@ -526,13 +531,18 @@ export default function Home() {
                 onNavigate={(k) => { navigateTo(k as ModuleKey); setSidebarOpen(false) }}
                 session={session}
                 brand={brand}
+                logo={companyLogo}
                 onLogout={logout}
               />
             </SheetContent>
           </Sheet>
 
           <div className="font-semibold text-lg flex items-center gap-2 min-w-0">
-            <div className="h-7 w-7 rounded bg-primary/15 text-primary flex items-center justify-center text-sm font-bold shrink-0">C</div>
+            {companyLogo ? (
+              <img src={companyLogo} alt="Logo" className="h-7 w-7 rounded object-contain shrink-0" />
+            ) : (
+              <div className="h-7 w-7 rounded bg-primary/15 text-primary flex items-center justify-center text-sm font-bold shrink-0">C</div>
+            )}
             <span className="hidden sm:inline truncate max-w-[220px] lg:max-w-[320px]" title={brand}>{brand}</span>
             <span className="sm:hidden text-base truncate max-w-[120px]">{companyName || 'Contoura'}</span>
           </div>
@@ -571,6 +581,7 @@ export default function Home() {
               onNavigate={navigateTo}
               session={session}
               brand={brand}
+              logo={companyLogo}
               onLogout={logout}
             />
           </aside>
@@ -608,11 +619,15 @@ function ThemeToggle() {
 // =================================================================
 // Sidebar — nested Module → Section → Screen
 // =================================================================
-function SidebarContent({ nav, active, onNavigate, session, brand, onLogout }: any) {
+function SidebarContent({ nav, active, onNavigate, session, brand, logo, onLogout }: any) {
   return (
     <div className="h-full flex flex-col">
       <div className="h-14 border-b flex items-center px-4 gap-2">
-        <div className="h-7 w-7 rounded bg-primary/15 text-primary flex items-center justify-center text-sm font-bold">C</div>
+        {logo ? (
+          <img src={logo} alt="Logo" className="h-7 w-7 rounded object-contain shrink-0" />
+        ) : (
+          <div className="h-7 w-7 rounded bg-primary/15 text-primary flex items-center justify-center text-sm font-bold">C</div>
+        )}
         <div className="font-semibold truncate">{brand || 'Contoura Gym'}</div>
       </div>
       <nav className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5 text-sm">

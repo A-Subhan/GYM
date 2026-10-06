@@ -106,6 +106,101 @@ export function bookVoucherApi(bookType: BookApiBookType) {
   const delegate = DELEGATES[bookType].voucher
 
   /**
+   * Fetch the effective FinanceDefaults row for a branch (branch-specific
+   * wins over company-wide). SAFE FOR PRE-MIGRATION: if the expanded
+   * columns don't exist yet, the Prisma query fails and we default to
+   * the historical behaviour (all flags = today's defaults).
+   */
+  async function resolveFinanceDefaults(branchId: string): Promise<{
+    allowUnbalancedOTB: boolean
+    allowBackDatedVouchers: boolean
+    lockBeforeDate: Date | null
+    voucherApprovalRequired: boolean
+    allowEditPostedVouchers: boolean
+    defaultCashPaymentMode: string | null
+    defaultBankPaymentMode: string | null
+    defaultCashAccountId: string | null
+    defaultBankAccountId: string | null
+  }> {
+    const defaults = {
+      allowUnbalancedOTB: true,
+      allowBackDatedVouchers: true,
+      lockBeforeDate: null as Date | null,
+      voucherApprovalRequired: false,
+      allowEditPostedVouchers: true,
+      defaultCashPaymentMode: null as string | null,
+      defaultBankPaymentMode: null as string | null,
+      defaultCashAccountId: null as string | null,
+      defaultBankAccountId: null as string | null,
+    }
+    try {
+      const fd = (await db.financeDefaults.findFirst({
+        where: { OR: [{ branchId }, { branchId: null }] },
+        orderBy: [{ branchId: 'desc' }],
+        select: {
+          allowUnbalancedOTB: true,
+          allowBackDatedVouchers: true,
+          lockBeforeDate: true,
+          voucherApprovalRequired: true,
+          allowEditPostedVouchers: true,
+          defaultCashPaymentMode: true,
+          defaultBankPaymentMode: true,
+          defaultCashAccountId: true,
+          defaultBankAccountId: true,
+        },
+      })) as any | null
+      if (fd) {
+        return {
+          allowUnbalancedOTB: fd.allowUnbalancedOTB ?? true,
+          allowBackDatedVouchers: fd.allowBackDatedVouchers ?? true,
+          lockBeforeDate: fd.lockBeforeDate ?? null,
+          voucherApprovalRequired: fd.voucherApprovalRequired ?? false,
+          allowEditPostedVouchers: fd.allowEditPostedVouchers ?? true,
+          defaultCashPaymentMode: fd.defaultCashPaymentMode ?? null,
+          defaultBankPaymentMode: fd.defaultBankPaymentMode ?? null,
+          defaultCashAccountId: fd.defaultCashAccountId ?? null,
+          defaultBankAccountId: fd.defaultBankAccountId ?? null,
+        }
+      }
+      return defaults
+    } catch {
+      return defaults
+    }
+  }
+
+  /**
+   * Validate voucher date against FinanceDefaults:
+   *  - lockBeforeDate: no voucher with date on or before this date
+   *  - allowBackDatedVouchers: if OFF, voucher date cannot be earlier than today
+   * Throws Error with a clear message on violation.
+   */
+  function validateVoucherDate(voucherDate: Date, fd: {
+    allowBackDatedVouchers: boolean
+    lockBeforeDate: Date | null
+  }, action: 'create' | 'edit' | 'delete' | 'reverse'): void {
+    // lockBeforeDate blocks ALL operations (create/edit/delete/reverse)
+    if (fd.lockBeforeDate) {
+      const lockDate = new Date(fd.lockBeforeDate)
+      // set to start of day for comparison
+      lockDate.setHours(0, 0, 0, 0)
+      if (voucherDate <= lockDate) {
+        throw new Error(`Voucher date ${voucherDate.toISOString().slice(0, 10)} is on or before the lock date ${lockDate.toISOString().slice(0, 10)}. Vouchers on or before the lock date cannot be created, edited, deleted, or reversed.`)
+      }
+    }
+    // allowBackDatedVouchers only blocks create/edit (not delete/reverse,
+    // which operate on an existing voucher with its own date)
+    if (!fd.allowBackDatedVouchers && (action === 'create' || action === 'edit')) {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const vDate = new Date(voucherDate)
+      vDate.setHours(0, 0, 0, 0)
+      if (vDate < today) {
+        throw new Error(`Back-dated vouchers are not allowed. Voucher date ${vDate.toISOString().slice(0, 10)} cannot be earlier than today ${today.toISOString().slice(0, 10)}.`)
+      }
+    }
+  }
+
+  /**
    * For OTB only: enforce FinanceDefaults.allowUnbalancedOTB. If the
    * company-wide or branch-specific FinanceDefaults row has the flag OFF,
    * the request's `allowUnbalanced=true` is overridden to `false` so the
@@ -187,6 +282,8 @@ export function bookVoucherApi(bookType: BookApiBookType) {
 
     try {
       await assertNoControlLines(data.lines)
+      const fd = await resolveFinanceDefaults(data.branchId)
+      validateVoucherDate(new Date(data.voucherDate), fd, 'create')
       const allowUnbalanced = await resolveAllowUnbalanced(data.branchId, data.allowUnbalanced === true)
       const voucher = await postBookVoucher({
         voucherType,
@@ -200,6 +297,9 @@ export function bookVoucherApi(bookType: BookApiBookType) {
         lines: (data.lines || []).map(normalizeLine),
         postedById: data.postedById || session.id,
         allowUnbalanced,
+        // When voucherApprovalRequired is ON, save as Pending; the Approve
+        // action by a user with vouchers.approve will set it to Posted.
+        status: fd.voucherApprovalRequired ? 'Pending' : undefined,
       })
       return NextResponse.json({ voucher, difference: (voucher as any).difference ?? null })
     } catch (e: any) {
@@ -228,6 +328,12 @@ export function bookVoucherApi(bookType: BookApiBookType) {
 
     try {
       await assertNoControlLines(data.lines)
+      const fd = await resolveFinanceDefaults(existing.branchId)
+      validateVoucherDate(new Date(data.voucherDate || existing.voucherDate), fd, 'edit')
+      // allowEditPostedVouchers: if OFF, posted vouchers cannot be edited
+      if (!fd.allowEditPostedVouchers && existing.status === 'Posted') {
+        return NextResponse.json({ error: 'Posted vouchers cannot be edited. Reverse the voucher and create a new one instead.' }, { status: 400 })
+      }
       const allowUnbalanced = await resolveAllowUnbalanced(existing.branchId, data.allowUnbalanced === true)
       const voucher = await postBookVoucher({
         voucherType,
@@ -242,6 +348,8 @@ export function bookVoucherApi(bookType: BookApiBookType) {
         postedById: session.id,
         allowUnbalanced,
         existingVoucherId: id,
+        // On edit, keep the existing status unless the caller overrides it
+        status: data.status || (existing.status === 'Pending' ? 'Pending' : undefined),
       })
       return NextResponse.json({ voucher, difference: (voucher as any).difference ?? null })
     } catch (e: any) {
@@ -249,7 +357,7 @@ export function bookVoucherApi(bookType: BookApiBookType) {
     }
   }
 
-  // POST action ({ action: 'reverse', reason } | { action: 'delete', reason })
+  // POST action ({ action: 'reverse' | 'delete' | 'approve', reason })
   async function action(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const session = await getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -261,6 +369,9 @@ export function bookVoucherApi(bookType: BookApiBookType) {
       const existing = await (db as any)[delegate].findUnique({ where: { id } })
       if (!existing) return NextResponse.json({ error: 'Voucher not found' }, { status: 404 })
       try {
+        // Validate lockBeforeDate against the existing voucher's date
+        const fd = await resolveFinanceDefaults(existing.branchId)
+        validateVoucherDate(new Date(existing.voucherDate), fd, 'reverse')
         const reversalId = await reverseBookVoucher(id, existing.voucherType, session.id, data.reason || 'Manual reversal')
         return NextResponse.json({ success: true, reversalId })
       } catch (e: any) {
@@ -272,6 +383,26 @@ export function bookVoucherApi(bookType: BookApiBookType) {
     if (data.action === 'delete') {
       return softDelete(id, session, data.reason)
     }
+
+    // APPROVE a Pending voucher — sets status to Posted.
+    if (data.action === 'approve') {
+      if (!session.permissions.includes('vouchers.approve')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      const existing = await (db as any)[delegate].findUnique({ where: { id } })
+      if (!existing) return NextResponse.json({ error: 'Voucher not found' }, { status: 404 })
+      if (existing.status !== 'Pending') return NextResponse.json({ error: `Voucher is not Pending (current status: ${existing.status})` }, { status: 400 })
+      try {
+        await db.$transaction(async (tx) => {
+          await (tx as any)[delegate].update({ where: { id }, data: { status: 'Posted' } })
+          await (tx as any).auditLog.create({
+            data: { userId: session.id, action: 'APPROVE', module: 'book-vouchers', details: JSON.stringify({ voucherId: id }) },
+          })
+        }, { timeout: 15000 })
+        return NextResponse.json({ success: true, message: `Voucher ${id} approved` })
+      } catch (e: any) {
+        return NextResponse.json({ error: e.message || 'Failed to approve voucher' }, { status: 400 })
+      }
+    }
+
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
   }
 
@@ -287,6 +418,9 @@ export function bookVoucherApi(bookType: BookApiBookType) {
     if (!existing) return NextResponse.json({ error: 'Voucher not found' }, { status: 404 })
     if (existing.isDeleted) return NextResponse.json({ error: 'Voucher is already deleted' }, { status: 400 })
     try {
+      // Validate lockBeforeDate against the existing voucher's date
+      const fd = await resolveFinanceDefaults(existing.branchId)
+      validateVoucherDate(new Date(existing.voucherDate), fd, 'delete')
       await db.$transaction(async (tx) => {
         await (tx as any)[delegate].update({
           where: { id },

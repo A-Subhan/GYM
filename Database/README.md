@@ -63,6 +63,14 @@
 --        "ALL PASS"  -> database is in the final state.
 --        "FAILED: <items>" -> check the detail column for reasons.
 --
+--   6. Run the company & finance options upgrade (drops the company name
+--      lock trigger so the company name is freely editable; adds the
+--      vouchers.approve permission and grants it to Super Admin/Owner/
+--      Manager/Accountant):
+--        Database/14_company_and_finance_options.sql
+--      Then verify:
+--        Database/14_verify.sql
+--
 -- ============================================================================
 -- PATH B — FRESH INSTALL (empty database)
 -- ============================================================================
@@ -151,6 +159,12 @@
 --   ├── 13_verify.sql               ✅ Final verification (PASS/FAIL per item +
 --   │                                 ALL PASS or FAIL list). Run on BOTH live
 --   │                                 (after 13) and fresh install (after 06).
+--   ├── 14_company_and_finance_options.sql ✅ Drops company name lock trigger,
+--   │                                 adds vouchers.approve permission +
+--   │                                 grants to system roles. Run after 13 on
+--   │                                 live databases.
+--   ├── 14_verify.sql               ✅ Verifies 14 (trigger gone, columns exist,
+--   │                                 vouchers.approve permission granted).
 --   ├── README.md                   This file
 --   ├── _archive/                   Old migration scripts (not part of install)
 --   ├── GymDB.bak                    Real SQL Server backup (23 MB)

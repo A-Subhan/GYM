@@ -187,6 +187,7 @@ INSERT INTO [Permission] ([id], [module], [action], [code], [description]) VALUE
 INSERT INTO [Permission] ([id], [module], [action], [code], [description]) VALUES ('PRM-0114', 'overtime', 'approve', 'overtime.approve', NULL);
 INSERT INTO [Permission] ([id], [module], [action], [code], [description]) VALUES ('PRM-0149', 'overtime', 'edit', 'overtime.edit', N'Edit overtime entries');
 INSERT INTO [Permission] ([id], [module], [action], [code], [description]) VALUES ('PRM-0150', 'overtime', 'delete', 'overtime.delete', N'Delete overtime entries');
+INSERT INTO [Permission] ([id], odule], [action], [code], [description]) VALUES ('PRM-0151', 'vouchers', 'approve', 'vouchers.approve', N'Approve pending vouchers');
 INSERT INTO [Permission] ([id], [module], [action], [code], [description]) VALUES ('PRM-0115', 'payroll', 'view', 'payroll.view', NULL);
 INSERT INTO [Permission] ([id], [module], [action], [code], [description]) VALUES ('PRM-0116', 'payroll', 'add', 'payroll.add', NULL);
 INSERT INTO [Permission] ([id], [module], [action], [code], [description]) VALUES ('PRM-0117', 'payroll', 'edit', 'payroll.edit', NULL);
@@ -227,6 +228,10 @@ INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-001', 'PRM-
 INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-001', 'PRM-0137');
 INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-001', 'PRM-0149');
 INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-001', 'PRM-0150');
+INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-001', 'PRM-0151');
+INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-002', 'PRM-0151');
+INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-003', 'PRM-0151');
+INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-004', 'PRM-0151');
 INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-001', 'PRM-0015');
 INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-001', 'PRM-0017');
 INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-001', 'PRM-0016');

@@ -4,9 +4,10 @@ import { getSession } from '@/lib/auth'
 import { makeDefaultsId } from '@/lib/ids'
 
 // Admin Defaults — backed by the dbo.Defaults table (the legacy Company table
-// was removed by the SQL Server migration). companyName is WRITE-ONCE:
-// the DB trigger trg_Defaults_CompanyNameLock blocks changes once set, and the
-// API enforces the same rule up front.
+// was removed by the SQL Server migration). The company name is freely
+// editable (the old trg_Defaults_CompanyNameLock was dropped by
+// 14_company_and_finance_options.sql). The API enforces company.edit
+// permission and logs every name change to dbo.AuditLog.
 export async function GET() {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -29,18 +30,20 @@ export async function PATCH(req: NextRequest) {
     defaults = await db.defaults.create({ data: { id } })
   }
 
-  // Write-once company name: if a non-empty name is already stored and the
-  // submitted value differs, reject (mirrors trg_Defaults_CompanyNameLock).
+  // Resolve the submitted company name (accept both companyName and name)
   const submittedName =
     data.companyName !== undefined && data.companyName !== null
       ? String(data.companyName).trim()
       : data.name !== undefined && data.name !== null
         ? String(data.name).trim()
         : undefined
-  if (submittedName !== undefined) {
-    const existingName = (defaults.companyName || '').trim()
-    if (existingName && submittedName !== existingName) {
-      return NextResponse.json({ error: 'Company name is locked' }, { status: 400 })
+
+  // Validate logo path if provided — must be a relative /uploads/ path or null
+  let logoValue = data.logo
+  if (logoValue !== undefined && logoValue !== null && logoValue !== '') {
+    const logoStr = String(logoValue)
+    if (!logoStr.startsWith('/uploads/')) {
+      return NextResponse.json({ error: 'Logo must be an uploaded file path (starts with /uploads/)' }, { status: 400 })
     }
   }
 
@@ -52,7 +55,7 @@ export async function PATCH(req: NextRequest) {
       phone: data.phone,
       email: data.email,
       website: data.website,
-      logo: data.logo,
+      logo: logoValue,
       strn: data.strn,
       ntn: data.ntn,
       fbr: data.fbr,
@@ -61,6 +64,16 @@ export async function PATCH(req: NextRequest) {
       coaLocked: data.coaLocked,
     },
   })
-  await db.auditLog.create({ data: { userId: session.id, action: 'UPDATE', module: 'company', details: JSON.stringify({ id: updated.id }) } })
+
+  // Audit log — include the name change details if the name was updated
+  const auditDetails: any = { id: updated.id }
+  if (submittedName !== undefined && submittedName !== (defaults.companyName || '').trim()) {
+    auditDetails.companyNameChanged = { from: defaults.companyName || null, to: submittedName }
+  }
+  if (logoValue !== undefined && logoValue !== defaults.logo) {
+    auditDetails.logoChanged = { from: defaults.logo || null, to: logoValue }
+  }
+  await db.auditLog.create({ data: { userId: session.id, action: 'UPDATE', module: 'company', details: JSON.stringify(auditDetails) } })
+
   return NextResponse.json({ company: { ...updated, name: updated.companyName }, defaults: updated })
 }

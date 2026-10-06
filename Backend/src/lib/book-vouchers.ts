@@ -52,6 +52,10 @@ export interface PostBookVoucherInput {
   allowUnbalanced?: boolean
   // edit mode
   existingVoucherId?: string
+  // When voucherApprovalRequired is ON, save as 'Pending'; the Approve
+  // action by a user with vouchers.approve will set it to 'Posted'.
+  // When undefined, defaults to 'Posted' (historical behaviour).
+  status?: string
 }
 
 export function bookTypeFor(voucherType: BookVoucherType): BookType {
@@ -293,7 +297,7 @@ export async function postBookVoucher(input: PostBookVoucherInput) {
       branchId: input.branchId,
       description: input.description,
       reference: input.reference,
-      status: 'Posted',
+      status: input.status || 'Posted',
       postedById: input.postedById,
     }
     if (usesBookAccount(input.voucherType)) {

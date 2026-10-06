@@ -48,6 +48,8 @@ export type AppCtx = {
   screenPerms: Record<string, ScreenPermRow>
   companyName: string | null
   setCompanyName: (name: string | null) => void
+  companyLogo: string | null
+  setCompanyLogo: (logo: string | null) => void
   refreshSession: () => Promise<void>
   logout: () => Promise<void>
   login: (username: string, password: string) => Promise<boolean>

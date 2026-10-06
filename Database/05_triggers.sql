@@ -100,25 +100,12 @@ END
 GO
 
 -- ---------------------------------------------------------------------------
--- Admin Defaults: companyName is WRITE-ONCE
--- (Backend/prisma/schema.prisma - model Defaults, see trg_Defaults_CompanyNameLock)
+-- Admin Defaults: companyName is EDITABLE
+-- (the old trg_Defaults_CompanyNameLock was removed — the company name can
+--  be changed freely via direct SQL or the Company Information API, which
+--  logs every change to dbo.AuditLog. The API enforces company.edit
+--  permission.)
 -- ---------------------------------------------------------------------------
-CREATE OR ALTER TRIGGER dbo.trg_Defaults_CompanyNameLock ON dbo.Defaults AFTER UPDATE AS
-BEGIN
-    SET NOCOUNT ON;
-    IF EXISTS (
-        SELECT 1
-        FROM inserted i
-        INNER JOIN deleted d ON d.id = i.id
-        WHERE d.companyName IS NOT NULL            -- a name was already set
-          AND (i.companyName IS NULL               -- ... and is being cleared
-               OR i.companyName <> d.companyName)  -- ... or is being changed
-    )
-    BEGIN
-        ;THROW 55100, 'Company Name is locked by Admin Defaults: it cannot be changed once set.', 1;
-    END
-END
-GO
 
-PRINT 'Step 05 complete: final triggers created (updatedAt touch, payroll audit, Defaults company-name lock).';
+PRINT 'Step 05 complete: final triggers created (updatedAt touch, payroll audit).';
 GO
