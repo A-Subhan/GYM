@@ -7930,8 +7930,13 @@ export function MasterFilesScreen({ type, title }: { type: 'gym' | 'finance' | '
       />
 
       {/* Detail (items) of the selected category */}
-      <div className="text-xs font-semibold uppercase text-muted-foreground mt-5 mb-1.5">
-        Items (detail){selectedMaster ? ` — ${selectedMaster.id} ${selectedMaster.name}` : ' — select a category above'}
+      <div className="text-xs font-semibold uppercase text-muted-foreground mt-5 mb-1.5 flex items-center justify-between">
+        <span>
+          Items (detail){selectedMaster ? ` — ${selectedMaster.id} ${selectedMaster.name}` : ' — select a category above'}
+        </span>
+        {selectedMaster && canAdd && (
+          <Button size="sm" variant="outline" onClick={openAddDetail}><Plus className="h-3.5 w-3.5 mr-1" />Add Item</Button>
+        )}
       </div>
       {selectedMaster ? (
         <DataTable
