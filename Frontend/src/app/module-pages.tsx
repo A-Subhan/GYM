@@ -2372,7 +2372,9 @@ export function MembersModule() {
 
   return (
     <div>
-      <PageHeader title="Members" />
+      <PageHeader title="Members"
+        action={has('members.add') ? () => { setEditing(null); setOpen(true) } : undefined}
+        actionLabel="Add" />
       <ScreenShell actions={[
         { label: 'Add', icon: Plus, onClick: () => { setEditing(null); setOpen(true) }, disabled: !has('members.add') },
         { label: 'View', icon: Eye, onClick: () => selected && openView(selected), disabled: !selected },
@@ -2434,7 +2436,15 @@ export function MembersModule() {
 
       <DataTable
         columns={[
-          { key: 'memberId', label: 'Member ID', mono: true, sticky: true },
+          { key: 'actions', label: 'Action', sticky: true, render: (r: any) => (
+            <div className="flex gap-0.5" onClick={(e: any) => e.stopPropagation()}>
+              <Button size="sm" variant="ghost" onClick={() => openView(r)} title="View"><Eye className="h-3.5 w-3.5" /></Button>
+              {has('members.edit') && <Button size="sm" variant="ghost" onClick={() => openEdit(r)} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>}
+              {has('members.delete') && <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(r)} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+              <Button size="sm" variant="ghost" onClick={() => setPrintTarget(r)} title="Print"><Printer className="h-3.5 w-3.5" /></Button>
+            </div>
+          ) },
+          { key: 'memberId', label: 'Member ID', mono: true },
           { key: 'name', label: 'Name', render: (r: any) => `${r.firstName} ${r.lastName || ''}` },
           { key: 'phone', label: 'Phone' },
           { key: 'gender', label: 'Gender' },
@@ -3391,7 +3401,9 @@ export function ProspectsModule() {
 
   return (
     <div>
-      <PageHeader title="Prospects / Inquiries" />
+      <PageHeader title="Prospects / Inquiries"
+        action={has('prospects.add') ? openAdd : undefined}
+        actionLabel="Add" />
       <ScreenShell actions={[
         { label: 'Add', icon: Plus, onClick: openAdd, disabled: !has('prospects.add') },
         { label: 'Edit', icon: Edit, onClick: () => selected && openEdit(selected), disabled: !selected || !has('prospects.edit') },
@@ -3417,6 +3429,13 @@ export function ProspectsModule() {
       </Toolbar>
       <DataTable
         columns={[
+          { key: 'actions', label: 'Action', sticky: true, render: (r: any) => (
+            <div className="flex gap-0.5" onClick={(e: any) => e.stopPropagation()}>
+              {has('prospects.edit') && <Button size="sm" variant="ghost" onClick={() => openEdit(r)} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>}
+              {has('prospects.delete') && <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(r)} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+              <Button size="sm" variant="ghost" onClick={() => window.print()} title="Print"><Printer className="h-3.5 w-3.5" /></Button>
+            </div>
+          ) },
           { key: 'prospectId', label: 'ID', mono: true },
           { key: 'name', label: 'Name' },
           { key: 'phone', label: 'Phone' },
@@ -3426,7 +3445,7 @@ export function ProspectsModule() {
           { key: 'inquiryDate', label: 'Inquiry', render: (r: any) => fmtDateStr(r.inquiryDate) },
           { key: 'followUpDate', label: 'Follow Up', render: (r: any) => fmtDateStr(r.followUpDate) },
           { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
-          { key: 'actions', label: '', align: 'right', render: (r: any) =>
+          { key: 'convert', label: '', align: 'right', render: (r: any) =>
             r.status !== 'Converted' && has('prospects.convert') && (
               <Button size="sm" variant="outline" onClick={async (e) => {
                 e.stopPropagation()
@@ -4115,7 +4134,9 @@ export function StaffModule() {
 
   return (
     <div>
-      <PageHeader title="Staff" />
+      <PageHeader title="Staff"
+        action={has('staff.add') ? () => openForm() : undefined}
+        actionLabel="Add" />
       <ScreenShell actions={panelActions}>
         <Toolbar>
           <SearchInput value={search} onChange={setSearch} placeholder="Search by ID or name…" />
@@ -4123,6 +4144,13 @@ export function StaffModule() {
         </Toolbar>
         <DataTable
           columns={[
+            { key: 'actions', label: 'Action', sticky: true, render: (r: any) => (
+              <div className="flex gap-0.5" onClick={(e: any) => e.stopPropagation()}>
+                {has('staff.edit') && <Button size="sm" variant="ghost" onClick={() => openForm(r)} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>}
+                {has('staff.delete') && <Button size="sm" variant="ghost" onClick={() => setConfirmDel(r)} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+                <Button size="sm" variant="ghost" onClick={() => setPrintTarget(r)} title="Print"><Printer className="h-3.5 w-3.5" /></Button>
+              </div>
+            ) },
             { key: 'id', label: 'ID', mono: true },
             { key: 'name', label: 'Name', render: (r: any) => `${r.firstName} ${r.lastName || ''}` },
             { key: 'designation', label: 'Designation' },
@@ -4325,11 +4353,20 @@ export function ShiftsModule() {
 
   return (
     <div>
-      <PageHeader title="Shifts" />
+      <PageHeader title="Shifts"
+        action={has('shifts.add') ? () => openForm() : undefined}
+        actionLabel="Add" />
       <ScreenShell actions={panelActions}>
         <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
         <DataTable
           columns={[
+            { key: 'actions', label: 'Action', sticky: true, render: (r: any) => (
+              <div className="flex gap-0.5" onClick={(e: any) => e.stopPropagation()}>
+                {has('shifts.edit') && <Button size="sm" variant="ghost" onClick={() => openForm(r)} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>}
+                {has('shifts.delete') && <Button size="sm" variant="ghost" onClick={() => setConfirmDel(r)} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+                <Button size="sm" variant="ghost" onClick={() => setPrintTarget(r)} title="Print"><Printer className="h-3.5 w-3.5" /></Button>
+              </div>
+            ) },
             { key: 'id', label: 'ID', mono: true },
             { key: 'name', label: 'Name' },
             { key: 'timeIn', label: 'Time In' },
@@ -4833,7 +4870,9 @@ export function OvertimeModule() {
 
   return (
     <div>
-      <PageHeader title="Overtime" />
+      <PageHeader title="Overtime"
+        action={has('overtime.add') ? () => openForm() : undefined}
+        actionLabel="Add" />
       <ScreenShell actions={panelActions}>
         <Toolbar>
           <Select value={status} onValueChange={setStatus}>
@@ -4849,6 +4888,13 @@ export function OvertimeModule() {
         </Toolbar>
         <DataTable
           columns={[
+            { key: 'actions', label: 'Action', sticky: true, render: (r: any) => (
+              <div className="flex gap-0.5" onClick={(e: any) => e.stopPropagation()}>
+                {has('overtime.edit') && r.status === 'Pending' && <Button size="sm" variant="ghost" onClick={() => openForm(r)} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>}
+                {has('overtime.delete') && r.status === 'Pending' && <Button size="sm" variant="ghost" onClick={() => setConfirmDel(r)} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+                <Button size="sm" variant="ghost" onClick={() => setPrintTarget(r)} title="Print"><Printer className="h-3.5 w-3.5" /></Button>
+              </div>
+            ) },
             { key: 'emp', label: 'Emp ID', mono: true, render: (r: any) => r.staff?.id },
             { key: 'staff', label: 'Staff', render: (r: any) => `${r.staff?.firstName} ${r.staff?.lastName || ''}` },
             { key: 'date', label: 'Date', render: (r: any) => fmtDateStr(r.date) },
@@ -4994,7 +5040,9 @@ export function PayrollModule() {
 
   return (
     <div>
-      <PageHeader title="Payroll" />
+      <PageHeader title="Payroll"
+        action={has('payroll.add') ? () => { setForm({ staffId: '', month, year }); setOpen(true) } : undefined}
+        actionLabel="Generate" />
       <ScreenShell actions={panelActions}>
         <Toolbar>
           <Select value={String(month)} onValueChange={v => setMonth(Number(v))}>
@@ -5022,7 +5070,13 @@ export function PayrollModule() {
         </Toolbar>
         <DataTable
           columns={[
-            { key: 'payrollNo', label: 'Payroll #', mono: true, sticky: true },
+            { key: 'actions', label: 'Action', sticky: true, render: (r: any) => (
+              <div className="flex gap-0.5" onClick={(e: any) => e.stopPropagation()}>
+                {has('payroll.delete') && r.status === 'Draft' && <Button size="sm" variant="ghost" onClick={() => setConfirmDel(r)} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+                <Button size="sm" variant="ghost" onClick={() => setPrintTarget(r)} title="Print Payslip"><Printer className="h-3.5 w-3.5" /></Button>
+              </div>
+            ) },
+            { key: 'payrollNo', label: 'Payroll #', mono: true },
             { key: 'emp', label: 'Emp ID', mono: true, render: (r: any) => r.staff?.id },
             { key: 'staff', label: 'Staff', render: (r: any) => `${r.staff?.firstName} ${r.staff?.lastName || ''}` },
             { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
@@ -7153,7 +7207,9 @@ export function ExercisesModule() {
 
   return (
     <div>
-      <PageHeader title="Exercises" />
+      <PageHeader title="Exercises"
+        action={has('workouts.add') ? openAdd : undefined}
+        actionLabel="Add" />
       <ScreenShell actions={[
         { label: 'Add', icon: Plus, onClick: openAdd, disabled: !has('workouts.add') },
         { label: 'Edit', icon: Edit, onClick: () => selected && openEdit(selected), disabled: !selected || !has('workouts.edit') },
@@ -7163,6 +7219,13 @@ export function ExercisesModule() {
       <Toolbar><Button variant="ghost" size="sm" onClick={reload}>Refresh</Button></Toolbar>
       <DataTable
         columns={[
+          { key: 'actions', label: 'Action', sticky: true, render: (r: any) => (
+            <div className="flex gap-0.5" onClick={(e: any) => e.stopPropagation()}>
+              {has('workouts.edit') && <Button size="sm" variant="ghost" onClick={() => openEdit(r)} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>}
+              {has('workouts.delete') && <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(r)} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+              <Button size="sm" variant="ghost" onClick={() => window.print()} title="Print"><Printer className="h-3.5 w-3.5" /></Button>
+            </div>
+          ) },
           { key: 'id', label: 'ID', mono: true },
           { key: 'name', label: 'Name' },
           { key: 'description', label: 'Description' },
@@ -7830,7 +7893,9 @@ export function MasterFilesScreen({ type, title }: { type: 'gym' | 'finance' | '
 
   return (
     <div>
-      <PageHeader title={title} />
+      <PageHeader title={title}
+        action={has('masters.add') ? openAddMaster : undefined}
+        actionLabel="Add Category" />
       <ScreenShell actions={[
         { label: 'Add Category', icon: Plus, onClick: openAddMaster, disabled: !canAdd },
         { label: 'Add Item', icon: Plus, onClick: openAddDetail, disabled: !canAdd || !selectedMaster, title: 'Add an item under the selected category' },
@@ -7847,17 +7912,17 @@ export function MasterFilesScreen({ type, title }: { type: 'gym' | 'finance' | '
       <div className="text-xs font-semibold uppercase text-muted-foreground mb-1.5">Categories (master)</div>
       <DataTable
         columns={[
+          { key: 'actions', label: 'Action', sticky: true, render: (r: any) => (
+            <div className="flex gap-0.5" onClick={(e: any) => e.stopPropagation()}>
+              {canEdit && <Button size="sm" variant="ghost" onClick={() => openEdit(r, 'master')} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>}
+              {canDelete && <Button size="sm" variant="ghost" onClick={() => setDeleteTarget({ record: r, level: 'master' })} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+            </div>
+          ) },
           { key: 'id', label: 'Code', mono: true },
           { key: 'name', label: 'Name' },
           { key: 'description', label: 'Description' },
           { key: 'items', label: 'Items', align: 'right', render: (r: any) => r.details?.length || 0 },
           { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
-          { key: 'actions2', label: '', render: (r: any) => (
-            <div className="flex gap-1">
-              {canEdit && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(r, 'master') }}><Edit className="h-3.5 w-3.5" /></Button>}
-              {canDelete && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ record: r, level: 'master' }) }}><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
-            </div>
-          ) },
         ]}
         rows={masters}
         onRowClick={(r: any) => setSelectedMasterId(prev => prev === r.id ? null : r.id)}
@@ -7871,17 +7936,17 @@ export function MasterFilesScreen({ type, title }: { type: 'gym' | 'finance' | '
       {selectedMaster ? (
         <DataTable
           columns={[
+            { key: 'actions', label: 'Action', sticky: true, render: (r: any) => (
+              <div className="flex gap-0.5" onClick={(e: any) => e.stopPropagation()}>
+                {canEdit && <Button size="sm" variant="ghost" onClick={() => openEdit(r, 'detail')} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>}
+                {canDelete && <Button size="sm" variant="ghost" onClick={() => setDeleteTarget({ record: r, level: 'detail' })} title="Delete"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
+              </div>
+            ) },
             { key: 'id', label: 'Code', mono: true },
             { key: 'name', label: 'Name' },
             { key: 'description', label: 'Description' },
             { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
             { key: 'isActive', label: 'Status', render: (r: any) => <StatusBadge status={r.isActive ? 'Active' : 'Inactive'} /> },
-            { key: 'actions2', label: '', render: (r: any) => (
-              <div className="flex gap-1">
-                {canEdit && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); openEdit(r, 'detail') }}><Edit className="h-3.5 w-3.5" /></Button>}
-                {canDelete && <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget({ record: r, level: 'detail' }) }}><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>}
-              </div>
-            ) },
           ]}
           rows={details}
           empty={`No items under ${selectedMaster.name} yet`}

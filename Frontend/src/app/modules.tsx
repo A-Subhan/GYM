@@ -256,14 +256,13 @@ export function ActionPanel({ actions, title = 'Actions' }: { actions: PanelActi
   )
 }
 
-/** Screen layout with the action panel docked on the LEFT of the content. */
+/** Screen layout — formerly had a left-side action panel. Now just renders
+ * the children so all screens use the same style: action buttons in the
+ * grid rows and an Add button in the PageHeader. The `actions` prop is
+ * ignored (kept for backward compatibility so existing callers don't break
+ * until they're all updated). */
 export function ScreenShell({ actions, children, panelTitle }: { actions: PanelAction[], children: ReactNode, panelTitle?: string }) {
-  return (
-    <div className="flex flex-col lg:flex-row gap-4 items-start">
-      <ActionPanel actions={actions} title={panelTitle} />
-      <div className="flex-1 min-w-0 w-full">{children}</div>
-    </div>
-  )
+  return <>{children}</>
 }
 
 export function DataTable({ columns, rows, onRowClick, empty = 'No records' }: any) {
