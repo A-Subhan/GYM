@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, Fragment, type ReactNode } from 'react'
+import { useEffect, useState, useCallback, useMemo, Fragment, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -496,6 +496,11 @@ export function BookVoucherScreen({ voucherType, title }: { voucherType: string,
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const [approveTarget, setApproveTarget] = useState<any>(null)
   const [lastPosted, setLastPosted] = useState<any>(null)
+  // Sort + pagination state for the line-level grid
+  const [sortBy, setSortBy] = useState('voucherDate')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [page, setPage] = useState(0)
+  const pageSize = 50
 
   const qs = [
     `type=${voucherType}`,
@@ -508,6 +513,100 @@ export function BookVoucherScreen({ voucherType, title }: { voucherType: string,
   const { data, reload } = useFetch<any>(`${endpoint}?${qs}`)
 
   const vouchers = data?.vouchers || []
+
+  // --- Flatten vouchers into one row per voucher line ---
+  // Each line row carries a ref to its parent voucher for actions.
+  // For cash/bank vouchers, the detail side is debit or credit based on
+  // the voucher type (CRV/BRV = detail credited; CPV/BPV = detail debited).
+  // For JV/OTB, each line already has explicit debit/credit.
+  const isJVorOTB = voucherType === 'JV' || voucherType === 'OTV'
+  const detailIsCredit = voucherType === 'CRV' || voucherType === 'BRV'
+
+  const lineRows: any[] = useMemo(() => {
+    const rows: any[] = []
+    for (const v of vouchers) {
+      const lines = v.lines || []
+      for (const l of lines) {
+        // For cash/bank, the book-account line (amount > 0 but no billType
+        // and accountId === bookChartId) is the auto-balance side — skip it
+        // to avoid double-counting. Only show detail lines.
+        if (!isJVorOTB && l.accountId === v.bookChartId && !l.billType) continue
+        const debit = isJVorOTB ? (Number(l.debit) || 0) : (detailIsCredit ? 0 : (Number(l.amount) || 0))
+        const credit = isJVorOTB ? (Number(l.credit) || 0) : (detailIsCredit ? (Number(l.amount) || 0) : 0)
+        rows.push({
+          _voucher: v,           // ref to the parent voucher for actions
+          _lineId: l.id,
+          id: v.id,              // voucher number (same for all lines of a voucher)
+          voucherDate: v.voucherDate,
+          branch: v.branch,
+          description: v.description,
+          paymentMode: v.paymentMode,
+          status: v.status,
+          accountCode: l.accountId,
+          accountName: l.account?.name || l.accountId || '—',
+          lineDescription: l.lineDescription || '',
+          debit,
+          credit,
+        })
+      }
+      // If the voucher has no detail lines at all, show one placeholder row
+      // so the voucher is still visible and actionable.
+      if (lines.length === 0) {
+        rows.push({
+          _voucher: v,
+          _lineId: '',
+          id: v.id,
+          voucherDate: v.voucherDate,
+          branch: v.branch,
+          description: v.description,
+          paymentMode: v.paymentMode,
+          status: v.status,
+          accountCode: '',
+          accountName: '(no lines)',
+          lineDescription: '',
+          debit: 0,
+          credit: 0,
+        })
+      }
+    }
+    return rows
+  }, [vouchers, isJVorOTB, detailIsCredit])
+
+  // --- Sort ---
+  const sortedRows = useMemo(() => {
+    const arr = [...lineRows]
+    arr.sort((a, b) => {
+      let cmp = 0
+      if (sortBy === 'voucherDate') cmp = new Date(a.voucherDate).getTime() - new Date(b.voucherDate).getTime()
+      else if (sortBy === 'id') cmp = String(a.id).localeCompare(String(b.id))
+      else if (sortBy === 'debit') cmp = a.debit - b.debit
+      else if (sortBy === 'credit') cmp = a.credit - b.credit
+      else if (sortBy === 'accountName') cmp = String(a.accountName).localeCompare(String(b.accountName))
+      else if (sortBy === 'description') cmp = String(a.description || '').localeCompare(String(b.description || ''))
+      if (cmp === 0) cmp = String(a.id).localeCompare(String(b.id))
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+    return arr
+  }, [lineRows, sortBy, sortDir])
+
+  // --- Pagination ---
+  const totalPages = Math.ceil(sortedRows.length / pageSize)
+  const pagedRows = useMemo(() => {
+    const start = page * pageSize
+    return sortedRows.slice(start, start + pageSize)
+  }, [sortedRows, page])
+
+  // --- Totals (sum all line rows, not just the current page) ---
+  const totalDebit = useMemo(() => sortedRows.reduce((s, r) => s + (Number(r.debit) || 0), 0), [sortedRows])
+  const totalCredit = useMemo(() => sortedRows.reduce((s, r) => s + (Number(r.credit) || 0), 0), [sortedRows])
+
+  // Reset page when filters change
+  useEffect(() => { setPage(0) }, [search, from, to, branchFilter, statusFilter])
+
+  const toggleSort = (col: string) => {
+    if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortBy(col); setSortDir('desc') }
+  }
 
   const onSaved = (saved: any) => {
     setFormOpen(false)
@@ -560,38 +659,102 @@ export function BookVoucherScreen({ voucherType, title }: { voucherType: string,
         <Button variant="ghost" size="sm" onClick={reload}>Refresh</Button>
       </Toolbar>
 
-      <DataTable
-        columns={[
-          { key: 'actions', label: 'Actions', sticky: true, render: (r: any) => (
-            <div className="flex gap-0.5">
-              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setViewing(r); setViewOpen(true) }} title="View"><Eye className="h-3.5 w-3.5" /></Button>
-              {r.status !== 'Reversed' && has('vouchers.edit') && (
-                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditing(r); setFormOpen(true) }} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>
-              )}
-              <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setPrintTarget(r) }} title="Print"><Printer className="h-3.5 w-3.5" /></Button>
-              {r.status === 'Pending' && has('vouchers.approve') && (
-                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setApproveTarget(r) }} title="Approve"><CheckCircle2 className="h-3.5 w-3.5 text-green-600" /></Button>
-              )}
-              {r.status === 'Posted' && has('vouchers.reverse') && (
-                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setReverseTarget(r) }} title="Reverse"><X className="h-3.5 w-3.5 text-amber-600" /></Button>
-              )}
-              {r.status === 'Posted' && has('vouchers.delete') && (
-                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setDeleteTarget(r) }} title="Delete (soft)"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>
-              )}
-            </div>
-          ) },
-          { key: 'id', label: 'Voucher #', mono: true },
-          { key: 'voucherDate', label: 'Date', render: (r: any) => fmtDateStr(r.voucherDate) },
-          { key: 'branch', label: 'Branch', render: (r: any) => r.branch?.name || '—' },
-          { key: 'description', label: 'Description' },
-          { key: 'paymentMode', label: 'Mode', render: (r: any) => r.paymentMode || '—' },
-          { key: 'dr', label: 'Debit', align: 'right', mono: true, render: (r: any) => fmtMoney(voucherDr(r)) },
-          { key: 'cr', label: 'Credit', align: 'right', mono: true, render: (r: any) => fmtMoney(voucherCr(r)) },
-          { key: 'status', label: 'Status', render: (r: any) => <StatusBadge status={r.status} /> },
-        ]}
-        rows={vouchers}
-        onRowClick={(r: any) => { setViewing(r); setViewOpen(true) }}
-      />
+      {/* Line-level grid — one row per voucher line */}
+      <div className="overflow-x-auto border rounded">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 border-b">
+            <tr>
+              <th className="px-2 py-2 font-medium text-left sticky left-0 bg-muted/50 z-10 text-nowrap">Action</th>
+              <th className="px-3 py-2 font-medium text-left text-nowrap cursor-pointer select-none hover:text-primary" onClick={() => toggleSort('id')}>
+                Voucher # {sortBy === 'id' && (sortDir === 'asc' ? '↑' : '↓')}
+              </th>
+              <th className="px-3 py-2 font-medium text-left text-nowrap cursor-pointer select-none hover:text-primary" onClick={() => toggleSort('voucherDate')}>
+                Date {sortBy === 'voucherDate' && (sortDir === 'asc' ? '↑' : '↓')}
+              </th>
+              <th className="px-3 py-2 font-medium text-left text-nowrap">Branch</th>
+              <th className="px-3 py-2 font-medium text-left text-nowrap cursor-pointer select-none hover:text-primary" onClick={() => toggleSort('description')}>
+                Description {sortBy === 'description' && (sortDir === 'asc' ? '↑' : '↓')}
+              </th>
+              <th className="px-3 py-2 font-medium text-left text-nowrap cursor-pointer select-none hover:text-primary" onClick={() => toggleSort('accountName')}>
+                Account {sortBy === 'accountName' && (sortDir === 'asc' ? '↑' : '↓')}
+              </th>
+              <th className="px-3 py-2 font-medium text-left text-nowrap">Line Desc</th>
+              <th className="px-3 py-2 font-medium text-right text-nowrap cursor-pointer select-none hover:text-primary" onClick={() => toggleSort('debit')}>
+                Debit {sortBy === 'debit' && (sortDir === 'asc' ? '↑' : '↓')}
+              </th>
+              <th className="px-3 py-2 font-medium text-right text-nowrap cursor-pointer select-none hover:text-primary" onClick={() => toggleSort('credit')}>
+                Credit {sortBy === 'credit' && (sortDir === 'asc' ? '↑' : '↓')}
+              </th>
+              <th className="px-3 py-2 font-medium text-left text-nowrap">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pagedRows.length === 0 ? (
+              <tr><td colSpan={10} className="text-center py-8 text-muted-foreground">No records</td></tr>
+            ) : pagedRows.map((r, i) => (
+              <tr key={`${r.id}-${r._lineId || i}`} className="border-b last:border-0 hover:bg-muted/30 cursor-pointer"
+                  onClick={() => { setViewing(r._voucher); setViewOpen(true) }}>
+                <td className="px-2 py-1.5 sticky left-0 bg-background z-10" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex gap-0.5">
+                    <Button size="sm" variant="ghost" onClick={() => { setViewing(r._voucher); setViewOpen(true) }} title="View"><Eye className="h-3.5 w-3.5" /></Button>
+                    {r.status !== 'Reversed' && has('vouchers.edit') && (
+                      <Button size="sm" variant="ghost" onClick={() => { setEditing(r._voucher); setFormOpen(true) }} title="Edit"><Edit className="h-3.5 w-3.5" /></Button>
+                    )}
+                    <Button size="sm" variant="ghost" onClick={() => setPrintTarget(r._voucher)} title="Print"><Printer className="h-3.5 w-3.5" /></Button>
+                    {r.status === 'Pending' && has('vouchers.approve') && (
+                      <Button size="sm" variant="ghost" onClick={() => setApproveTarget(r._voucher)} title="Approve"><CheckCircle2 className="h-3.5 w-3.5 text-green-600" /></Button>
+                    )}
+                    {r.status === 'Posted' && has('vouchers.reverse') && (
+                      <Button size="sm" variant="ghost" onClick={() => setReverseTarget(r._voucher)} title="Reverse"><X className="h-3.5 w-3.5 text-amber-600" /></Button>
+                    )}
+                    {r.status === 'Posted' && has('vouchers.delete') && (
+                      <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(r._voucher)} title="Delete (soft)"><Trash2 className="h-3.5 w-3.5 text-red-600" /></Button>
+                    )}
+                  </div>
+                </td>
+                <td className="px-3 py-1.5 font-mono text-xs">{r.id}</td>
+                <td className="px-3 py-1.5 text-nowrap">{fmtDateStr(r.voucherDate)}</td>
+                <td className="px-3 py-1.5">{r.branch?.name || '—'}</td>
+                <td className="px-3 py-1.5 max-w-[200px] truncate" title={r.description || ''}>{r.description || '—'}</td>
+                <td className="px-3 py-1.5">
+                  <span className="font-mono text-xs text-muted-foreground">{r.accountCode}</span>
+                  {r.accountCode && <span className="text-muted-foreground"> — </span>}
+                  <span>{r.accountName}</span>
+                </td>
+                <td className="px-3 py-1.5 max-w-[150px] truncate" title={r.lineDescription || ''}>{r.lineDescription || '—'}</td>
+                <td className="px-3 py-1.5 text-right font-mono text-xs">{r.debit ? fmtMoney(r.debit) : '—'}</td>
+                <td className="px-3 py-1.5 text-right font-mono text-xs">{r.credit ? fmtMoney(r.credit) : '—'}</td>
+                <td className="px-3 py-1.5"><StatusBadge status={r.status} /></td>
+              </tr>
+            ))}
+          </tbody>
+          {/* Totals footer — sums all line rows (not just current page) */}
+          <tfoot className="bg-muted/30 border-t-2 font-medium">
+            <tr>
+              <td className="px-2 py-2 sticky left-0 bg-muted/30 z-10"></td>
+              <td className="px-3 py-2 text-xs text-muted-foreground" colSpan={6}>
+                Totals ({sortedRows.length} line{sortedRows.length !== 1 ? 's' : ''}, {vouchers.length} voucher{vouchers.length !== 1 ? 's' : ''})
+              </td>
+              <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(totalDebit)}</td>
+              <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(totalCredit)}</td>
+              <td className="px-3 py-2"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-2">
+          <div className="text-xs text-muted-foreground">
+            Page {page + 1} of {totalPages} — showing {pagedRows.length} of {sortedRows.length} lines
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>Previous</Button>
+            <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}>Next</Button>
+          </div>
+        </div>
+      )}
 
       <BookVoucherFormModal
         open={formOpen}
