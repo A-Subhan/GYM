@@ -101,6 +101,18 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Fetch FinanceDefaults to check autoPostReceipts. When OFF, the receipt
+    // voucher is saved as Pending instead of Posted.
+    let fdStatus: string | undefined
+    try {
+      const fd = await db.financeDefaults.findFirst({
+        where: { OR: [{ branchId: fee.branchId }, { branchId: null }] },
+        orderBy: [{ branchId: 'desc' }],
+        select: { autoPostReceipts: true },
+      })
+      if (fd && fd.autoPostReceipts === false) fdStatus = 'Pending'
+    } catch { /* pre-migration: column may not exist, default to Posted */ }
+
     const voucher = await postBookVoucher({
       voucherType,
       voucherDate: paymentDate ? new Date(paymentDate) : new Date(),
@@ -119,6 +131,7 @@ export async function POST(req: NextRequest) {
         },
       ],
       postedById: session.id,
+      status: fdStatus,
     })
 
     const newPaid = fee.paidAmount + payAmount

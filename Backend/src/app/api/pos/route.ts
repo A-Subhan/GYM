@@ -84,6 +84,19 @@ export async function POST(req: NextRequest) {
     // Post the book voucher (CRV for cash, BRV for bank/online); detail line credited to posIncome
     const branch = await db.branch.findUnique({ where: { id: branchId } })
     if (!branch) throw new Error('Invalid branch')
+
+    // Fetch FinanceDefaults to check autoPostReceipts. When OFF, the receipt
+    // voucher is saved as Pending instead of Posted.
+    let fdStatus: string | undefined
+    try {
+      const fd = await db.financeDefaults.findFirst({
+        where: { OR: [{ branchId }, { branchId: null }] },
+        orderBy: [{ branchId: 'desc' }],
+        select: { autoPostReceipts: true },
+      })
+      if (fd && fd.autoPostReceipts === false) fdStatus = 'Pending'
+    } catch { /* pre-migration: column may not exist, default to Posted */ }
+
     const voucher = await postBookVoucher({
       voucherType: paymentMethod === 'Cash' ? 'CRV' : 'BRV',
       voucherDate: new Date(),
@@ -97,6 +110,7 @@ export async function POST(req: NextRequest) {
         { accountId: posIncomeMapping.accountId, amount: total, lineDescription: `POS income`, billType: 'Sales Bill' },
       ],
       postedById: session.id,
+      status: fdStatus,
     })
 
     // link book voucher to sale

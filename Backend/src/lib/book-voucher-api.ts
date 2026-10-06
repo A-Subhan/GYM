@@ -117,10 +117,14 @@ export function bookVoucherApi(bookType: BookApiBookType) {
     lockBeforeDate: Date | null
     voucherApprovalRequired: boolean
     allowEditPostedVouchers: boolean
+    allowNegativeCash: boolean
+    autoPostReceipts: boolean
     defaultCashPaymentMode: string | null
     defaultBankPaymentMode: string | null
     defaultCashAccountId: string | null
     defaultBankAccountId: string | null
+    fiscalYearStart: Date | null
+    fiscalYearEnd: Date | null
   }> {
     const defaults = {
       allowUnbalancedOTB: true,
@@ -128,10 +132,14 @@ export function bookVoucherApi(bookType: BookApiBookType) {
       lockBeforeDate: null as Date | null,
       voucherApprovalRequired: false,
       allowEditPostedVouchers: true,
+      allowNegativeCash: false,
+      autoPostReceipts: true,
       defaultCashPaymentMode: null as string | null,
       defaultBankPaymentMode: null as string | null,
       defaultCashAccountId: null as string | null,
       defaultBankAccountId: null as string | null,
+      fiscalYearStart: null as Date | null,
+      fiscalYearEnd: null as Date | null,
     }
     try {
       const fd = (await db.financeDefaults.findFirst({
@@ -143,10 +151,14 @@ export function bookVoucherApi(bookType: BookApiBookType) {
           lockBeforeDate: true,
           voucherApprovalRequired: true,
           allowEditPostedVouchers: true,
+          allowNegativeCash: true,
+          autoPostReceipts: true,
           defaultCashPaymentMode: true,
           defaultBankPaymentMode: true,
           defaultCashAccountId: true,
           defaultBankAccountId: true,
+          fiscalYearStart: true,
+          fiscalYearEnd: true,
         },
       })) as any | null
       if (fd) {
@@ -156,10 +168,14 @@ export function bookVoucherApi(bookType: BookApiBookType) {
           lockBeforeDate: fd.lockBeforeDate ?? null,
           voucherApprovalRequired: fd.voucherApprovalRequired ?? false,
           allowEditPostedVouchers: fd.allowEditPostedVouchers ?? true,
+          allowNegativeCash: fd.allowNegativeCash ?? false,
+          autoPostReceipts: fd.autoPostReceipts ?? true,
           defaultCashPaymentMode: fd.defaultCashPaymentMode ?? null,
           defaultBankPaymentMode: fd.defaultBankPaymentMode ?? null,
           defaultCashAccountId: fd.defaultCashAccountId ?? null,
           defaultBankAccountId: fd.defaultBankAccountId ?? null,
+          fiscalYearStart: fd.fiscalYearStart ?? null,
+          fiscalYearEnd: fd.fiscalYearEnd ?? null,
         }
       }
       return defaults
@@ -172,16 +188,18 @@ export function bookVoucherApi(bookType: BookApiBookType) {
    * Validate voucher date against FinanceDefaults:
    *  - lockBeforeDate: no voucher with date on or before this date
    *  - allowBackDatedVouchers: if OFF, voucher date cannot be earlier than today
+   *  - fiscalYearStart/End: if set, voucher date must fall within the fiscal year
    * Throws Error with a clear message on violation.
    */
   function validateVoucherDate(voucherDate: Date, fd: {
     allowBackDatedVouchers: boolean
     lockBeforeDate: Date | null
+    fiscalYearStart: Date | null
+    fiscalYearEnd: Date | null
   }, action: 'create' | 'edit' | 'delete' | 'reverse'): void {
     // lockBeforeDate blocks ALL operations (create/edit/delete/reverse)
     if (fd.lockBeforeDate) {
       const lockDate = new Date(fd.lockBeforeDate)
-      // set to start of day for comparison
       lockDate.setHours(0, 0, 0, 0)
       if (voucherDate <= lockDate) {
         throw new Error(`Voucher date ${voucherDate.toISOString().slice(0, 10)} is on or before the lock date ${lockDate.toISOString().slice(0, 10)}. Vouchers on or before the lock date cannot be created, edited, deleted, or reversed.`)
@@ -197,6 +215,36 @@ export function bookVoucherApi(bookType: BookApiBookType) {
       if (vDate < today) {
         throw new Error(`Back-dated vouchers are not allowed. Voucher date ${vDate.toISOString().slice(0, 10)} cannot be earlier than today ${today.toISOString().slice(0, 10)}.`)
       }
+    }
+    // fiscalYearStart/End: voucher date must fall within the fiscal year
+    // (only checked on create/edit — delete/reverse operate on existing
+    // vouchers that may predate the current fiscal year)
+    if ((action === 'create' || action === 'edit') && fd.fiscalYearStart && fd.fiscalYearEnd) {
+      const fyStart = new Date(fd.fiscalYearStart)
+      fyStart.setHours(0, 0, 0, 0)
+      const fyEnd = new Date(fd.fiscalYearEnd)
+      fyEnd.setHours(23, 59, 59, 999)
+      const vDate = new Date(voucherDate)
+      vDate.setHours(12, 0, 0, 0) // noon to avoid TZ edge cases
+      if (vDate < fyStart || vDate > fyEnd) {
+        throw new Error(`Voucher date ${voucherDate.toISOString().slice(0, 10)} is outside the fiscal year ${fyStart.toISOString().slice(0, 10)} to ${fyEnd.toISOString().slice(0, 10)}.`)
+      }
+    }
+  }
+
+  /**
+   * Validate that a cash payment (CPV) does not make the cash account
+   * balance go negative, unless allowNegativeCash is ON.
+   * Only applies to CPV (Cash Payment Voucher) — receipts (CRV) always
+   * increase the balance.
+   */
+  async function validateNegativeCash(bookChartId: string, paymentAmount: number, fd: { allowNegativeCash: boolean }): Promise<void> {
+    if (fd.allowNegativeCash) return
+    // Import getChartBalance lazily to avoid circular dependency at module load
+    const { getChartBalance } = await import('@/lib/book-vouchers')
+    const { balance } = await getChartBalance(bookChartId)
+    if (balance - paymentAmount < -0.005) {
+      throw new Error(`Cash payment of ${paymentAmount.toFixed(2)} would make the cash account balance negative (current balance: ${balance.toFixed(2)}). Set "Allow negative cash balance" in Finance Defaults to allow overdraft.`)
     }
   }
 
@@ -284,6 +332,14 @@ export function bookVoucherApi(bookType: BookApiBookType) {
       await assertNoControlLines(data.lines)
       const fd = await resolveFinanceDefaults(data.branchId)
       validateVoucherDate(new Date(data.voucherDate), fd, 'create')
+      // allowNegativeCash: for CPV (Cash Payment), reject if the payment
+      // would make the cash account balance go negative.
+      if (voucherType === 'CPV' && data.bookChartId) {
+        const totalPayment = (data.lines || []).reduce((s: number, l: any) => s + (Number(l.amount) || 0), 0)
+        if (totalPayment > 0) {
+          await validateNegativeCash(data.bookChartId, totalPayment, fd)
+        }
+      }
       const allowUnbalanced = await resolveAllowUnbalanced(data.branchId, data.allowUnbalanced === true)
       const voucher = await postBookVoucher({
         voucherType,

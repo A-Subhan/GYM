@@ -189,6 +189,9 @@ WHERE i.status <> N'Deleted';
 GO
 
 -- unified ledger across the four books (line types vary per book)
+-- Excludes soft-deleted vouchers (isDeleted = 0) and Pending vouchers
+-- (status = 'Posted'). Pending vouchers are not yet posted to the ledger
+-- and must be approved first.
 CREATE OR ALTER VIEW dbo.vw_BookLedger
 AS
 SELECT 'CASHBOOK' AS bookType, cl.id AS lineId, cl.voucherId, cb.voucherType, cb.voucherDate,
@@ -197,6 +200,7 @@ SELECT 'CASHBOOK' AS bookType, cl.id AS lineId, cl.voucherId, cb.voucherType, cb
        cl.billType, cl.chequeNo, cl.chequeAmount, cl.lineDescription, cl.status AS lineStatus, cb.status AS voucherStatus
 FROM dbo.CashBook cb JOIN dbo.CashBookLine cl ON cl.voucherId = cb.id
 JOIN dbo.charts c ON c.id = cl.accountId
+WHERE cb.isDeleted = 0 AND cb.status = N'Posted'
 UNION ALL
 SELECT 'BANKBOOK', bl.id, bl.voucherId, bb.voucherType, bb.voucherDate,
        bb.branchId, bl.accountId, c.name, c.accountType,
@@ -204,6 +208,7 @@ SELECT 'BANKBOOK', bl.id, bl.voucherId, bb.voucherType, bb.voucherDate,
        bl.billType, bl.chequeNo, bl.chequeAmount, bl.lineDescription, bl.status, bb.status
 FROM dbo.BankBook bb JOIN dbo.BankBookLine bl ON bl.voucherId = bb.id
 JOIN dbo.charts c ON c.id = bl.accountId
+WHERE bb.isDeleted = 0 AND bb.status = N'Posted'
 UNION ALL
 SELECT 'JV', jl.id, jl.voucherId, j.voucherType, j.voucherDate,
        j.branchId, jl.accountId, c.name, c.accountType,
@@ -211,13 +216,15 @@ SELECT 'JV', jl.id, jl.voucherId, j.voucherType, j.voucherDate,
        NULL, NULL, NULL, jl.lineDescription, jl.status, j.status
 FROM dbo.JV j JOIN dbo.JVLine jl ON jl.voucherId = j.id
 JOIN dbo.charts c ON c.id = jl.accountId
+WHERE j.isDeleted = 0 AND j.status = N'Posted'
 UNION ALL
 SELECT 'OTB', ol.id, ol.voucherId, o.voucherType, o.voucherDate,
        o.branchId, ol.accountId, c.name, c.accountType,
        ol.debit, ol.credit, ol.amount, NULL, NULL, NULL,
        NULL, NULL, NULL, ol.lineDescription, ol.status, o.status
 FROM dbo.OpenTB o JOIN dbo.OpenTBLine ol ON ol.voucherId = o.id
-JOIN dbo.charts c ON c.id = ol.accountId;
+JOIN dbo.charts c ON c.id = ol.accountId
+WHERE o.isDeleted = 0 AND o.status = N'Posted';
 GO
 
 PRINT 'Step 03 complete: final views and functions created.';

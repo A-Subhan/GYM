@@ -42,6 +42,21 @@ GO
 PRINT 'Step 02: creating schema ...';
 GO
 
+-- ---------------------------------------------------------------------------
+-- Upgrade log table — created first so that later upgrade scripts (14, etc.)
+-- can log their progress. Safe to re-run.
+-- ---------------------------------------------------------------------------
+IF OBJECT_ID(N'dbo._UpgradeLog', N'U') IS NULL
+CREATE TABLE [dbo]._UpgradeLog (
+    [id] INT IDENTITY(1,1) NOT NULL,
+    [step] NVARCHAR(100) NOT NULL,
+    [status] NVARCHAR(20) NOT NULL,
+    [message] NVARCHAR(MAX),
+    [createdAt] DATETIME2 NOT NULL CONSTRAINT [_UpgradeLog_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT [_UpgradeLog_pkey] PRIMARY KEY CLUSTERED ([id])
+);
+GO
+
 -- ===========================================================================
 -- SECTION 1 of 3 - TABLES (no FKs; all foreign keys are added in SECTION 3)
 -- ===========================================================================

@@ -653,6 +653,9 @@ function BookVoucherFormModal({ open, onClose, voucherType, editing, onSaved }: 
   const fdAllowBackDated = fd?.allowBackDatedVouchers
   const fdLockBefore = fd?.lockBeforeDate ? String(fd.lockBeforeDate).slice(0, 10) : null
   const fdApprovalRequired = fd?.voucherApprovalRequired
+  const fdFiscalYearStart = fd?.fiscalYearStart ? String(fd.fiscalYearStart).slice(0, 10) : null
+  const fdFiscalYearEnd = fd?.fiscalYearEnd ? String(fd.fiscalYearEnd).slice(0, 10) : null
+  const fdAllowNegativeCash = fd?.allowNegativeCash
   const charts = chartsData?.charts || []
   const detailAccounts = charts.filter((a: any) => a.isDetail && a.isActive)
   const bookAccounts = charts.filter((a: any) => a.isActive && (isCash
@@ -942,7 +945,7 @@ function BookVoucherFormModal({ open, onClose, voucherType, editing, onSaved }: 
 
       {/* Finance rules hints — show the active FinanceDefaults rules so the
           user knows what constraints apply before saving. */}
-      {(fdLockBefore || fdAllowBackDated === false || fdApprovalRequired) && (
+      {(fdLockBefore || fdAllowBackDated === false || fdApprovalRequired || (fdFiscalYearStart && fdFiscalYearEnd) || (isCash && fdAllowNegativeCash === false)) && (
         <div className="mt-2 flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
           {fdLockBefore && (
             <span className="flex items-center gap-1">
@@ -956,10 +959,22 @@ function BookVoucherFormModal({ open, onClose, voucherType, editing, onSaved }: 
               Back-dated vouchers are not allowed
             </span>
           )}
+          {fdFiscalYearStart && fdFiscalYearEnd && (
+            <span className="flex items-center gap-1">
+              <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
+              Voucher date must be within fiscal year <b className="font-medium">{fdFiscalYearStart}</b> to <b className="font-medium">{fdFiscalYearEnd}</b>
+            </span>
+          )}
           {fdApprovalRequired && (
             <span className="flex items-center gap-1">
               <AlertCircle className="h-3.5 w-3.5 text-blue-600" />
               This voucher will be saved as Pending and must be approved before posting
+            </span>
+          )}
+          {isCash && voucherType === 'CPV' && fdAllowNegativeCash === false && (
+            <span className="flex items-center gap-1">
+              <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
+              Cash payments that would make the balance negative are rejected
             </span>
           )}
         </div>
@@ -5201,6 +5216,7 @@ function DefaultsCompanyTab() {
     try {
       const formData = new FormData()
       formData.append('file', file)
+      formData.append('purpose', 'logo')
       const res = await fetch('/api/uploads', { method: 'POST', body: formData })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Upload failed')
