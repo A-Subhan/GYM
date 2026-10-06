@@ -652,6 +652,47 @@ model UserReportFormat {
   @@index([userId, reportKey])
 }
 
+model PrintSettings {
+  id                    String   @id @db.NVarChar(50)
+  documentType          String   @unique @db.NVarChar(20)
+  // Signatures
+  sigPreparedBy         Boolean  @default(true)
+  sigPreparedBySource   String   @default("username") @db.NVarChar(20)
+  sigPreparedByCustom   String?  @db.NVarChar(255)
+  sigCheckedBy          Boolean  @default(true)
+  sigCheckedBySource    String   @default("username") @db.NVarChar(20)
+  sigCheckedByCustom    String?  @db.NVarChar(255)
+  sigApprovedBy         Boolean  @default(false)
+  sigApprovedBySource   String   @default("username") @db.NVarChar(20)
+  sigApprovedByCustom   String?  @db.NVarChar(255)
+  sigPrintBy            Boolean  @default(false)
+  sigPrintBySource      String   @default("username") @db.NVarChar(20)
+  sigPrintByCustom      String?  @db.NVarChar(255)
+  // Company name + address
+  showCompanyName       Boolean  @default(true)
+  companyNamePosition   String   @default("center") @db.NVarChar(10)
+  companyNameVertical   String   @default("top") @db.NVarChar(10)
+  showCompanyAddress    Boolean  @default(true)
+  companyAddressPosition String  @default("center") @db.NVarChar(10)
+  companyAddressVertical String  @default("top") @db.NVarChar(10)
+  // Print date
+  showPrintDate         Boolean  @default(true)
+  // Party remaining balance
+  showPartyBalance      Boolean  @default(false)
+  // Logo
+  showLogo              Boolean  @default(true)
+  logoPosition          String   @default("left") @db.NVarChar(10)
+  logoWidth             Int      @default(80)
+  logoHeight            Int      @default(80)
+  // Font
+  fontFamily            String   @default("Arial, sans-serif") @db.NVarChar(100)
+  fontSize              Int      @default(12)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("PrintSettings")
+}
+
 // =================================================================
 // GYM
 // =================================================================

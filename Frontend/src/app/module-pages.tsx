@@ -5316,11 +5316,13 @@ export function ManagementModule() {
           <TabsTrigger value="mappings">Account Mapping</TabsTrigger>
           <TabsTrigger value="branch-mappings">Per Branch Account Mapping</TabsTrigger>
           <TabsTrigger value="finance">Finance Defaults</TabsTrigger>
+          <TabsTrigger value="printing">Printing</TabsTrigger>
         </TabsList>
         <TabsContent value="company"><ManagementCompanyTab /></TabsContent>
         <TabsContent value="mappings"><ManagementMappingsTab /></TabsContent>
         <TabsContent value="branch-mappings"><ManagementBranchMappingsTab /></TabsContent>
         <TabsContent value="finance"><ManagementFinanceTab /></TabsContent>
+        <TabsContent value="printing"><ManagementPrintingTab /></TabsContent>
       </Tabs>
     </div>
   )
@@ -5942,6 +5944,270 @@ function ManagementFinanceTab() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+// ---- Tab 5: Printing -------------------------------------------------
+const PRINT_DOC_TYPES = [
+  { key: 'BPV', label: 'Bank Payment Voucher' },
+  { key: 'BRV', label: 'Bank Receipt Voucher' },
+  { key: 'CPV', label: 'Cash Payment Voucher' },
+  { key: 'CRV', label: 'Cash Receipt Voucher' },
+  { key: 'JV', label: 'Journal Voucher' },
+  { key: 'OTB', label: 'Opening Trial Balance' },
+  { key: 'Reports', label: 'Finance Reports' },
+]
+
+function ManagementPrintingTab() {
+  const { has } = useApp()
+  const [docType, setDocType] = useState('BPV')
+  const { data, reload } = useFetch<any>(`/api/print-settings?documentType=${docType}`)
+  const settings = data?.settings
+  const [form, setForm] = useState<any>({})
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (settings) {
+      setForm(settings)
+    } else {
+      // Defaults matching the SQL seed
+      setForm({
+        sigPreparedBy: true, sigPreparedBySource: 'username', sigPreparedByCustom: '',
+        sigCheckedBy: true, sigCheckedBySource: 'username', sigCheckedByCustom: '',
+        sigApprovedBy: false, sigApprovedBySource: 'username', sigApprovedByCustom: '',
+        sigPrintBy: false, sigPrintBySource: 'username', sigPrintByCustom: '',
+        showCompanyName: true, companyNamePosition: 'center', companyNameVertical: 'top',
+        showCompanyAddress: true, companyAddressPosition: 'center', companyAddressVertical: 'top',
+        showPrintDate: true, showPartyBalance: false,
+        showLogo: true, logoPosition: 'left', logoWidth: 80, logoHeight: 80,
+        fontFamily: 'Arial, sans-serif', fontSize: 12,
+      })
+    }
+  }, [settings, docType])
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await fetch('/api/print-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...form, documentType: docType }),
+      }).then(r => r.json()).then(json => {
+        if (json.error) throw new Error(json.error)
+      })
+      toast.success('Print settings saved')
+      reload()
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const sigFields: { key: string, label: string }[] = [
+    { key: 'sigPreparedBy', label: 'Prepared By' },
+    { key: 'sigCheckedBy', label: 'Checked By' },
+    { key: 'sigApprovedBy', label: 'Approved By' },
+    { key: 'sigPrintBy', label: 'Print By' },
+  ]
+
+  return (
+    <Card className="max-w-4xl">
+      <CardContent className="p-6 space-y-5">
+        {/* Document type selector */}
+        <div>
+          <FormRow label="Document Type">
+            <Select value={docType} onValueChange={setDocType}>
+              <SelectTrigger className="w-64"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {PRINT_DOC_TYPES.map(d => <SelectItem key={d.key} value={d.key}>{d.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </FormRow>
+        </div>
+
+        {/* a. Signatures */}
+        <div>
+          <div className="text-sm font-medium mb-2">Signatures</div>
+          <div className="space-y-2">
+            {sigFields.map(({ key, label }) => {
+              const enabled = !!form[key]
+              const sourceKey = key + 'Source'
+              const customKey = key + 'Custom'
+              return (
+                <div key={key} className="flex items-start justify-between gap-3 py-2 border-b last:border-0">
+                  <div className="space-y-1 flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Switch checked={enabled} onCheckedChange={v => setForm({ ...form, [key]: v })} />
+                      <span className="text-sm font-medium">{label}</span>
+                    </div>
+                    {enabled && (
+                      <div className="flex items-center gap-2 ml-8">
+                        <Select value={form[sourceKey] || 'username'} onValueChange={v => setForm({ ...form, [sourceKey]: v })}>
+                          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="username">Logged-in user</SelectItem>
+                            <SelectItem value="custom">Custom text</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {form[sourceKey] === 'custom' && (
+                          <Input
+                            value={form[customKey] || ''}
+                            onChange={e => setForm({ ...form, [customKey]: e.target.value })}
+                            placeholder="Enter name"
+                            className="flex-1 max-w-[200px]"
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* b. Company name & address */}
+        <div>
+          <div className="text-sm font-medium mb-2">Company Name & Address</div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Switch checked={!!form.showCompanyName} onCheckedChange={v => setForm({ ...form, showCompanyName: v })} />
+              <span className="text-sm">Show company name</span>
+            </div>
+            {form.showCompanyName && (
+              <div className="flex items-center gap-2 ml-8">
+                <Select value={form.companyNamePosition || 'center'} onValueChange={v => setForm({ ...form, companyNamePosition: v })}>
+                  <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="left">Left</SelectItem>
+                    <SelectItem value="center">Center</SelectItem>
+                    <SelectItem value="right">Right</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={form.companyNameVertical || 'top'} onValueChange={v => setForm({ ...form, companyNameVertical: v })}>
+                  <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="top">Top</SelectItem>
+                    <SelectItem value="bottom">Bottom</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <Switch checked={!!form.showCompanyAddress} onCheckedChange={v => setForm({ ...form, showCompanyAddress: v })} />
+              <span className="text-sm">Show company address</span>
+            </div>
+            {form.showCompanyAddress && (
+              <div className="flex items-center gap-2 ml-8">
+                <Select value={form.companyAddressPosition || 'center'} onValueChange={v => setForm({ ...form, companyAddressPosition: v })}>
+                  <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="left">Left</SelectItem>
+                    <SelectItem value="center">Center</SelectItem>
+                    <SelectItem value="right">Right</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={form.companyAddressVertical || 'top'} onValueChange={v => setForm({ ...form, companyAddressVertical: v })}>
+                  <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="top">Top</SelectItem>
+                    <SelectItem value="bottom">Bottom</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* c, d, e. Toggles */}
+        <div>
+          <div className="text-sm font-medium mb-2">Print Options</div>
+          <div className="space-y-2">
+            <ToggleRow label="Show print date" checked={!!form.showPrintDate} onChange={v => setForm({ ...form, showPrintDate: v })} />
+            <ToggleRow label="Show party remaining balance (from ledger)" checked={!!form.showPartyBalance} onChange={v => setForm({ ...form, showPartyBalance: v })} />
+            <ToggleRow label="Show logo" checked={!!form.showLogo} onChange={v => setForm({ ...form, showLogo: v })} />
+            {form.showLogo && (
+              <div className="flex items-center gap-2 ml-8">
+                <Select value={form.logoPosition || 'left'} onValueChange={v => setForm({ ...form, logoPosition: v })}>
+                  <SelectTrigger className="w-28"><SelectValue placeholder="Position" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="left">Left</SelectItem>
+                    <SelectItem value="center">Center</SelectItem>
+                    <SelectItem value="right">Right</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input type="number" value={form.logoWidth || 80} onChange={e => setForm({ ...form, logoWidth: Number(e.target.value) || 80 })} className="w-20" placeholder="Width (px)" />
+                <span className="text-xs text-muted-foreground">×</span>
+                <Input type="number" value={form.logoHeight || 80} onChange={e => setForm({ ...form, logoHeight: Number(e.target.value) || 80 })} className="w-20" placeholder="Height (px)" />
+                <span className="text-xs text-muted-foreground">px</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* f. Font */}
+        <div>
+          <div className="text-sm font-medium mb-2">Font</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <FormRow label="Font Family">
+              <Input value={form.fontFamily || ''} onChange={e => setForm({ ...form, fontFamily: e.target.value })} placeholder="Arial, sans-serif" />
+            </FormRow>
+            <FormRow label="Font Size (px)">
+              <Input type="number" value={form.fontSize || 12} onChange={e => setForm({ ...form, fontSize: Number(e.target.value) || 12 })} />
+            </FormRow>
+          </div>
+        </div>
+
+        {/* Live preview */}
+        <div>
+          <div className="text-sm font-medium mb-2">Live Preview</div>
+          <div
+            className="border rounded p-4 bg-white"
+            style={{ fontFamily: form.fontFamily || 'Arial, sans-serif', fontSize: (form.fontSize || 12) + 'px' }}
+          >
+            {/* Header row: logo + company name */}
+            {(form.showLogo || form.showCompanyName) && (
+              <div className="flex items-start justify-between mb-3" style={{ justifyContent: form.logoPosition === 'right' || form.companyNamePosition === 'right' ? 'flex-end' : form.companyNamePosition === 'center' ? 'center' : 'flex-start' }}>
+                {form.showLogo && (
+                  <div style={{ width: (form.logoWidth || 80) + 'px', height: (form.logoHeight || 80) + 'px' }} className="bg-muted/40 border rounded flex items-center justify-center text-xs text-muted-foreground">Logo</div>
+                )}
+                {form.showCompanyName && (
+                  <div className="text-center">
+                    <div className="font-bold text-base">Contoura Gym</div>
+                    {form.showCompanyAddress && <div className="text-xs text-muted-foreground">Main Boulevard, Karachi</div>}
+                  </div>
+                )}
+              </div>
+            )}
+            {/* Document title */}
+            <div className="text-center font-bold mb-2">{PRINT_DOC_TYPES.find(d => d.key === docType)?.label || docType}</div>
+            {/* Print date */}
+            {form.showPrintDate && <div className="text-xs text-muted-foreground text-right mb-2">Print Date: {new Date().toLocaleDateString()}</div>}
+            {/* Party balance */}
+            {form.showPartyBalance && <div className="text-xs text-muted-foreground mb-2">Party Remaining Balance: PKR 0.00</div>}
+            {/* Placeholder body */}
+            <table className="w-full text-xs border">
+              <thead><tr><th className="border px-1 py-0.5 text-left">Account</th><th className="border px-1 py-0.5 text-right">Debit</th><th className="border px-1 py-0.5 text-right">Credit</th></tr></thead>
+              <tbody><tr><td className="border px-1 py-0.5">—</td><td className="border px-1 py-0.5 text-right">—</td><td className="border px-1 py-0.5 text-right">—</td></tr></tbody>
+            </table>
+            {/* Signatures */}
+            <div className="flex justify-around mt-6 text-xs">
+              {form.sigPreparedBy && <div className="text-center"><div className="border-b border-muted-foreground w-24 mb-1">&nbsp;</div><div>Prepared By{form.sigPreparedBySource === 'custom' && form.sigPreparedByCustom ? `: ${form.sigPreparedByCustom}` : ''}</div></div>}
+              {form.sigCheckedBy && <div className="text-center"><div className="border-b border-muted-foreground w-24 mb-1">&nbsp;</div><div>Checked By{form.sigCheckedBySource === 'custom' && form.sigCheckedByCustom ? `: ${form.sigCheckedByCustom}` : ''}</div></div>}
+              {form.sigApprovedBy && <div className="text-center"><div className="border-b border-muted-foreground w-24 mb-1">&nbsp;</div><div>Approved By{form.sigApprovedBySource === 'custom' && form.sigApprovedByCustom ? `: ${form.sigApprovedByCustom}` : ''}</div></div>}
+              {form.sigPrintBy && <div className="text-center"><div className="border-b border-muted-foreground w-24 mb-1">&nbsp;</div><div>Print By{form.sigPrintBySource === 'custom' && form.sigPrintByCustom ? `: ${form.sigPrintByCustom}` : ''}</div></div>}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-2">
+          {has('finance.settings') && (
+            <Button onClick={save} disabled={saving}><Save className="h-4 w-4 mr-1" />{saving ? 'Saving…' : 'Save Print Settings'}</Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
