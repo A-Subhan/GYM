@@ -25,6 +25,7 @@ import {
   fmtMoney, fmtDateStr, fmtDateTime, PageHeader, SearchInput, EmptyState,
   StatusBadge, Modal, FormRow, Toolbar, DataTable, ConfirmModal,
   ScreenShell, ActionPanel, type PanelAction,
+  GymLoader, PrintRenderer,
 } from './modules'
 
 // =================================================================
@@ -1305,7 +1306,10 @@ function BookVoucherFormModal({ open, onClose, voucherType, editing, onSaved }: 
 // Print / View / Reverse modals
 // ----------------------------------------------------------------
 function VoucherPrintModal({ open, voucher, onClose, onKnockOff }: any) {
+  const { session, companyName, companyLogo } = useApp() as any
   if (!voucher) return null
+  // Map voucher type to PrintSettings documentType
+  const docType = voucher.voucherType === 'OTV' ? 'OTB' : voucher.voucherType
   return (
     <Modal open={open} onClose={onClose} title={`Print Voucher ${voucher.id}`} size="lg"
       footer={<>
@@ -1315,48 +1319,55 @@ function VoucherPrintModal({ open, voucher, onClose, onKnockOff }: any) {
         )}
         <Button onClick={() => window.print()}><Printer className="h-4 w-4 mr-1" />Print</Button>
       </>}>
-      <div className="text-sm">
-        <div className="text-center mb-4">
-          <div className="text-lg font-semibold">{voucherTypeLabel(voucher.voucherType)}</div>
-          <div className="text-xs text-muted-foreground">Voucher # {voucher.id}</div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-          <div><span className="text-xs text-muted-foreground">Date:</span> {fmtDateStr(voucher.voucherDate)}</div>
-          <div><span className="text-xs text-muted-foreground">Branch:</span> {voucher.branch?.name || '—'}</div>
-          <div><span className="text-xs text-muted-foreground">Book Account:</span> {voucher.bookChart ? `${voucher.bookChart.id} — ${voucher.bookChart.name}` : '—'}</div>
-          <div><span className="text-xs text-muted-foreground">Payment Mode:</span> {voucher.paymentMode || '—'}</div>
-          <div><span className="text-xs text-muted-foreground">Reference:</span> {voucher.reference || '—'}</div>
-          <div><span className="text-xs text-muted-foreground">Status:</span> {voucher.status}</div>
-          <div className="col-span-2"><span className="text-xs text-muted-foreground">Description:</span> {voucher.description || '—'}</div>
-        </div>
-        <table className="w-full border">
-          <thead className="bg-muted/40 border-b">
-            <tr>
-              <th className="px-3 py-2 text-left text-xs">Account</th>
-              <th className="px-3 py-2 text-left text-xs">Description</th>
-              <th className="px-3 py-2 text-right text-xs">Debit</th>
-              <th className="px-3 py-2 text-right text-xs">Credit</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(voucher.lines || []).map((l: any) => (
-              <tr key={l.id} className="border-b last:border-0">
-                <td className="px-3 py-2 text-xs">{l.account?.id} — {l.account?.name}</td>
-                <td className="px-3 py-2 text-xs">{l.lineDescription || '—'}</td>
-                <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(l.debit)}</td>
-                <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(l.credit)}</td>
+      <PrintRenderer
+        documentType={docType}
+        sessionUsername={session?.username}
+        companyName={companyName || undefined}
+        companyLogo={companyLogo}
+      >
+        <div className="text-sm">
+          <div className="text-center mb-4">
+            <div className="text-lg font-semibold">{voucherTypeLabel(voucher.voucherType)}</div>
+            <div className="text-xs text-muted-foreground">Voucher # {voucher.id}</div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+            <div><span className="text-xs text-muted-foreground">Date:</span> {fmtDateStr(voucher.voucherDate)}</div>
+            <div><span className="text-xs text-muted-foreground">Branch:</span> {voucher.branch?.name || '—'}</div>
+            <div><span className="text-xs text-muted-foreground">Book Account:</span> {voucher.bookChart ? `${voucher.bookChart.id} — ${voucher.bookChart.name}` : '—'}</div>
+            <div><span className="text-xs text-muted-foreground">Payment Mode:</span> {voucher.paymentMode || '—'}</div>
+            <div><span className="text-xs text-muted-foreground">Reference:</span> {voucher.reference || '—'}</div>
+            <div><span className="text-xs text-muted-foreground">Status:</span> {voucher.status}</div>
+            <div className="col-span-2"><span className="text-xs text-muted-foreground">Description:</span> {voucher.description || '—'}</div>
+          </div>
+          <table className="w-full border">
+            <thead className="bg-muted/40 border-b">
+              <tr>
+                <th className="px-3 py-2 text-left text-xs">Account</th>
+                <th className="px-3 py-2 text-left text-xs">Description</th>
+                <th className="px-3 py-2 text-right text-xs">Debit</th>
+                <th className="px-3 py-2 text-right text-xs">Credit</th>
               </tr>
-            ))}
-          </tbody>
-          <tfoot className="border-t bg-muted/30 font-medium">
-            <tr>
-              <td colSpan={2} className="px-3 py-2 text-right text-xs">Total</td>
-              <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(voucherDr(voucher))}</td>
-              <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(voucherCr(voucher))}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {(voucher.lines || []).map((l: any) => (
+                <tr key={l.id} className="border-b last:border-0">
+                  <td className="px-3 py-2 text-xs">{l.account?.id} — {l.account?.name}</td>
+                  <td className="px-3 py-2 text-xs">{l.lineDescription || '—'}</td>
+                  <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(l.debit)}</td>
+                  <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(l.credit)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t bg-muted/30 font-medium">
+              <tr>
+                <td colSpan={2} className="px-3 py-2 text-right text-xs">Total</td>
+                <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(voucherDr(voucher))}</td>
+                <td className="px-3 py-2 text-right font-mono text-xs">{fmtMoney(voucherCr(voucher))}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </PrintRenderer>
     </Modal>
   )
 }
@@ -6908,10 +6919,12 @@ export function AccountMappingsModule() {
 // FINANCE REPORTS
 // =================================================================
 export function FinanceReportsModule({ presetReport }: { presetReport?: 'aging' | 'finance' } = {}) {
+  const { session, companyName, companyLogo } = useApp() as any
   const [reportKey, setReportKey] = useState('')
   const [filters, setFilters] = useState<any>({ from: '', to: '', asOf: '' })
   const [reportData, setReportData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
+  const [printOpen, setPrintOpen] = useState(false)
   // Aging reports (Customer aging / Vendor aging) — separate from the main Finance Reports list
   const AGING_REPORTS = [
     { key: 'customer-aging', name: 'Customer Aging', filters: ['asOf'] },
@@ -6983,7 +6996,30 @@ export function FinanceReportsModule({ presetReport }: { presetReport?: 'aging' 
         </CardContent>
       </Card>
 
-      {reportData && <ReportRenderer report={reportData} />}
+      {reportData && (
+        <>
+          <div className="mt-4 flex justify-end">
+            <Button onClick={() => setPrintOpen(true)}><Printer className="h-4 w-4 mr-1" />Print Report</Button>
+          </div>
+          <ReportRenderer report={reportData} />
+        </>
+      )}
+
+      {/* Print modal for reports — wraps the report content with PrintRenderer */}
+      <Modal open={printOpen} onClose={() => setPrintOpen(false)} title="Print Report" size="lg"
+        footer={<>
+          <Button variant="outline" onClick={() => setPrintOpen(false)}>Close</Button>
+          <Button onClick={() => window.print()}><Printer className="h-4 w-4 mr-1" />Print</Button>
+        </>}>
+        <PrintRenderer
+          documentType="Reports"
+          sessionUsername={session?.username}
+          companyName={companyName || undefined}
+          companyLogo={companyLogo}
+        >
+          <ReportRenderer report={reportData} />
+        </PrintRenderer>
+      </Modal>
     </div>
   )
 }

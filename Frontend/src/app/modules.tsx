@@ -585,3 +585,126 @@ export function BranchesModule() {
     </div>
   )
 }
+
+// ============================================================================
+// PrintRenderer — shared print/PDF/export header + body wrapper.
+// Fetches PrintSettings for the given document type from /api/print-settings
+// and renders: logo, company name/address, print date, party balance,
+// signatures, and applies font family/size to the whole printable area.
+// ============================================================================
+export function PrintRenderer({
+  documentType,
+  sessionUsername,
+  companyName,
+  companyAddress,
+  companyLogo,
+  partyBalance,
+  children,
+}: {
+  documentType: string
+  sessionUsername?: string
+  companyName?: string
+  companyAddress?: string
+  companyLogo?: string | null
+  partyBalance?: number | null
+  children: ReactNode
+}) {
+  const [settings, setSettings] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/print-settings?documentType=${encodeURIComponent(documentType)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(json => { if (!cancelled) setSettings(json?.settings || null) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [documentType])
+
+  if (loading) return <div className="text-center py-8 text-muted-foreground text-sm">Loading print settings…</div>
+
+  const s = settings || {
+    showLogo: true, logoPosition: 'left', logoWidth: 80, logoHeight: 80,
+    showCompanyName: true, companyNamePosition: 'center', companyNameVertical: 'top',
+    showCompanyAddress: true, companyAddressPosition: 'center', companyAddressVertical: 'top',
+    showPrintDate: true, showPartyBalance: false,
+    sigPreparedBy: true, sigPreparedBySource: 'username', sigPreparedByCustom: '',
+    sigCheckedBy: true, sigCheckedBySource: 'username', sigCheckedByCustom: '',
+    sigApprovedBy: false, sigApprovedBySource: 'username', sigApprovedByCustom: '',
+    sigPrintBy: false, sigPrintBySource: 'username', sigPrintByCustom: '',
+    fontFamily: 'Arial, sans-serif', fontSize: 12,
+  }
+
+  const flexAlign = (pos: string) => pos === 'left' ? 'flex-start' : pos === 'right' ? 'flex-end' : 'center'
+
+  const sigName = (key: string) => {
+    const source = s[key + 'Source']
+    const custom = s[key + 'Custom']
+    if (source === 'custom') return custom || ''
+    return sessionUsername || ''
+  }
+
+  const signatures: { key: string, label: string }[] = [
+    { key: 'sigPreparedBy', label: 'Prepared By' },
+    { key: 'sigCheckedBy', label: 'Checked By' },
+    { key: 'sigApprovedBy', label: 'Approved By' },
+    { key: 'sigPrintBy', label: 'Print By' },
+  ]
+
+  return (
+    <div className="print-renderer" style={{ fontFamily: s.fontFamily, fontSize: s.fontSize + 'px' }}>
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          .print-renderer, .print-renderer * { visibility: visible; }
+          .print-renderer { position: absolute; left: 0; top: 0; width: 100%; }
+          .no-print { display: none !important; }
+        }
+      `}</style>
+      <div style={{
+        display: 'flex',
+        justifyContent: flexAlign(s.showLogo ? s.logoPosition : s.showCompanyName ? s.companyNamePosition : 'flex-start'),
+        alignItems: s.companyNameVertical === 'bottom' || s.companyAddressVertical === 'bottom' ? 'flex-end' : 'flex-start',
+        gap: '16px',
+        marginBottom: '12px',
+      }}>
+        {s.showLogo && companyLogo && (
+          <img src={companyLogo} alt="Logo" style={{ width: s.logoWidth + 'px', height: s.logoHeight + 'px', objectFit: 'contain' }} />
+        )}
+        <div style={{ textAlign: s.showCompanyName ? s.companyNamePosition : 'left' }}>
+          {s.showCompanyName && companyName && (
+            <div style={{ fontWeight: 'bold', fontSize: (s.fontSize + 4) + 'px' }}>{companyName}</div>
+          )}
+          {s.showCompanyAddress && companyAddress && (
+            <div style={{ fontSize: (s.fontSize - 2) + 'px', color: '#666' }}>{companyAddress}</div>
+          )}
+        </div>
+      </div>
+      {s.showPrintDate && (
+        <div style={{ textAlign: 'right', fontSize: (s.fontSize - 2) + 'px', color: '#666', marginBottom: '8px' }}>
+          Print Date: {new Date().toLocaleDateString('en-GB')}
+        </div>
+      )}
+      {s.showPartyBalance && partyBalance !== undefined && partyBalance !== null && (
+        <div style={{ fontSize: (s.fontSize - 1) + 'px', marginBottom: '8px' }}>
+          Party Remaining Balance: {Number(partyBalance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </div>
+      )}
+      <div className="print-body">{children}</div>
+      <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: '48px' }}>
+        {signatures.map(({ key, label }) => {
+          if (!s[key]) return null
+          const name = sigName(key)
+          return (
+            <div key={key} style={{ textAlign: 'center' }}>
+              <div style={{ borderBottom: '1px solid #999', width: '120px', marginBottom: '4px', height: '20px' }} />
+              <div style={{ fontSize: (s.fontSize - 2) + 'px' }}>{label}</div>
+              {name && <div style={{ fontSize: (s.fontSize - 2) + 'px', fontWeight: 'bold' }}>{name}</div>}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
