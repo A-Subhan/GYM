@@ -238,18 +238,12 @@ function AccountFormModal({ open, onClose, form, setForm, onSaved, accounts, edi
   const parent = form.parentId ? accounts.find((a: any) => a.id === form.parentId) : null
   const isControl = form.isControl === true
   const save = async () => {
-    const code = String(form.id || '').trim().toUpperCase()
-    if (!isEdit) {
-      if (!code) { toast.error('Account Code is required'); return }
-      if (/\s/.test(code)) { toast.error('Account Code cannot contain spaces'); return }
-    }
     if (!form.name || !String(form.name).trim()) { toast.error('Account Name is required'); return }
     if (!form.accountType) { toast.error('Account Type is required'); return }
     if (!isControl && !form.parentId) { toast.error('Detail accounts require a Parent (control) account'); return }
     try {
       const payload: any = {
         ...form,
-        id: isEdit ? editingAccount.id : code,
         isControl,
         isDetail: !isControl,
       }
@@ -257,8 +251,10 @@ function AccountFormModal({ open, onClose, form, setForm, onSaved, accounts, edi
         await apiPatch(`/api/charts/${editingAccount.id}`, payload)
         toast.success('Account updated')
       } else {
-        await apiPost('/api/charts', payload)
-        toast.success('Account created')
+        // Don't send `id` — the backend auto-generates the code
+        const { id: _omit, ...payloadWithoutId } = payload
+        const res = await apiPost('/api/charts', payloadWithoutId)
+        toast.success(`Account created — Code: ${res.chart?.id || '(auto)'}`)
       }
       onSaved()
     } catch (e: any) { toast.error(e.message) }
@@ -270,13 +266,11 @@ function AccountFormModal({ open, onClose, form, setForm, onSaved, accounts, edi
         <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
       </>}>
       <div className="grid grid-cols-2 gap-3">
-        <FormRow label="Account Code" required>
+        <FormRow label="Account Code">
           <Input
-            value={isEdit ? (editingAccount.id || '') : (form.id || '').toUpperCase()}
-            disabled={isEdit}
-            onChange={e => setForm({ ...form, id: e.target.value.toUpperCase() })}
-            placeholder="e.g. 01 or 01001"
-            className={`font-mono ${isEdit ? 'bg-muted/40' : ''}`}
+            value={isEdit ? (editingAccount.id || '') : 'Auto-generated'}
+            disabled
+            className="font-mono bg-muted/40"
           />
         </FormRow>
         <FormRow label="Account Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
@@ -358,7 +352,7 @@ function AccountFormModal({ open, onClose, form, setForm, onSaved, accounts, edi
         <div className="col-span-2"><FormRow label="Description"><Textarea rows={2} value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow></div>
       </div>
       {parent && <div className="mt-3 text-xs text-muted-foreground">Parent: <code>{parent.id} — {parent.name}</code></div>}
-      {!isEdit && <div className="mt-2 text-xs text-muted-foreground">The Account Code is the unique account id. Opening balances are entered through Opening Trial Balance vouchers, not here.</div>}
+      {!isEdit && <div className="mt-2 text-xs text-muted-foreground">The account code is auto-generated from the parent code and the next sequence number. Opening balances are entered through Opening Trial Balance vouchers, not here.</div>}
     </Modal>
   )
 }
