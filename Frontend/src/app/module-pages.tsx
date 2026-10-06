@@ -265,7 +265,7 @@ function AccountFormModal({ open, onClose, form, setForm, onSaved, accounts, edi
         <Button variant="outline" onClick={onClose}>Cancel</Button>
         <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
       </>}>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <FormRow label="Account Code">
           <Input
             value={isEdit ? (editingAccount.id || '') : 'Auto-generated'}
@@ -1320,7 +1320,7 @@ function VoucherPrintModal({ open, voucher, onClose, onKnockOff }: any) {
           <div className="text-lg font-semibold">{voucherTypeLabel(voucher.voucherType)}</div>
           <div className="text-xs text-muted-foreground">Voucher # {voucher.id}</div>
         </div>
-        <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
           <div><span className="text-xs text-muted-foreground">Date:</span> {fmtDateStr(voucher.voucherDate)}</div>
           <div><span className="text-xs text-muted-foreground">Branch:</span> {voucher.branch?.name || '—'}</div>
           <div><span className="text-xs text-muted-foreground">Book Account:</span> {voucher.bookChart ? `${voucher.bookChart.id} — ${voucher.bookChart.name}` : '—'}</div>
@@ -2224,7 +2224,7 @@ export function TaxHeadsModule() {
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={save}><Save className="h-4 w-4 mr-1" />{editing ? 'Update' : 'Save'}</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormRow label="Code (auto-generated)"><Input disabled value={form.code || 'auto'} className="bg-muted/40" /></FormRow>
           <FormRow label="Short Name" required><Input value={form.shortName || ''} onChange={e => setForm({ ...form, shortName: e.target.value })} placeholder="ST-18" /></FormRow>
           <FormRow label="Tax Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Sales Tax 18%" /></FormRow>
@@ -2765,7 +2765,7 @@ function MemberViewModal({ open, member, onClose, onEdit }: any) {
           <TabsTrigger value="progress">Progress</TabsTrigger>
         </TabsList>
         <TabsContent value="profile">
-          <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
             <div><div className="text-xs text-muted-foreground">Phone</div><div>{m.phone || '—'}</div></div>
             <div><div className="text-xs text-muted-foreground">WhatsApp</div><div>{m.whatsapp || '—'}</div></div>
             <div><div className="text-xs text-muted-foreground">CNIC</div><div>{m.cnic || '—'}</div></div>
@@ -2904,7 +2904,7 @@ export function MembershipsModule() {
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormRow label="Branch" required={!editing}>
             <BranchSelect value={form.branchId || ''} onChange={v => setForm({ ...form, branchId: v })} disabled={!!editing} />
           </FormRow>
@@ -3044,7 +3044,7 @@ export function AttendanceModule() {
             <SelectContent>{(membersData?.members || []).map((m: any) => <SelectItem key={m.id} value={m.id}>{m.memberId} — {m.firstName} {m.lastName || ''}</SelectItem>)}</SelectContent>
           </Select>
         </FormRow>
-        <div className="grid grid-cols-2 gap-3 mt-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
           <FormRow label="Date">
             <Input
               type="date"
@@ -3101,7 +3101,7 @@ export function AttendanceModule() {
             <div className="text-xs text-muted-foreground">
               Date: {fmtDateStr(editTarget.date)} — editing is allowed for the same day within the current month.
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FormRow label="Check In">
                 <Input
                   type="datetime-local"
@@ -3231,7 +3231,7 @@ function FeeCreateModal({ open, onClose, members, onSaved }: any) {
           <SelectContent>{members.map((m: any) => <SelectItem key={m.id} value={m.id}>{m.memberId} — {m.firstName} {m.lastName || ''}</SelectItem>)}</SelectContent>
         </Select>
       </FormRow>
-      <div className="grid grid-cols-2 gap-3 mt-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
         <FormRow label="Billing Start"><Input type="date" value={form.billingPeriodStart || ''} onChange={e => setForm({ ...form, billingPeriodStart: e.target.value })} /></FormRow>
         <FormRow label="Billing End"><Input type="date" value={form.billingPeriodEnd || ''} onChange={e => setForm({ ...form, billingPeriodEnd: e.target.value })} /></FormRow>
         <FormRow label="Amount (membership + joining fee)"><Input type="number" value={form.amount || 0} onChange={e => setForm({ ...form, amount: Number(e.target.value) })} /></FormRow>
@@ -3281,7 +3281,7 @@ function FeePayModal({ open, fee, cashAccounts, bankAccounts, banks, cardTypes, 
           <div><div className="text-xs text-muted-foreground">Balance</div><div className="font-mono font-semibold">{fmtMoney(fee.balance)}</div></div>
         </div>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <FormRow label="Payment Method" required>
           <Select value={form.method} onValueChange={v => setForm({ ...form, method: v, accountId: '', cardTypeId: '', bankMasterId: '' })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
@@ -3467,7 +3467,7 @@ export function ProspectsModule() {
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
           <FormRow label="Phone" required><Input value={form.phone || ''} onChange={e => setPhone(e.target.value)} placeholder="0300XXXXXXX" /></FormRow>
           <div>
@@ -3618,7 +3618,7 @@ export function FreezesModule() {
             <SelectContent>{(membersData?.members || []).map((m: any) => <SelectItem key={m.id} value={m.id}>{m.memberId} — {m.firstName} {m.lastName || ''}</SelectItem>)}</SelectContent>
           </Select>
         </FormRow>
-        <div className="grid grid-cols-2 gap-3 mt-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
           <FormRow label="From" required><Input type="date" value={form.freezeFrom || ''} onChange={e => setForm({ ...form, freezeFrom: e.target.value })} /></FormRow>
           <FormRow label="To" required><Input type="date" value={form.freezeTo || ''} onChange={e => setForm({ ...form, freezeTo: e.target.value })} /></FormRow>
           <div className="col-span-2"><FormRow label="Reason"><Textarea rows={2} value={form.reason || ''} onChange={e => setForm({ ...form, reason: e.target.value })} /></FormRow></div>
@@ -3669,7 +3669,7 @@ export function FollowUpsModule() {
             catch (e: any) { toast.error(e.message) }
           }}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormRow label="Type">
             <Select value={form.type} onValueChange={v => setForm({ ...form, type: v })}>
               <SelectTrigger><SelectValue /></SelectTrigger>
@@ -3819,7 +3819,7 @@ export function EquipmentModule() {
             catch (e: any) { toast.error(e.message) }
           }}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
           <FormRow label="Category">
             {categories.length > 0 ? (
@@ -3903,7 +3903,7 @@ export function InventoryModule() {
             catch (e: any) { toast.error(e.message) }
           }}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
           <FormRow label="Category"><Input value={form.category || ''} onChange={e => setForm({ ...form, category: e.target.value })} /></FormRow>
           <FormRow label="Branch" required>
@@ -4172,7 +4172,7 @@ export function StaffModule() {
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={save} disabled={saving}><Save className="h-4 w-4 mr-1" />{saving ? 'Saving…' : 'Save'}</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormSection title="Personal" />
           <FormRow label="Photo">
             <div className="flex items-center gap-2">
@@ -4386,7 +4386,7 @@ export function ShiftsModule() {
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
           <FormRow label="Branch">
             <Select value={form.branchId || ''} onValueChange={v => setForm({ ...form, branchId: v })}>
@@ -4723,7 +4723,7 @@ export function LeavesModule() {
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={save}><Save className="h-4 w-4 mr-1" />Post</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormRow label="Staff" required>
             <Select value={form.staffId || ''} onValueChange={v => setForm({ ...form, staffId: v })}>
               <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
@@ -4924,7 +4924,7 @@ export function OvertimeModule() {
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormRow label="Staff" required>
             <Select value={form.staffId || ''} onValueChange={staffPick}>
               <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
@@ -5102,7 +5102,7 @@ export function PayrollModule() {
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={generate} disabled={busy}><Save className="h-4 w-4 mr-1" />{busy ? 'Generating…' : 'Generate'}</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="col-span-2">
             <FormRow label="Staff" required>
               <Select value={form.staffId || ''} onValueChange={v => setForm({ ...form, staffId: v })}>
@@ -5266,7 +5266,7 @@ export function PayrollMasterFilesModule() {
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormRow label="Code (auto)"><Input disabled value={form.code || 'Auto — PMF-001 on save'} className="bg-muted/40" /></FormRow>
           <FormRow label="Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
           <FormRow label="Type" required>
@@ -5331,7 +5331,7 @@ export function CompanyModule() {
       } : undefined} actionLabel="Save Changes" />
       <Card className="max-w-2xl">
         <CardContent className="p-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormRow label="Company ID"><Input value={company?.companyId || ''} disabled className="bg-muted/40" /></FormRow>
             <FormRow label="Accounting Type"><Input value={company?.accountingType || ''} disabled className="bg-muted/40" /></FormRow>
             <FormRow label="Name"><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
@@ -7389,7 +7389,7 @@ export function WorkoutsModule() {
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={save}><Save className="h-4 w-4 mr-1" />{editing ? 'Update' : 'Save'}</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
           <FormRow label="Plan Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
           <FormRow label="Description"><Input value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow>
         </div>
@@ -7564,7 +7564,7 @@ export function DietModule() {
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={save}><Save className="h-4 w-4 mr-1" />{editing ? 'Update' : 'Save'}</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
           <FormRow label="Plan Name" required><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></FormRow>
           <FormRow label="Description"><Input value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} /></FormRow>
         </div>
@@ -7699,7 +7699,7 @@ export function ProgressModule() {
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormRow label="Member" required>
             <Select value={form.memberId || ''} onValueChange={v => setForm({ ...form, memberId: v })} disabled={!!editing}>
               <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
@@ -7794,7 +7794,7 @@ export function PTSessionsModule() {
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormRow label="Member" required>
             <Select value={form.memberId || ''} onValueChange={v => setForm({ ...form, memberId: v })}>
               <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
@@ -8109,7 +8109,7 @@ export function WorkoutAssignmentScreen() {
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormRow label="Member" required>
             <Select value={form.memberId || ''} onValueChange={v => setForm({ ...form, memberId: v })} disabled={!!editing}>
               <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
@@ -8233,7 +8233,7 @@ export function FitnessGoalsScreen() {
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormRow label="Member" required>
             <Select value={form.memberId || ''} onValueChange={v => setForm({ ...form, memberId: v })} disabled={!!editing}>
               <SelectTrigger><SelectValue placeholder="Select member" /></SelectTrigger>
@@ -8361,7 +8361,7 @@ export function TrainerAvailabilityScreen() {
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormRow label="Trainer" required>
             <Select value={form.staffId || ''} onValueChange={v => setForm({ ...form, staffId: v })}>
               <SelectTrigger><SelectValue placeholder="Select trainer" /></SelectTrigger>
@@ -8511,7 +8511,7 @@ export function TrainerScheduleScreen() {
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={save}><Save className="h-4 w-4 mr-1" />Save</Button>
         </>}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormRow label="Trainer" required>
             <Select value={form.staffId || ''} onValueChange={v => setForm({ ...form, staffId: v })}>
               <SelectTrigger><SelectValue placeholder="Select trainer" /></SelectTrigger>
