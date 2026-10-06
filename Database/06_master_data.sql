@@ -185,8 +185,8 @@ INSERT INTO [Permission] ([id], [module], [action], [code], [description]) VALUE
 INSERT INTO [Permission] ([id], [module], [action], [code], [description]) VALUES ('PRM-0112', 'overtime', 'view', 'overtime.view', NULL);
 INSERT INTO [Permission] ([id], [module], [action], [code], [description]) VALUES ('PRM-0113', 'overtime', 'add', 'overtime.add', NULL);
 INSERT INTO [Permission] ([id], [module], [action], [code], [description]) VALUES ('PRM-0114', 'overtime', 'approve', 'overtime.approve', NULL);
-INSERT INTO [Permission] ([id], [module], [action], [code], [description]) VALUES ('perm-overtime-edit', 'overtime', 'edit', 'overtime.edit', N'Edit overtime entries');
-INSERT INTO [Permission] ([id], [module], [action], [code], [description]) VALUES ('perm-overtime-delete', 'overtime', 'delete', 'overtime.delete', N'Delete overtime entries');
+INSERT INTO [Permission] ([id], [module], [action], [code], [description]) VALUES ('PRM-0149', 'overtime', 'edit', 'overtime.edit', N'Edit overtime entries');
+INSERT INTO [Permission] ([id], [module], [action], [code], [description]) VALUES ('PRM-0150', 'overtime', 'delete', 'overtime.delete', N'Delete overtime entries');
 INSERT INTO [Permission] ([id], [module], [action], [code], [description]) VALUES ('PRM-0115', 'payroll', 'view', 'payroll.view', NULL);
 INSERT INTO [Permission] ([id], [module], [action], [code], [description]) VALUES ('PRM-0116', 'payroll', 'add', 'payroll.add', NULL);
 INSERT INTO [Permission] ([id], [module], [action], [code], [description]) VALUES ('PRM-0117', 'payroll', 'edit', 'payroll.edit', NULL);
@@ -225,8 +225,8 @@ INSERT INTO [Permission] ([id], [module], [action], [code], [description]) VALUE
 -- RolePermission (460 rows)
 INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-001', 'PRM-0138');
 INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-001', 'PRM-0137');
-INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-001', 'perm-overtime-edit');
-INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-001', 'perm-overtime-delete');
+INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-001', 'PRM-0149');
+INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-001', 'PRM-0150');
 INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-001', 'PRM-0015');
 INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-001', 'PRM-0017');
 INSERT INTO [RolePermission] ([roleId], [permissionId]) VALUES ('ROL-001', 'PRM-0016');
@@ -969,6 +969,57 @@ INSERT INTO [payrollmasterfile] ([id], [masterType], [name], [description], [ext
 SELECT LOWER(REPLACE(NEWID(),'-','')), 'Country', t.name, NULL, NULL, NULL, 1, SYSDATETIME(), SYSDATETIME()
 FROM (VALUES ('Pakistan'),('United Arab Emirates'),('Saudi Arabia')) t(name)
 WHERE NOT EXISTS (SELECT 1 FROM [payrollmasterfile] p WHERE p.masterType = 'Country' AND p.name = t.name);
+
+-- ---------------------------------------------------------------------
+-- IdSequence seed rows for the 9 admin/security id formats.
+-- Each row sets next = max(numeric suffix in the corresponding table) + 1
+-- so the application continues numbering without collisions. Idempotent:
+-- uses IdSequence_pkey uniqueness, so re-running is a no-op once rows exist.
+-- ---------------------------------------------------------------------
+IF NOT EXISTS (SELECT 1 FROM dbo.IdSequence WHERE [key] = N'DEFAULTS')
+    INSERT INTO dbo.IdSequence ([key], [next], [updatedAt])
+    SELECT N'DEFAULTS', ISNULL(MAX(CAST(SUBSTRING([id], 5, 20) AS INT)), 0) + 1, SYSDATETIME()
+    FROM dbo.Defaults WHERE [id] LIKE N'CMP-[0-9]%' AND SUBSTRING([id], 5, 20) NOT LIKE N'%[^0-9]%';
+
+IF NOT EXISTS (SELECT 1 FROM dbo.IdSequence WHERE [key] = N'TAXHEAD')
+    INSERT INTO dbo.IdSequence ([key], [next], [updatedAt])
+    SELECT N'TAXHEAD', ISNULL(MAX(CAST(SUBSTRING([id], 5, 20) AS INT)), 0) + 1, SYSDATETIME()
+    FROM dbo.TaxHead WHERE [id] LIKE N'TAX-[0-9]%' AND SUBSTRING([id], 5, 20) NOT LIKE N'%[^0-9]%';
+
+IF NOT EXISTS (SELECT 1 FROM dbo.IdSequence WHERE [key] = N'PERMISSION')
+    INSERT INTO dbo.IdSequence ([key], [next], [updatedAt])
+    SELECT N'PERMISSION', ISNULL(MAX(CAST(SUBSTRING([id], 5, 20) AS INT)), 0) + 1, SYSDATETIME()
+    FROM dbo.Permission WHERE [id] LIKE N'PRM-[0-9]%' AND SUBSTRING([id], 5, 20) NOT LIKE N'%[^0-9]%';
+
+IF NOT EXISTS (SELECT 1 FROM dbo.IdSequence WHERE [key] = N'ROLE')
+    INSERT INTO dbo.IdSequence ([key], [next], [updatedAt])
+    SELECT N'ROLE', ISNULL(MAX(CAST(SUBSTRING([id], 5, 20) AS INT)), 0) + 1, SYSDATETIME()
+    FROM dbo.Role WHERE [id] LIKE N'ROL-[0-9]%' AND SUBSTRING([id], 5, 20) NOT LIKE N'%[^0-9]%';
+
+IF NOT EXISTS (SELECT 1 FROM dbo.IdSequence WHERE [key] = N'USER')
+    INSERT INTO dbo.IdSequence ([key], [next], [updatedAt])
+    SELECT N'USER', ISNULL(MAX(CAST(SUBSTRING([id], 5, 20) AS INT)), 0) + 1, SYSDATETIME()
+    FROM dbo.[User] WHERE [id] LIKE N'USR-[0-9]%' AND SUBSTRING([id], 5, 20) NOT LIKE N'%[^0-9]%';
+
+IF NOT EXISTS (SELECT 1 FROM dbo.IdSequence WHERE [key] = N'SCREENPERMISSION')
+    INSERT INTO dbo.IdSequence ([key], [next], [updatedAt])
+    SELECT N'SCREENPERMISSION', ISNULL(MAX(CAST(SUBSTRING([id], 5, 20) AS INT)), 0) + 1, SYSDATETIME()
+    FROM dbo.ScreenPermission WHERE [id] LIKE N'SCP-[0-9]%' AND SUBSTRING([id], 5, 20) NOT LIKE N'%[^0-9]%';
+
+IF NOT EXISTS (SELECT 1 FROM dbo.IdSequence WHERE [key] = N'USERPERMISSION')
+    INSERT INTO dbo.IdSequence ([key], [next], [updatedAt])
+    SELECT N'USERPERMISSION', ISNULL(MAX(CAST(SUBSTRING([id], 5, 20) AS INT)), 0) + 1, SYSDATETIME()
+    FROM dbo.UserPermission WHERE [id] LIKE N'UPM-[0-9]%' AND SUBSTRING([id], 5, 20) NOT LIKE N'%[^0-9]%';
+
+IF NOT EXISTS (SELECT 1 FROM dbo.IdSequence WHERE [key] = N'ACCOUNTMAPPING')
+    INSERT INTO dbo.IdSequence ([key], [next], [updatedAt])
+    SELECT N'ACCOUNTMAPPING', ISNULL(MAX(CAST(SUBSTRING([id], 5, 20) AS INT)), 0) + 1, SYSDATETIME()
+    FROM dbo.AccountMapping WHERE [id] LIKE N'ACM-[0-9]%' AND SUBSTRING([id], 5, 20) NOT LIKE N'%[^0-9]%';
+
+IF NOT EXISTS (SELECT 1 FROM dbo.IdSequence WHERE [key] = N'FINANCEDEFAULTS')
+    INSERT INTO dbo.IdSequence ([key], [next], [updatedAt])
+    SELECT N'FINANCEDEFAULTS', ISNULL(MAX(CAST(SUBSTRING([id], 5, 20) AS INT)), 0) + 1, SYSDATETIME()
+    FROM dbo.FinanceDefaults WHERE [id] LIKE N'FDF-[0-9]%' AND SUBSTRING([id], 5, 20) NOT LIKE N'%[^0-9]%';
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0 ROLLBACK TRAN;

@@ -17,15 +17,21 @@ GO
 --   AccountMapping   -> ACM-001    key ACCOUNTMAPPING
 --   FinanceDefaults  -> FDF-001    key FINANCEDEFAULTS
 --
--- Also adds 12 new FinanceDefaults columns for expanded finance settings
--- and seeds a company-wide FinanceDefaults row (branchId NULL).
+-- Also adds 13 new FinanceDefaults columns for expanded finance settings,
+-- seeds a company-wide FinanceDefaults row (branchId NULL), and persists
+-- the old User id -> new User id map into dbo._UserIdMap so 13_verify.sql
+-- can check for stragglers without false-failing on hard-deleted users.
 --
 -- Design principles (ALL review findings P1–P7 addressed):
---   P1  User id migration scans INFORMATION_SCHEMA for EVERY NVARCHAR column
---       in every table and updates all columns that hold old User ids
---       dynamically (userId, postedById, deletedById, reversedById,
---       approvedBy, createdById, etc.). Logs which columns were updated.
---       Final check: no column still holds an old User id.
+--   P1  User id migration scans INFORMATION_SCHEMA for EVERY character
+--       column in every table and updates all columns that hold old User
+--       ids dynamically (userId, postedById, deletedById, reversedById,
+--       approvedBy, createdById, FollowUp.userId,
+--       MembershipFreeze.approvedBy, etc.). Logs which columns were
+--       updated. Final check: no column still holds an old User id.
+--       The old->new map is persisted to dbo._UserIdMap so 13_verify.sql
+--       can re-scan later without false-failing on cuids of hard-deleted
+--       users that no longer have a User row.
 --   P2  Every CATCH block: capture ERROR_NUMBER/LINE/MESSAGE, then
 --       IF XACT_STATE() <> 0 ROLLBACK, then drop #temp tables, then log
 --       FAILED. Nothing before ROLLBACK.
@@ -38,6 +44,47 @@ GO
 --       No N'literal' + @var inside EXEC; build @sql first, then
 --       sp_executesql @sql. Every _UpgradeLog insert inside TRY.
 -- ============================================================================
+
+-- ============================================================================
+-- PRE-STEP: ensure dbo._UpgradeLog exists (so this script can be the
+-- very first script run on a brand-new database) and purge any stale
+-- rows from a previous run of step 13 so they cannot affect the final
+-- summary. The archived count is printed for audit.
+-- ============================================================================
+USE GymDB;
+GO
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+SET QUOTED_IDENTIFIER ON;
+
+IF OBJECT_ID('dbo._UpgradeLog','U') IS NULL
+BEGIN
+    CREATE TABLE dbo._UpgradeLog (
+        id INT IDENTITY(1,1) NOT NULL,
+        step NVARCHAR(100) NOT NULL,
+        status NVARCHAR(20) NOT NULL,
+        message NVARCHAR(MAX),
+        createdAt DATETIME2 NOT NULL CONSTRAINT [_UpgradeLog_createdAt_df] DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT [_UpgradeLog_pkey] PRIMARY KEY CLUSTERED ([id])
+    );
+    PRINT N'  (created dbo._UpgradeLog)';
+END
+GO
+
+USE GymDB;
+GO
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+SET QUOTED_IDENTIFIER ON;
+
+DECLARE @archived13 INT = 0;
+SELECT @archived13 = COUNT(*) FROM dbo._UpgradeLog WHERE step LIKE N'13%';
+IF @archived13 > 0
+BEGIN
+    DELETE FROM dbo._UpgradeLog WHERE step LIKE N'13%';
+    PRINT N'  (purged ' + CAST(@archived13 AS NVARCHAR(10)) + N' stale step-13 rows from dbo._UpgradeLog)';
+END
+GO
 
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
@@ -115,8 +162,13 @@ BEGIN
 END
 ELSE
 BEGIN
-    INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13a-Defaults-id', N'SKIPPED', N'Already migrated or table missing');
-    PRINT N'  13a-Defaults-id: SKIPPED';
+    BEGIN TRY
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13a-Defaults-id', N'SKIPPED', N'Already migrated or table missing');
+        PRINT N'  13a-Defaults-id: SKIPPED';
+    END TRY
+    BEGIN CATCH
+        PRINT N'  13a-Defaults-id: SKIPPED (log failed: ' + ERROR_MESSAGE() + N')';
+    END CATCH
 END
 GO
 
@@ -256,8 +308,13 @@ BEGIN
 END
 ELSE
 BEGIN
-    INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13b-TaxHead-id', N'SKIPPED', N'Already migrated or table missing');
-    PRINT N'  13b-TaxHead-id: SKIPPED';
+    BEGIN TRY
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13b-TaxHead-id', N'SKIPPED', N'Already migrated or table missing');
+        PRINT N'  13b-TaxHead-id: SKIPPED';
+    END TRY
+    BEGIN CATCH
+        PRINT N'  13b-TaxHead-id: SKIPPED (log failed: ' + ERROR_MESSAGE() + N')';
+    END CATCH
 END
 GO
 
@@ -374,8 +431,13 @@ BEGIN
 END
 ELSE
 BEGIN
-    INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13c-Permission-id', N'SKIPPED', N'Already migrated or table missing');
-    PRINT N'  13c-Permission-id: SKIPPED';
+    BEGIN TRY
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13c-Permission-id', N'SKIPPED', N'Already migrated or table missing');
+        PRINT N'  13c-Permission-id: SKIPPED';
+    END TRY
+    BEGIN CATCH
+        PRINT N'  13c-Permission-id: SKIPPED (log failed: ' + ERROR_MESSAGE() + N')';
+    END CATCH
 END
 GO
 
@@ -496,8 +558,13 @@ BEGIN
 END
 ELSE
 BEGIN
-    INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13d-Role-id', N'SKIPPED', N'Already migrated or table missing');
-    PRINT N'  13d-Role-id: SKIPPED';
+    BEGIN TRY
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13d-Role-id', N'SKIPPED', N'Already migrated or table missing');
+        PRINT N'  13d-Role-id: SKIPPED';
+    END TRY
+    BEGIN CATCH
+        PRINT N'  13d-Role-id: SKIPPED (log failed: ' + ERROR_MESSAGE() + N')';
+    END CATCH
 END
 GO
 
@@ -536,6 +603,29 @@ BEGIN
                N'USR-' + RIGHT(N'000' + CAST(@usr_max + ROW_NUMBER() OVER (ORDER BY [createdAt], [username]) AS NVARCHAR(10)), 4),
                N'tmp_USR_' + RIGHT(N'000' + CAST(@usr_max + ROW_NUMBER() OVER (ORDER BY [createdAt], [username]) AS NVARCHAR(10)), 4)
         FROM dbo.[User] WHERE [id] NOT LIKE N'USR-%';
+
+        -- Persist the old->new User id map into dbo._UserIdMap so 13_verify.sql
+        -- can later scan every char column for stragglers without false-failing
+        -- on cuids of hard-deleted users that no longer have a User row.
+        -- (Re-created on every run; rows from a previous run are replaced.)
+        IF OBJECT_ID('dbo._UserIdMap','U') IS NULL
+        BEGIN
+            CREATE TABLE dbo._UserIdMap (
+                old_id NVARCHAR(50) NOT NULL,
+                new_id NVARCHAR(50) NOT NULL,
+                migratedAt DATETIME2 NOT NULL CONSTRAINT [_UserIdMap_migratedAt_df] DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT [_UserIdMap_pkey] PRIMARY KEY CLUSTERED ([old_id])
+            );
+        END
+        ELSE
+        BEGIN
+            -- Wipe any rows for old_ids we are about to (re)map; keep rows
+            -- from prior runs that are not in this run's #usr_map (those
+            -- belong to users that no longer exist).
+            DELETE m FROM dbo._UserIdMap m INNER JOIN #usr_map s ON m.old_id = s.old_id;
+        END
+        INSERT INTO dbo._UserIdMap (old_id, new_id)
+        SELECT old_id, new_id FROM #usr_map;
 
         -- Discover FKs referencing [User]
         IF OBJECT_ID('tempdb..#usr_fks','U') IS NOT NULL DROP TABLE #usr_fks;
@@ -697,8 +787,13 @@ BEGIN
 END
 ELSE
 BEGIN
-    INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13e-User-id', N'SKIPPED', N'Already migrated or table missing');
-    PRINT N'  13e-User-id: SKIPPED';
+    BEGIN TRY
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13e-User-id', N'SKIPPED', N'Already migrated or table missing');
+        PRINT N'  13e-User-id: SKIPPED';
+    END TRY
+    BEGIN CATCH
+        PRINT N'  13e-User-id: SKIPPED (log failed: ' + ERROR_MESSAGE() + N')';
+    END CATCH
 END
 GO
 
@@ -768,8 +863,13 @@ BEGIN
 END
 ELSE
 BEGIN
-    INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-ScreenPermission-id', N'SKIPPED', N'Already migrated or table missing');
-    PRINT N'  13f-ScreenPermission-id: SKIPPED';
+    BEGIN TRY
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-ScreenPermission-id', N'SKIPPED', N'Already migrated or table missing');
+        PRINT N'  13f-ScreenPermission-id: SKIPPED';
+    END TRY
+    BEGIN CATCH
+        PRINT N'  13f-ScreenPermission-id: SKIPPED (log failed: ' + ERROR_MESSAGE() + N')';
+    END CATCH
 END
 GO
 
@@ -834,8 +934,13 @@ BEGIN
 END
 ELSE
 BEGIN
-    INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-UserPermission-id', N'SKIPPED', N'Already migrated or table missing');
-    PRINT N'  13f-UserPermission-id: SKIPPED';
+    BEGIN TRY
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-UserPermission-id', N'SKIPPED', N'Already migrated or table missing');
+        PRINT N'  13f-UserPermission-id: SKIPPED';
+    END TRY
+    BEGIN CATCH
+        PRINT N'  13f-UserPermission-id: SKIPPED (log failed: ' + ERROR_MESSAGE() + N')';
+    END CATCH
 END
 GO
 
@@ -900,8 +1005,13 @@ BEGIN
 END
 ELSE
 BEGIN
-    INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-AccountMapping-id', N'SKIPPED', N'Already migrated or table missing');
-    PRINT N'  13f-AccountMapping-id: SKIPPED';
+    BEGIN TRY
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-AccountMapping-id', N'SKIPPED', N'Already migrated or table missing');
+        PRINT N'  13f-AccountMapping-id: SKIPPED';
+    END TRY
+    BEGIN CATCH
+        PRINT N'  13f-AccountMapping-id: SKIPPED (log failed: ' + ERROR_MESSAGE() + N')';
+    END CATCH
 END
 GO
 
@@ -966,8 +1076,13 @@ BEGIN
 END
 ELSE
 BEGIN
-    INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-FinanceDefaults-id', N'SKIPPED', N'Already migrated or table missing');
-    PRINT N'  13f-FinanceDefaults-id: SKIPPED';
+    BEGIN TRY
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13f-FinanceDefaults-id', N'SKIPPED', N'Already migrated or table missing');
+        PRINT N'  13f-FinanceDefaults-id: SKIPPED';
+    END TRY
+    BEGIN CATCH
+        PRINT N'  13f-FinanceDefaults-id: SKIPPED (log failed: ' + ERROR_MESSAGE() + N')';
+    END CATCH
 END
 GO
 
@@ -1015,7 +1130,7 @@ BEGIN
             ALTER TABLE dbo.FinanceDefaults ADD [fiscalYearEnd] DATETIME2;
 
         COMMIT TRAN;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13g-FinanceDefaults-columns', N'OK', N'All 12 expanded finance columns present');
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'13g-FinanceDefaults-columns', N'OK', N'All 13 expanded finance columns present');
         PRINT N'  13g-FinanceDefaults-columns: OK';
     END TRY
     BEGIN CATCH
@@ -1149,46 +1264,57 @@ END
 GO
 
 -- ============================================================================
--- FINAL SUMMARY
+-- FINAL SUMMARY (wrapped in TRY/CATCH so a read error doesn't crash the
+-- whole upgrade; the worst case is a FAILED summary row with the error)
 -- ============================================================================
 USE GymDB;
 GO
 SET NOCOUNT ON;
+SET QUOTED_IDENTIFIER ON;
 
-PRINT N'';
-PRINT N'=== STEP 13 SUMMARY ===';
+DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
 
-DECLARE @expected13 TABLE (step NVARCHAR(100) NOT NULL);
-INSERT INTO @expected13 (step) VALUES
-    (N'13a-Defaults-id'),
-    (N'13b-TaxHead-id'),
-    (N'13c-Permission-id'),
-    (N'13d-Role-id'),
-    (N'13e-User-id'),
-    (N'13f-ScreenPermission-id'),
-    (N'13f-UserPermission-id'),
-    (N'13f-AccountMapping-id'),
-    (N'13f-FinanceDefaults-id'),
-    (N'13g-FinanceDefaults-columns'),
-    (N'13h-FinanceDefaults-seed'),
-    (N'13i-IdSequence');
+BEGIN TRY
+    PRINT N'';
+    PRINT N'=== STEP 13 SUMMARY ===';
 
-DECLARE @missing13 INT = 0, @failed13 INT = 0;
-SELECT @missing13 = COUNT(*) FROM @expected13 e WHERE NOT EXISTS (SELECT 1 FROM dbo._UpgradeLog l WHERE l.step = e.step);
-SELECT @failed13 = COUNT(*) FROM dbo._UpgradeLog l WHERE l.step LIKE N'13%' AND l.status = N'FAILED';
+    DECLARE @expected13 TABLE (step NVARCHAR(100) NOT NULL);
+    INSERT INTO @expected13 (step) VALUES
+        (N'13a-Defaults-id'),
+        (N'13b-TaxHead-id'),
+        (N'13c-Permission-id'),
+        (N'13d-Role-id'),
+        (N'13e-User-id'),
+        (N'13f-ScreenPermission-id'),
+        (N'13f-UserPermission-id'),
+        (N'13f-AccountMapping-id'),
+        (N'13f-FinanceDefaults-id'),
+        (N'13g-FinanceDefaults-columns'),
+        (N'13h-FinanceDefaults-seed'),
+        (N'13i-IdSequence');
 
-IF @missing13 = 0 AND @failed13 = 0
-BEGIN
-    PRINT N'SUCCESS';
-    SELECT N'SUCCESS' AS result, COUNT(*) AS steps, SUM(CASE WHEN status=N'OK' THEN 1 ELSE 0 END) AS ok, SUM(CASE WHEN status=N'SKIPPED' THEN 1 ELSE 0 END) AS skipped, 0 AS failed
-    FROM dbo._UpgradeLog WHERE step LIKE N'13%';
-END
-ELSE
-BEGIN
-    DECLARE @failList13 NVARCHAR(MAX) = N'';
-    SELECT @failList13 = @failList13 + step + N'; ' FROM dbo._UpgradeLog WHERE step LIKE N'13%' AND status = N'FAILED' ORDER BY step;
-    SELECT @failList13 = @failList13 + N'MISSING: ' + step + N'; ' FROM @expected13 e WHERE NOT EXISTS (SELECT 1 FROM dbo._UpgradeLog l WHERE l.step = e.step) ORDER BY e.step;
-    PRINT N'FAILED - ' + @failList13;
-    SELECT N'FAILED' AS result, @failList13 AS details;
-END
+    DECLARE @missing13 INT = 0, @failed13 INT = 0;
+    SELECT @missing13 = COUNT(*) FROM @expected13 e WHERE NOT EXISTS (SELECT 1 FROM dbo._UpgradeLog l WHERE l.step = e.step);
+    SELECT @failed13 = COUNT(*) FROM dbo._UpgradeLog l WHERE l.step LIKE N'13%' AND l.status = N'FAILED';
+
+    IF @missing13 = 0 AND @failed13 = 0
+    BEGIN
+        PRINT N'SUCCESS';
+        SELECT N'SUCCESS' AS result, COUNT(*) AS steps, SUM(CASE WHEN status=N'OK' THEN 1 ELSE 0 END) AS ok, SUM(CASE WHEN status=N'SKIPPED' THEN 1 ELSE 0 END) AS skipped, 0 AS failed
+        FROM dbo._UpgradeLog WHERE step LIKE N'13%';
+    END
+    ELSE
+    BEGIN
+        DECLARE @failList13 NVARCHAR(MAX) = N'';
+        SELECT @failList13 = @failList13 + step + N'; ' FROM dbo._UpgradeLog WHERE step LIKE N'13%' AND status = N'FAILED' ORDER BY step;
+        SELECT @failList13 = @failList13 + N'MISSING: ' + step + N'; ' FROM @expected13 e WHERE NOT EXISTS (SELECT 1 FROM dbo._UpgradeLog l WHERE l.step = e.step) ORDER BY e.step;
+        PRINT N'FAILED - ' + @failList13;
+        SELECT N'FAILED' AS result, @failList13 AS details;
+    END
+END TRY
+BEGIN CATCH
+    SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
+    PRINT N'  STEP 13 SUMMARY: FAILED - ' + @eMsg;
+    SELECT N'FAILED' AS result, N'Summary read error: ' + @eMsg AS details;
+END CATCH
 GO

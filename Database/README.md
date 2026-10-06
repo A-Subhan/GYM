@@ -1,8 +1,16 @@
 -- ============================================================================
 -- Contoura Gym Management System - DATABASE README
 -- ============================================================================
--- RUN ORDER for an EXISTING database in a PARTIAL upgrade state
--- (08_upgrade_2026_09.sql and/or 09_upgrade_finance_hr.sql failed):
+-- This README describes the two install paths (LIVE upgrade and FRESH
+-- install) and where 13_admin_security_upgrade.sql / 13_verify.sql fit.
+--
+-- ============================================================================
+-- PATH A — LIVE DATABASE (already running, in a partial upgrade state)
+-- ============================================================================
+-- Use this path when the database already exists and has data. The
+-- 10xx scripts repair the partial 08/09 state, then 11a/11b/12a/12b/12c
+-- add missing permission rows, then 13 migrates cuid-style ids to the
+-- final business formats.
 --
 --   1. BACKUP YOUR DATABASE:
 --        BACKUP DATABASE GymDB TO DISK = 'C:\...\GymDB_before_10.bak'
@@ -26,13 +34,66 @@
 --                                                   Member soft-delete)
 --        Database/10i_branch.sql                   (Branch.nodeType Control/Detail)
 --        Database/10j_feepayment_id.sql            (IdSequence table for FeePayment ids)
---        Database/10_zz_summary.sql                (FINAL: prints SUCCESS or FAILED)
+--        Database/10k_branch_hierarchy.sql         (Branch hierarchy 00 > 01 > 01001/01002)
+--        Database/10l_feepayment_ids.sql            (FeePayment id format FP/BR/MMMyy/000001)
+--        Database/10m_staff_ids.sql                 (Staff id -> EMP-00001, optional)
+--        Database/10n_payroll_master_fix.sql        (payrollmaster dedup + paired tables)
+--        Database/10o_master_categories.sql         (MasterFile -> paired master/detail tables)
+--        Database/10_zz_summary.sql                 (FINAL: prints SUCCESS or FAILED)
 --
---   3. Run the verification script:
---        Database/10_verify.sql
+--   3. Run the post-10 permission / ledger fixes:
+--        Database/11a_overtime_permissions.sql      (overtime.add/edit/delete/view perms)
+--        Database/11b_overtime_permissions.sql      (overtime perms for Super Admin)
+--        Database/12a_fix_ledger_view.sql           (vw_BookLedger deleted-voucher leak)
+--        Database/12b_fix_user_email_unique.sql     (User.email nullable unique fix)
+--        Database/12c_payroll_permissions.sql       (payroll.delete + leaves.edit perms)
+--
+--   4. Run the admin & security upgrade (id format migration + FinanceDefaults
+--      expansion):
+--        Database/13_admin_security_upgrade.sql     (migrates cuid ids to CMP-/TAX-/PRM-/
+--                                                   ROL-/USR-/SCP-/UPM-/ACM-/FDF- formats,
+--                                                   adds 13 FinanceDefaults columns, seeds
+--                                                   company-wide FinanceDefaults row,
+--                                                   persists old->new User id map to
+--                                                   dbo._UserIdMap, syncs IdSequence)
+--
+--   5. Run the verification script:
+--        Database/13_verify.sql
 --      Prints PASS/FAIL per item and a final summary:
---        "ALL PASS"  -> database is in the target state.
+--        "ALL PASS"  -> database is in the final state.
 --        "FAILED: <items>" -> check the detail column for reasons.
+--
+-- ============================================================================
+-- PATH B — FRESH INSTALL (empty database)
+-- ============================================================================
+-- Use this path on a brand-new SQL Server instance. The fresh-install
+-- scripts already produce the final state (new id formats, all
+-- FinanceDefaults columns, IdSequence seeded). You do NOT need to run
+-- the 10xx, 11x, 12x, or 13 scripts.
+--
+--   01_create_database.sql      (optional; creates GymDB)
+--   02_schema_tables.sql        (74 tables + indexes + foreign keys,
+--                                including all 13 expanded FinanceDefaults columns)
+--   03_views_functions.sql      (8 views, 3 functions)
+--   04_stored_procedures.sql    (6 stored procedures)
+--   05_triggers.sql             (7 triggers)
+--   06_master_data.sql          (company, branches, admin user USR-0001, COA,
+--                                mappings, master files, plans, shifts, staff,
+--                                permissions PRM-0001..PRM-0150, roles ROL-001..ROL-007,
+--                                tax heads TAX-001/TAX-002, account mappings ACM-001..ACM-008,
+--                                finance defaults FDF-001..FDF-003 (FDF-001 = company-wide),
+--                                IdSequence seed rows for all 9 keys)
+--   07_sample_data.sql          (OPTIONAL; October 2026 demo month)
+--
+--   After 02-06, the database is already in the final state. To confirm,
+--   run the verification script:
+--        Database/13_verify.sql
+--      It should print "ALL PASS".
+--
+--   The 10xx, 11x, 12x, and 13 scripts are NOT needed on a fresh install.
+--   If you run 13 anyway, every step will detect the new format is already
+--   in place and SKIP, then print SUCCESS. 13_verify is the only script
+--   you need to run on a fresh install to confirm the final state.
 --
 -- ============================================================================
 -- WHY THE OLD 10_upgrade_repair.sql FAILED:
@@ -60,48 +121,36 @@
 --   the INSERT/SELECT that defines it.
 --
 -- ============================================================================
--- RUN ORDER for a FRESH INSTALL (empty database):
---
---   01_create_database.sql      (optional; creates GymDB)
---   02_schema_tables.sql        (74 tables + indexes + foreign keys)
---   03_views_functions.sql      (8 views, 3 functions)
---   04_stored_procedures.sql    (6 stored procedures)
---   05_triggers.sql             (7 triggers)
---   06_master_data.sql          (company, branches, admin user, COA, mappings,
---                                master files, plans, shifts, staff)
---   07_sample_data.sql          (OPTIONAL; October 2026 demo month)
---
---   After 02-06, the database is already in the final state.
---   The 10xx scripts are NOT needed on a fresh install (they will detect
---   everything is in place and skip every step, printing "SUCCESS").
---
--- ============================================================================
 -- FILES
 --
 --   Database/
 --   ├── 01_create_database.sql      Create the GymDB database
---   ├── 02_schema_tables.sql        74 tables (final target schema)
+--   ├── 02_schema_tables.sql        74 tables (final target schema,
+--   │                                 includes 13 expanded FinanceDefaults columns)
 --   ├── 03_views_functions.sql      Views and functions
 --   ├── 04_stored_procedures.sql    Stored procedures
 --   ├── 05_triggers.sql             Triggers
---   ├── 06_master_data.sql          Seed data
+--   ├── 06_master_data.sql          Seed data (new id formats + IdSequence seeds)
 --   ├── 07_sample_data.sql          Optional demo data
 --   ├── 08_upgrade_2026_09.sql      OLD - do NOT run (has bugs)
 --   ├── 09_upgrade_finance_hr.sql   OLD - do NOT run (has bugs)
 --   ├── 09_verify.sql               OLD - superseded by 10_verify.sql
---   ├── 10_00_log_table.sql         ✅ Creates dbo._UpgradeLog (run first)
---   ├── 10a_userType.sql            ✅ User.userType + nullable roleId
---   ├── 10b_joiningFee.sql          ✅ Member.joiningFee
---   ├── 10c_master_tables.sql       ✅ 6 master/detail tables + FKs
---   ├── 10d_master_data_migration.sql ✅ Migrate legacy master data
---   ├── 10e_staff_merge.sql         ✅ Staff.employeeId -> id merge
---   ├── 10f_shift_ids.sql           ✅ Shift id renumbering -> 001/002/003
---   ├── 10g_calendar_ids.sql        ✅ CalendarDay id renumbering -> 001/002/...
---   ├── 10h_misc_tables.sql         ✅ Permission + gym operation tables
---   ├── 10i_branch.sql             ✅ Branch.nodeType (Control/Detail)
---   ├── 10j_feepayment_id.sql      ✅ IdSequence table for FeePayment ids
---   ├── 10_zz_summary.sql           ✅ FINAL: reads _UpgradeLog, prints SUCCESS/FAILED
---   ├── 10_verify.sql               ✅ Verification script (run after all 10xx)
+--   ├── 10_00_log_table.sql         ✅ Creates dbo._UpgradeLog (run first on live)
+--   ├── 10a..10o                    ✅ Split 10xx repair scripts (live upgrade)
+--   ├── 10_zz_summary.sql           ✅ FINAL 10xx: reads _UpgradeLog, prints SUCCESS/FAILED
+--   ├── 10_verify.sql               ✅ 10xx verification (run after all 10xx)
+--   ├── 11a_overtime_permissions.sql ✅ Overtime permission rows
+--   ├── 11b_overtime_permissions.sql ✅ Overtime perms for Super Admin
+--   ├── 12a_fix_ledger_view.sql      ✅ vw_BookLedger deleted-voucher leak fix
+--   ├── 12b_fix_user_email_unique.sql ✅ User.email nullable unique fix
+--   ├── 12c_payroll_permissions.sql  ✅ payroll.delete + leaves.edit perms
+--   │                                (role by name, perms by code — fresh-install safe)
+--   ├── 13_admin_security_upgrade.sql ✅ Id format migration (CMP/TAX/PRM/ROL/USR/SCP/
+--   │                                 UPM/ACM/FDF) + FinanceDefaults expansion +
+--   │                                 _UserIdMap persistence + IdSequence sync
+--   ├── 13_verify.sql               ✅ Final verification (PASS/FAIL per item +
+--   │                                 ALL PASS or FAIL list). Run on BOTH live
+--   │                                 (after 13) and fresh install (after 06).
 --   ├── README.md                   This file
 --   ├── _archive/                   Old migration scripts (not part of install)
 --   ├── GymDB.bak                    Real SQL Server backup (23 MB)
@@ -129,5 +178,25 @@
 --     === SUMMARY: ALL PASS ===
 --     summary    total_checks  passed  failed
 --     ALL PASS   22            22      0
+--
+--   The 13_admin_security_upgrade.sql final summary prints:
+--     === STEP 13 SUMMARY ===
+--     SUCCESS
+--     (steps: 12, ok: 9, skipped: 3, failed: 0)
+--
+--   The 13_verify.sql prints (per item + one summary row):
+--     item                       status  detail
+--     1a-Defaults-CMP            PASS    All Defaults.id match CMP-NNN
+--     1b-TaxHead-TAX             PASS    All TaxHead.id match TAX-NNN
+--     ...
+--     === SUMMARY: ALL PASS ===
+--     result     passed  failed
+--     ALL PASS   18      0
+--
+--   Or on failure:
+--     === SUMMARY: FAILED ===
+--     FAILED: 1e-User-USR; 3-OldUserId-scan;
+--     result     passed  failed  details
+--     FAILED     16      2       1e-User-USR; 3-OldUserId-scan;
 --
 -- ============================================================================
