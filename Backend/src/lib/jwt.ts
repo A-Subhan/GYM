@@ -2,10 +2,12 @@
 import { cookies } from 'next/headers'
 
 const COOKIE_NAME = 'contoura_session'
-// JWT_SECRET must be set via environment variable in production.
-// The fallback is ONLY for local development convenience.
-const DEV_SECRET = 'contoura-labs-dev-only-secret-not-for-production'
-const SECRET = process.env.JWT_SECRET || DEV_SECRET
+// JWT_SECRET must be set via environment variable. There is NO fallback.
+// The app will throw at module load if the secret is missing.
+const SECRET = process.env.JWT_SECRET
+if (!SECRET) {
+  throw new Error('JWT_SECRET environment variable is required. Set it to a strong random value (at least 32 characters).')
+}
 const ACCESS_TTL = 60 * 60 * 8 // 8 hours
 
 function b64url(buf: ArrayBuffer | Uint8Array): string {
