@@ -5,16 +5,18 @@ import { makeDefaultsId } from '@/lib/ids'
 import { existsSync } from 'fs'
 import path from 'path'
 
-// Admin Defaults — backed by the dbo.Defaults table (the legacy Company table
-// was removed by the SQL Server migration). The company name is freely
-// editable (the old trg_Defaults_CompanyNameLock was dropped by
-// 14_company_and_finance_options.sql). The API enforces company.edit
-// permission and logs every name change to dbo.AuditLog.
+// Admin Defaults — backed by the dbo.Defaults table.
+// The company name is controlled by trg_Defaults_CompanyNameLock which
+// blocks direct SQL updates unless SESSION_CONTEXT 'allow_company_name_change'
+// is set to 1. The API sets this flag via the usp_Defaults_ChangeCompanyName
+// stored procedure when company.edit permission is verified, then the
+// trigger allows the change. Every change is logged to AuditLog.
 //
 // LOGO VALIDATION (server-side authoritative):
 //   - The logo path must start with /uploads/ and reference a file that
 //     actually exists in the uploads directory.
 //   - The file extension must be one of png/jpg/jpeg/webp/gif/svg.
+//   - SVG is accepted but sanitized by the upload route (no script tags).
 //   - The 2 MB size limit is enforced by the /api/uploads route when
 //     purpose=logo is passed; this route only validates the path.
 
@@ -80,10 +82,40 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
+  // If the company name is changing, use the stored procedure to set the
+  // SESSION_CONTEXT flag that trg_Defaults_CompanyNameLock honors.
+  // The stored procedure also writes the audit log entry.
+  if (submittedName !== undefined && submittedName !== (defaults.companyName || '').trim()) {
+    try {
+      await db.$executeRawUnsafe(
+        `EXEC dbo.usp_Defaults_ChangeCompanyName @newName = ${submittedName}, @changedBy = ${session.id}`,
+      )
+    } catch (e: any) {
+      // If the stored procedure doesn't exist yet (pre-migration), fall back
+      // to setting the session context manually + direct update
+      try {
+        await db.$executeRawUnsafe(`EXEC sp_set_session_context @key = N'allow_company_name_change', @value = 1`)
+        await db.$executeRawUnsafe(`UPDATE dbo.Defaults SET companyName = '${submittedName.replace(/'/g, "''")}', updatedAt = SYSDATETIME() WHERE id = '${defaults.id}'`)
+        await db.$executeRawUnsafe(`EXEC sp_set_session_context @key = N'allow_company_name_change', @value = 0`)
+      } catch (e2: any) {
+        return NextResponse.json({ error: `Failed to change company name: ${e2.message}` }, { status: 400 })
+      }
+    }
+    // Log the name change to AuditLog
+    await db.auditLog.create({
+      data: {
+        userId: session.id,
+        action: 'COMPANY_NAME_CHANGE',
+        module: 'company',
+        details: JSON.stringify({ from: defaults.companyName || null, to: submittedName, by: session.id }),
+      },
+    })
+  }
+
+  // Update other fields (not companyName — that's done above)
   const updated = await db.defaults.update({
     where: { id: defaults.id },
     data: {
-      companyName: submittedName,
       address: data.address,
       phone: data.phone,
       email: data.email,
@@ -98,15 +130,19 @@ export async function PATCH(req: NextRequest) {
     },
   })
 
-  // Audit log — include the name change details if the name was updated
-  const auditDetails: any = { id: updated.id }
-  if (submittedName !== undefined && submittedName !== (defaults.companyName || '').trim()) {
-    auditDetails.companyNameChanged = { from: defaults.companyName || null, to: submittedName }
-  }
+  // Re-fetch to get the updated companyName (it was set by the stored proc)
+  const finalDefaults = await db.defaults.findFirst()
+  const company = finalDefaults ? { ...finalDefaults, name: finalDefaults.companyName } : { ...updated, name: updated.companyName }
+
+  // Audit log for non-name changes
+  const auditDetails: any = { id: defaults.id }
   if (logoValue !== undefined && logoValue !== defaults.logo) {
     auditDetails.logoChanged = { from: defaults.logo || null, to: logoValue }
   }
+  if (data.address !== undefined || data.phone !== undefined || data.email !== undefined || data.website !== undefined) {
+    auditDetails.contactInfoUpdated = true
+  }
   await db.auditLog.create({ data: { userId: session.id, action: 'UPDATE', module: 'company', details: JSON.stringify(auditDetails) } })
 
-  return NextResponse.json({ company: { ...updated, name: updated.companyName }, defaults: updated })
+  return NextResponse.json({ company, defaults: finalDefaults || updated })
 }

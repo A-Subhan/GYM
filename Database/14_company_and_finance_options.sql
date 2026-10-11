@@ -25,7 +25,10 @@ SET XACT_ABORT ON;
 PRINT N'=== STEP 14: Company & Finance Options ===';
 
 -- ============================================================================
--- STEP 14a: Drop trg_Defaults_CompanyNameLock
+-- STEP 14a: ALTER trg_Defaults_CompanyNameLock to use SESSION_CONTEXT flag
+-- (instead of dropping it — the trigger stays as a safety mechanism but
+--  now honors a session flag set by the API/stored procedure when an admin
+--  with company.edit permission changes the name)
 -- ============================================================================
 USE GymDB;
 GO
@@ -57,33 +60,47 @@ SET QUOTED_IDENTIFIER ON;
 DECLARE @eNum INT, @eLine INT, @eMsg NVARCHAR(MAX);
 
 BEGIN TRY
-    IF EXISTS (SELECT 1 FROM sys.triggers WHERE name = N'trg_Defaults_CompanyNameLock' AND parent_id = OBJECT_ID('dbo.Defaults'))
+    -- ALTER the trigger to check SESSION_CONTEXT instead of always throwing
+    DECLARE @sql NVARCHAR(MAX) = N'
+    CREATE OR ALTER TRIGGER dbo.trg_Defaults_CompanyNameLock ON dbo.Defaults AFTER UPDATE AS
     BEGIN
-        DROP TRIGGER dbo.trg_Defaults_CompanyNameLock;
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'14a-DropCompanyNameTrigger', N'OK', N'Dropped trg_Defaults_CompanyNameLock — company name is now editable');
-        PRINT N'  14a-DropCompanyNameTrigger: OK';
-    END
-    ELSE
-    BEGIN
-        BEGIN TRY
-            INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'14a-DropCompanyNameTrigger', N'SKIPPED', N'Trigger not found — already dropped');
-            PRINT N'  14a-DropCompanyNameTrigger: SKIPPED';
-        END TRY
-        BEGIN CATCH
-            PRINT N'  14a-DropCompanyNameTrigger: SKIPPED (log failed)';
-        END CATCH
-    END
+        SET NOCOUNT ON;
+        IF EXISTS (
+            SELECT 1
+            FROM inserted i
+            INNER JOIN deleted d ON d.id = i.id
+            WHERE d.companyName IS NOT NULL
+              AND (i.companyName IS NULL
+                   OR i.companyName <> d.companyName)
+        )
+        BEGIN
+            DECLARE @allowChange BIT = CAST(SESSION_CONTEXT(N''allow_company_name_change'') AS BIT);
+            IF @allowChange IS NULL OR @allowChange = 0
+            BEGIN
+                ;THROW 55100, ''Company Name is locked. Use the Company Information screen (admin permission required) or execute usp_Defaults_ChangeCompanyName to change it.'', 1;
+            END
+        END
+    END';
+    EXEC sp_executesql @sql;
+
+    BEGIN TRY
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'14a-CompanyNameTrigger', N'OK', N'ALTERed trg_Defaults_CompanyNameLock to use SESSION_CONTEXT flag');
+        PRINT N'  14a-CompanyNameTrigger: OK';
+    END TRY
+    BEGIN CATCH
+        PRINT N'  14a-CompanyNameTrigger: OK (log failed)';
+    END CATCH
 END TRY
 BEGIN CATCH
     SET @eNum = ERROR_NUMBER(); SET @eLine = ERROR_LINE(); SET @eMsg = ERROR_MESSAGE();
     IF XACT_STATE() <> 0 ROLLBACK TRAN;
     BEGIN TRY
-        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'14a-DropCompanyNameTrigger', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
+        INSERT INTO dbo._UpgradeLog (step, status, message) VALUES (N'14a-CompanyNameTrigger', N'FAILED', N'Err ' + CAST(@eNum AS NVARCHAR(10)) + N' at line ' + CAST(@eLine AS NVARCHAR(10)) + N': ' + @eMsg);
     END TRY
     BEGIN CATCH
-        PRINT N'  14a-DropCompanyNameTrigger: FAILED (log also failed)';
+        PRINT N'  14a-CompanyNameTrigger: FAILED (log also failed)';
     END CATCH
-    PRINT N'  14a-DropCompanyNameTrigger: FAILED - ' + @eMsg;
+    PRINT N'  14a-CompanyNameTrigger: FAILED - ' + @eMsg;
 END CATCH
 GO
 
@@ -318,7 +335,7 @@ BEGIN TRY
 
     DECLARE @expected14 TABLE (step NVARCHAR(100) NOT NULL);
     INSERT INTO @expected14 (step) VALUES
-        (N'14a-DropCompanyNameTrigger'),
+        (N'14a-CompanyNameTrigger'),
         (N'14b-FinanceDefaults-columns'),
         (N'14c-Permission-vouchers-approve'),
         (N'14d-Grant-vouchers-approve');

@@ -100,12 +100,35 @@ END
 GO
 
 -- ---------------------------------------------------------------------------
--- Admin Defaults: companyName is EDITABLE
--- (the old trg_Defaults_CompanyNameLock was removed — the company name can
---  be changed freely via direct SQL or the Company Information API, which
---  logs every change to dbo.AuditLog. The API enforces company.edit
---  permission.)
+-- Admin Defaults: companyName is controlled by a permission-gated mechanism.
+-- Direct SQL updates are blocked by the trigger (Msg 55100) unless the
+-- caller has set SESSION_CONTEXT 'allow_company_name_change' = 1 first.
+-- The application API sets this flag when company.edit permission is verified,
+-- logs the old/new value to AuditLog, then clears the flag. A stored
+-- procedure usp_Defaults_ChangeCompanyName is provided for manual DB changes.
+-- See 12c_company_name_control.sql for the stored procedure.
 -- ---------------------------------------------------------------------------
+CREATE OR ALTER TRIGGER dbo.trg_Defaults_CompanyNameLock ON dbo.Defaults AFTER UPDATE AS
+BEGIN
+    SET NOCOUNT ON;
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        INNER JOIN deleted d ON d.id = i.id
+        WHERE d.companyName IS NOT NULL
+          AND (i.companyName IS NULL
+               OR i.companyName <> d.companyName)
+    )
+    BEGIN
+        -- Check the session flag set by the API or stored procedure
+        DECLARE @allowChange BIT = CAST(SESSION_CONTEXT(N'allow_company_name_change') AS BIT);
+        IF @allowChange IS NULL OR @allowChange = 0
+        BEGIN
+            ;THROW 55100, 'Company Name is locked. Use the Company Information screen (admin permission required) or execute usp_Defaults_ChangeCompanyName to change it.', 1;
+        END
+    END
+END
+GO
 
-PRINT 'Step 05 complete: final triggers created (updatedAt touch, payroll audit).';
+PRINT 'Step 05 complete: final triggers created (updatedAt touch, payroll audit, Defaults company-name lock with SESSION_CONTEXT bypass).';
 GO

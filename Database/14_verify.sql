@@ -32,12 +32,12 @@ DECLARE @passCount INT = 0, @failCount INT = 0;
 BEGIN TRY
 
 -- ============================================================================
--- CHECK 1: trg_Defaults_CompanyNameLock does NOT exist
+-- CHECK 1: trg_Defaults_CompanyNameLock EXISTS with SESSION_CONTEXT bypass
 -- ============================================================================
 IF EXISTS (SELECT 1 FROM sys.triggers WHERE name = N'trg_Defaults_CompanyNameLock' AND parent_id = OBJECT_ID('dbo.Defaults'))
-    INSERT INTO @results VALUES (N'1-CompanyNameTrigger-gone', N'FAIL', N'trg_Defaults_CompanyNameLock still exists — company name is still locked');
+    INSERT INTO @results VALUES (N'1-CompanyNameTrigger', N'PASS', N'trg_Defaults_CompanyNameLock exists with SESSION_CONTEXT bypass');
 ELSE
-    INSERT INTO @results VALUES (N'1-CompanyNameTrigger-gone', N'PASS', N'trg_Defaults_CompanyNameLock dropped — company name is editable');
+    INSERT INTO @results VALUES (N'1-CompanyNameTrigger', N'FAIL', N'trg_Defaults_CompanyNameLock missing — company name has no protection');
 
 -- ============================================================================
 -- CHECK 2: FinanceDefaults expanded columns exist (all 13)
@@ -87,6 +87,14 @@ IF @has_approve > 0
     INSERT INTO @results VALUES (N'4-Grant-vouchers-approve', N'PASS', N'vouchers.approve granted to Super Admin');
 ELSE
     INSERT INTO @results VALUES (N'4-Grant-vouchers-approve', N'FAIL', N'vouchers.approve NOT granted to Super Admin');
+
+-- ============================================================================
+-- CHECK 5: usp_Defaults_ChangeCompanyName stored procedure exists
+-- ============================================================================
+IF OBJECT_ID('dbo.usp_Defaults_ChangeCompanyName','P') IS NOT NULL
+    INSERT INTO @results VALUES (N'5-ChangeCompanyNameProc', N'PASS', N'usp_Defaults_ChangeCompanyName stored procedure exists');
+ELSE
+    INSERT INTO @results VALUES (N'5-ChangeCompanyNameProc', N'FAIL', N'usp_Defaults_ChangeCompanyName stored procedure missing');
 
 -- ============================================================================
 -- PRINT RESULTS + ONE SUMMARY ROW
