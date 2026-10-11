@@ -2,13 +2,19 @@
 import { cookies } from 'next/headers'
 
 const COOKIE_NAME = 'contoura_session'
-// JWT_SECRET must be set via environment variable. There is NO fallback.
-// The app will throw at module load if the secret is missing.
-const SECRET = process.env.JWT_SECRET
-if (!SECRET) {
-  throw new Error('JWT_SECRET environment variable is required. Set it to a strong random value (at least 32 characters).')
-}
 const ACCESS_TTL = 60 * 60 * 8 // 8 hours
+
+function getSecret(): string {
+  const secret = process.env.JWT_SECRET
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('JWT_SECRET environment variable is required in production. Set it to a strong random value (at least 32 characters).')
+    }
+    console.warn('WARNING: JWT_SECRET not set. Using a throwaway dev secret. Set JWT_SECRET in your .env file.')
+    return 'dev-throwaway-secret-not-secure-do-not-use-in-prod'
+  }
+  return secret
+}
 
 function b64url(buf: ArrayBuffer | Uint8Array): string {
   const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf)
@@ -28,7 +34,7 @@ function b64urlDecode(s: string): Uint8Array {
 
 async function getKey(): Promise<CryptoKey> {
   const enc = new TextEncoder()
-  return crypto.subtle.importKey('raw', enc.encode(SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'])
+  return crypto.subtle.importKey('raw', enc.encode(getSecret()), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'])
 }
 
 export interface TokenPayload {

@@ -39,6 +39,10 @@ export async function POST(req: NextRequest) {
   }
 
   // User Type security model: Admin = full rights, User = per-screen permissions.
+  // Only existing Admins can create new Admin-type users.
+  if (data.userType === 'Admin' && session.userType !== 'Admin') {
+    return NextResponse.json({ error: 'Only Admin users can create Admin-type accounts' }, { status: 403 })
+  }
   const userType = data.userType === 'Admin' ? 'Admin' : 'User'
   // Legacy role is optional and only kept for pre-existing data compatibility.
   if (data.roleId) {
@@ -96,7 +100,14 @@ export async function PATCH(req: NextRequest) {
       ...(data.phone !== undefined ? { phone: data.phone } : {}),
       // password optional on edit — leave blank to keep the current one
       ...(data.password ? { passwordHash: hashPassword(String(data.password)) } : {}),
-      ...(data.userType !== undefined ? { userType: data.userType === 'Admin' ? 'Admin' : 'User' } : {}),
+      // Prevent self-promotion: only existing Admins can change userType to Admin
+      ...(data.userType !== undefined ? {
+        userType: (data.userType === 'Admin' && session.userType !== 'Admin' && data.id === session.id)
+          ? user.userType  // keep existing if trying to self-promote
+          : (data.userType === 'Admin' && session.userType !== 'Admin')
+            ? 'User'  // non-admins cannot promote anyone to Admin
+            : (data.userType === 'Admin' ? 'Admin' : 'User')
+      } : {}),
       ...(data.roleId !== undefined ? { roleId: data.roleId || null } : {}),
       ...(data.branchId !== undefined ? { branchId: data.branchId || null } : {}),
       ...(data.accessibleBranchIds !== undefined ? { accessibleBranchIds: data.accessibleBranchIds || '*' } : {}),
