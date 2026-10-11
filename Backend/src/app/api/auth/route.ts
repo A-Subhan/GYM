@@ -16,10 +16,22 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 })
     if (!user.isActive || user.isDeleted) return NextResponse.json({ error: 'Account is inactive. Contact administrator.' }, { status: 403 })
 
-    // Lockout: after 5 failed attempts, reject until an admin resets the count
+    // Time-windowed lockout: 5 failed attempts in 15 minutes locks the
+    // account for 15 minutes, then auto-unlocks. Admin users (userType=Admin)
+    // can still be locked, but an admin can reset the count via the users API.
     const MAX_FAILED_ATTEMPTS = 5
-    if ((user.failedLoginCount || 0) >= MAX_FAILED_ATTEMPTS) {
-      return NextResponse.json({ error: 'Account locked due to too many failed login attempts. Contact an administrator to reset.' }, { status: 403 })
+    const LOCKOUT_WINDOW_MS = 15 * 60 * 1000 // 15 minutes
+    const now = Date.now()
+    const lastFailedAt = user.lastLoginAt ? new Date(user.lastLoginAt).getTime() : 0
+    const failedCount = user.failedLoginCount || 0
+
+    // Auto-unlock: if the lockout window has passed, reset the counter
+    if (failedCount >= MAX_FAILED_ATTEMPTS && (now - lastFailedAt) > LOCKOUT_WINDOW_MS) {
+      await db.user.update({ where: { id: user.id }, data: { failedLoginCount: 0 } })
+    } else if (failedCount >= MAX_FAILED_ATTEMPTS) {
+      const remainingMs = LOCKOUT_WINDOW_MS - (now - lastFailedAt)
+      const remainingMin = Math.ceil(remainingMs / 60000)
+      return NextResponse.json({ error: `Account locked. Try again in ${remainingMin} minute(s) or contact an administrator.` }, { status: 403 })
     }
 
     const ok = comparePassword(String(password), user.passwordHash)
