@@ -2,7 +2,10 @@
 import { cookies } from 'next/headers'
 
 const COOKIE_NAME = 'contoura_session'
-const SECRET = process.env.JWT_SECRET || 'contoura-labs-default-secret-change-me'
+// JWT_SECRET must be set via environment variable in production.
+// The fallback is ONLY for local development convenience.
+const DEV_SECRET = 'contoura-labs-dev-only-secret-not-for-production'
+const SECRET = process.env.JWT_SECRET || DEV_SECRET
 const ACCESS_TTL = 60 * 60 * 8 // 8 hours
 
 function b64url(buf: ArrayBuffer | Uint8Array): string {

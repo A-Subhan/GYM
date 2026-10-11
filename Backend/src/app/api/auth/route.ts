@@ -16,13 +16,19 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 })
     if (!user.isActive || user.isDeleted) return NextResponse.json({ error: 'Account is inactive. Contact administrator.' }, { status: 403 })
 
+    // Lockout: after 5 failed attempts, reject until an admin resets the count
+    const MAX_FAILED_ATTEMPTS = 5
+    if ((user.failedLoginCount || 0) >= MAX_FAILED_ATTEMPTS) {
+      return NextResponse.json({ error: 'Account locked due to too many failed login attempts. Contact an administrator to reset.' }, { status: 403 })
+    }
+
     const ok = comparePassword(String(password), user.passwordHash)
     if (!ok) {
       await db.user.update({ where: { id: user.id }, data: { failedLoginCount: { increment: 1 } } })
       await db.auditLog.create({
         data: {
           userId: user.id, action: 'LOGIN_FAILED', module: 'auth',
-          details: JSON.stringify({ username }),
+          details: JSON.stringify({ username, attempts: (user.failedLoginCount || 0) + 1 }),
           ipAddress: req.headers.get('x-forwarded-for') || undefined,
         },
       })
