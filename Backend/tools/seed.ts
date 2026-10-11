@@ -4,6 +4,11 @@ import { PERMISSIONS, SYSTEM_ROLE_PERMISSIONS } from '../src/lib/permissions'
 import { mmmYY, pad, makePermissionId, makeRoleId, makeDefaultsId, makeTaxHeadId, makeAccountMappingId } from '../src/lib/ids'
 
 async function main() {
+  if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.length < 8) {
+    console.error('ERROR: ADMIN_PASSWORD environment variable must be set to a password of at least 8 characters before seeding.')
+    console.error('Example: ADMIN_PASSWORD=MySecurePass123 npm run seed')
+    process.exit(1)
+  }
   console.log('Seeding database...')
 
   // 1. Permissions
@@ -70,7 +75,7 @@ async function main() {
         username: 'admin',
         fullName: 'System Administrator',
         email: 'admin@contouragym.com',
-        passwordHash: hashPassword('admin123'),
+        passwordHash: hashPassword(process.env.ADMIN_PASSWORD || ''),
         userType: 'Admin',
         roleId: adminRole?.id || null,
         branchId: branch.id,
@@ -78,11 +83,11 @@ async function main() {
         isActive: true,
       },
     })
-    console.log('  ✓ admin user created (password: admin123)')
+    console.log('  ✓ admin user created (password from ADMIN_PASSWORD env var)')
   } else {
     await db.user.update({
       where: { id: existing.id },
-      data: { passwordHash: hashPassword('admin123'), isActive: true, userType: 'Admin', accessibleBranchIds: '*' },
+      data: { passwordHash: hashPassword(process.env.ADMIN_PASSWORD || ''), isActive: true, userType: 'Admin', accessibleBranchIds: '*' },
     })
     console.log('  ✓ admin user updated with verified hash')
   }
@@ -312,7 +317,7 @@ async function main() {
   }
   console.log('  ✓ payroll master file defaults')
 
-  console.log('\n✅ Seed complete. Login: admin / admin123')
+  console.log('\n✅ Seed complete. Login: admin (set ADMIN_PASSWORD env var before seeding)')
 }
 
 main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1) })
